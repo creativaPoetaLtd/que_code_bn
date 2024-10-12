@@ -1,28 +1,17 @@
-import "reflect-metadata";
-import express, { Request, Response } from "express";
-import Database from "./config/database";
+import app from "./app";
+import { connectionToDatabase } from "./database/config/db.config";
+import * as http from "http";
+import {  PORT } from "./utils/keys";
 
-const app = express();
-app.use(express.json());
 
-app.get("/", (req: Request, res: Response) => {
-    res.send("Hello World");
-});
+const startServer = async () => {
+	await connectionToDatabase();
 
-const start = async (): Promise<void> => {
-    try {
-        const db = new Database();
-        await db.sequelize?.authenticate(); 
-        
-        console.log("Database connected");
+	const server = http.createServer(app);
 
-        app.listen(3000, () => {
-            console.log("Server started on port 3000");
-        });
-    } catch (error) {
-        console.error("Failed to start server:", error);
-        process.exit(1);
-    }
+	server.listen(PORT, async () => {
+		console.log(`Server is running at http://localhost:${PORT}`);
+	});
 };
 
-void start();
+startServer();
