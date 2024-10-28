@@ -2,8 +2,7 @@
 import { CreateOptions, FindOptions, UpdateOptions } from "sequelize";
 import database_models from "../database/config/db.config";
 
-type ModelTypes =
-	| "Organization";
+type ModelTypes = "Organization" | "User";
 type MethodTypes = "findAll" | "findOne" | "destroy" | "create" | "update";
 
 export const read_function = async <T>(

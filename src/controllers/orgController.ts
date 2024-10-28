@@ -2,9 +2,8 @@ import { Request, Response } from 'express';
 import { insert_function, read_function } from "../utils/db_methods";
 import { OrganizationCreationAttributes, OrganizationModelAttributes } from "../types/model";
 import cloudinary from "../helpers/cloudinary";
-import multer from 'multer';
+import bcrypt from 'bcrypt';
 
-// Extend the Express Request type to include the file property
 interface MulterRequest extends Request {
   file?: Express.Multer.File;
 }
@@ -22,24 +21,24 @@ const create_org = async (req: MulterRequest, res: Response): Promise<void> => {
     }
 
     const {
-      name, type, email, ownerPhone, ownerEmail, contactPhone,
+      name, type, email, ownerPhone, ownerEmail, contactPhone, password,
       tinNumber, registrationNumber, province, district, sector, cell
     } = req.body;
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
     
     let logo = '';
     let operationalDocument = '';
 
-    // Check if both files are uploaded and assign URLs
     if (req.files) {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
-      // Upload logo if present
       if (files.logo && files.logo[0]) {
         const logoUpload = await cloudinary.uploader.upload(files.logo[0].path);
         logo = logoUpload.secure_url;
       }
 
-      // Upload operationalDocument if present
       if (files.operationalDocument && files.operationalDocument[0]) {
         const operationalDocumentUpload = await cloudinary.uploader.upload(files.operationalDocument[0].path);
         operationalDocument = operationalDocumentUpload.secure_url;
@@ -48,7 +47,7 @@ const create_org = async (req: MulterRequest, res: Response): Promise<void> => {
 
     const organizationData: OrganizationCreationAttributes = {
       name, type, email, ownerPhone, ownerEmail, contactPhone,
-      tinNumber, registrationNumber, province, district, sector, cell,
+      tinNumber, registrationNumber, password:hashedPassword, province, district, sector, cell,
       logo, operationalDocument, apporvalStatus: false
     };
 
@@ -95,12 +94,10 @@ const get_org_by_id = async (req: Request, res: Response): Promise<void> => {
       "findOne",
       { where: { id: req.params.id } }
     );
-
     if (!organization) {
       res.status(404).json({ message: "Organization not found" });
       return;
     }
-
     res.status(200).json({ organization });
   } catch (error) {
     console.error("Error in getOrganizationById:", error);
@@ -124,16 +121,50 @@ const update_org = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    let logo = organization.logo;
+    let operationalDocument = organization.operationalDocument;
+
+    if (req.files) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+      if (files.logo && files.logo[0]) {
+        const logoUpload = await cloudinary.uploader.upload(files.logo[0].path);
+        logo = logoUpload.secure_url;
+      }
+
+      if (files.operationalDocument && files.operationalDocument[0]) {
+        const operationalDocumentUpload = await cloudinary.uploader.upload(files.operationalDocument[0].path);
+        operationalDocument = operationalDocumentUpload.secure_url;
+      }
+    }
+
+    const updatedData: Partial<OrganizationCreationAttributes> = {
+      name: req.body.name || organization.name,
+      type: req.body.type || organization.type,
+      email: req.body.email || organization.email,
+      ownerPhone: req.body.ownerPhone || organization.ownerPhone,
+      ownerEmail: req.body.ownerEmail || organization.ownerEmail,
+      contactPhone: req.body.contactPhone || organization.contactPhone,
+      tinNumber: req.body.tinNumber || organization.tinNumber,
+      registrationNumber: req.body.registrationNumber || organization.registrationNumber,
+      province: req.body.province || organization.province,
+      district: req.body.district || organization.district,
+      sector: req.body.sector || organization.sector,
+      cell: req.body.cell || organization.cell,
+      logo: logo,
+      operationalDocument: operationalDocument,
+    };
+
     const updatedOrganization = await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      req.body,
+      updatedData,
       { where: { id: req.params.id } }
     );
 
     res.status(200).json({
       message: "Organization updated successfully",
-      organization: updatedOrganization,
+      organization: organization,
     });
   } catch (error) {
     console.error("Error in updateOrganization:", error);
@@ -187,16 +218,22 @@ const update_org_approval = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    const newApprovalStatus = !organization.apporvalStatus;
+    const updatedData: Partial<OrganizationCreationAttributes> = {
+			apporvalStatus: newApprovalStatus,
+		};
+
     const updatedOrganization = await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      { approvalStatus: req.body.approvalStatus },
+      updatedData,
       { where: { id: req.params.id } }
     );
+console.log("updatedOrganization", updatedOrganization);
 
     res.status(200).json({
       message: "Organization approval status updated successfully",
-      organization: updatedOrganization,
+      organization: organization,
     });
   } catch (error) {
     console.error("Error in updateOrganizationApproval:", error);

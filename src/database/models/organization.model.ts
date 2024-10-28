@@ -8,6 +8,7 @@ class Organization extends Model<OrganizationModelAttributes, OrganizationCreati
     public email!: string;
     public ownerPhone!: string;
     public ownerEmail!: string;
+    public password!: string;
     public contactPhone!: string;
     public tinNumber!: string;
     public registrationNumber!: string;
@@ -38,6 +39,10 @@ const organization_model = (sequelize: Sequelize) => {
             type: DataTypes.STRING,
             allowNull: false,
             unique: true,
+        },
+        password: {
+            type: DataTypes.STRING,
+            allowNull: false,
         },
         ownerPhone: {
             type: DataTypes.STRING,

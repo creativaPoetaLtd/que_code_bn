@@ -7,6 +7,7 @@ export interface OrganizationModelAttributes {
     email: string;
     ownerPhone: string;
     ownerEmail: string;
+    password: string;
     contactPhone: string;
     tinNumber: any;
     registrationNumber: string;
@@ -30,6 +31,7 @@ export type OrganizationCreationAttributes = Optional<
     email: string;
     ownerPhone: string;
     ownerEmail: string;
+    password: string;
     contactPhone: string;
     tinNumber: any;
     registrationNumber: string;
@@ -41,3 +43,38 @@ export type OrganizationCreationAttributes = Optional<
     operationalDocument: string | string[] | null;
     apporvalStatus: boolean;
 };
+
+export interface UserModelAttributes {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    phone: string;
+    gender: string;
+    province: string;
+    district: string;
+    sector: string;
+    national_id: string | string[] | null;
+    apporvalStatus: boolean;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
+export type UserCreationAttributes = Optional<
+    UserModelAttributes,
+    "id" | "createdAt" | "updatedAt"
+> & {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    gender: string;
+    password: string;
+    province: string;
+    district: string;
+    sector: string;
+    national_id: string | string[] | null;
+    apporvalStatus: boolean;
+};
+

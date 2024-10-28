@@ -1,18 +1,29 @@
-import { DataTypes, Model } from "sequelize";
-import sequelize from "../config/database";
+import { DataTypes, Model, Sequelize, UUIDV4, CreationOptional } from "sequelize";
+import { UserCreationAttributes, UserModelAttributes } from "../../types/model";
 
-class User extends Model {
-    public id!: number;
+class User extends Model<UserModelAttributes, UserCreationAttributes> {
+    public id!: CreationOptional<number>;
     public firstName!: string;
     public lastName!: string;
-    public phone!: string;
     public email!: string;
-    public address!: string;
-    public idDocument!: string; // Path to the uploaded file
+    public phone!: string;
+    public password!: string;
+    public gender!: string;
+    public province!: string;
+    public district!: string;
+    public sector!: string;
+    public cell!: string;
+    public logo!: CreationOptional<string>;
+    public national_id!: CreationOptional<string>;
 }
 
-User.init(
-    {
+const User_model = (sequelize: Sequelize) => {
+    User.init({
+        id: {
+            type: DataTypes.INTEGER,
+            autoIncrement: true,
+            primaryKey: true,
+        },
         firstName: {
             type: DataTypes.STRING,
             allowNull: false,
@@ -21,29 +32,51 @@ User.init(
             type: DataTypes.STRING,
             allowNull: false,
         },
-        phone: {
+        password: {
             type: DataTypes.STRING,
             allowNull: false,
         },
         email: {
             type: DataTypes.STRING,
             allowNull: false,
-            validate: { isEmail: true },
+            unique: true,
         },
-        address: {
+        gender: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        phone: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        province: {
             type: DataTypes.STRING,
             allowNull: true,
         },
-        idDocument: {
-            type: DataTypes.STRING, 
+        district: {
+            type: DataTypes.STRING,
             allowNull: true,
         },
-    },
-    {
+        sector: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        national_id: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        apporvalStatus: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
+    }, {
         sequelize,
-        modelName: "User",
-        tableName: "users",
-    }
-);
+        tableName: "Users",
+    });
 
-export default User;
+    return User;
+};
+
+export default User_model;
+
