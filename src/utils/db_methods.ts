@@ -3,23 +3,29 @@ import { CreateOptions, FindOptions, UpdateOptions } from "sequelize";
 import database_models from "../database/config/db.config";
 
 type ModelTypes = "Organization" | "User";
-type MethodTypes = "findAll" | "findOne" | "destroy" | "create" | "update";
+// Updated MethodTypes to include "findByPk"
+type MethodTypes = "findAll" | "findOne" | "destroy" | "create" | "update" | "findByPk";
 
 export const read_function = async <T>(
-	model: ModelTypes,
-	method: MethodTypes,
-	condition?: FindOptions,
+  model: ModelTypes,
+  method: MethodTypes,
+  condition?: FindOptions | string // Accept a string for findByPk
 ) => {
-	if (!database_models[model] || !database_models[model][method]) {
-		throw new Error(
-			`Invalid ${!database_models[model] ? "modelName" : ""} ${!database_models[model] && !database_models[model][method] ? "and" : ""} ${!database_models[model][method] ? "method" : ""}`,
-		);
-	}
-	const result = await (
-		database_models[model][method] as (condition: FindOptions) => Promise<T>
-	)(condition as FindOptions);
-	return result;
+  if (!database_models[model] || !database_models[model][method]) {
+    throw new Error(
+      `Invalid ${!database_models[model] ? "modelName" : ""} ${
+        !database_models[model] && !database_models[model][method] ? "and" : ""
+      } ${!database_models[model][method] ? "method" : ""}`
+    );
+  }
+
+  const result = method === "findByPk"
+    ? await (database_models[model][method] as (id: string) => Promise<T>)(condition as string)
+    : await (database_models[model][method] as (options: FindOptions) => Promise<T>)(condition as FindOptions);
+
+  return result;
 };
+
 
 export const insert_function = async <T>(
 	model: ModelTypes,

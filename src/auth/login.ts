@@ -78,13 +78,11 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       token,
       accountType: user ? 'user' : 'organization',
       data: accountWithoutPassword,
-      // Optional: Include any additional user-specific data
       permissions: user ? 'user_permissions' : 'organization_permissions'
     });
 
   } catch (error) {
     console.error("Login error:", error);
-    // Don't expose internal error details to client
     res.status(500).json({ message: "An error occurred during login" });
   }
 };
