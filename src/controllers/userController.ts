@@ -51,7 +51,7 @@ const create_user = async (req: MulterRequest, res: Response): Promise<void> => 
             district,
             sector,
             national_id,
-            apporvalStatus: false
+            approvalStatus: false
         };
 
         const newUser = await insert_function<UserModelAttributes>(

@@ -48,7 +48,7 @@ const create_org = async (req: MulterRequest, res: Response): Promise<void> => {
     const organizationData: OrganizationCreationAttributes = {
       name, type, email, ownerPhone, ownerEmail, contactPhone,
       tinNumber, registrationNumber, password:hashedPassword, province, district, sector, cell,
-      logo, operationalDocument, apporvalStatus: false
+      logo, operationalDocument, approvalStatus: false
     };
 
     const newOrganization = await insert_function<OrganizationModelAttributes>(
@@ -218,9 +218,9 @@ const update_org_approval = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const newApprovalStatus = !organization.apporvalStatus;
+    const newApprovalStatus = !organization.approvalStatus;
     const updatedData: Partial<OrganizationCreationAttributes> = {
-			apporvalStatus: newApprovalStatus,
+			approvalStatus: newApprovalStatus,
 		};
 
     const updatedOrganization = await insert_function<OrganizationModelAttributes>(

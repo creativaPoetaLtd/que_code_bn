@@ -42,6 +42,12 @@ module.exports = {
       approvalStatus: {
         type: Sequelize.STRING
       },
+      resetTokenExpires: {
+        type: Sequelize.DATE
+      },
+      resetToken: {
+        type: Sequelize.STRING
+      },
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE

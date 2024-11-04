@@ -62,3 +62,34 @@ export const insert_function = async <T>(
 		throw new Error("Invalid method type");
 	}
 };
+
+
+export const update_function = async <T>(
+	model: ModelTypes,
+	method: MethodTypes,
+	values: Partial<T>,  // Data to update
+	condition: UpdateOptions  // Condition for updating
+  ): Promise<[number, T[]]> => {
+	// Validate model and method
+	if (!database_models[model] || !database_models[model][method]) {
+	  throw new Error(
+		`Invalid ${!database_models[model] ? "modelName" : ""} ${
+		  !database_models[model] && !database_models[model][method] ? "and" : ""
+		} ${!database_models[model][method] ? "method" : ""}`
+	  );
+	}
+  
+	// Perform the update operation
+	if (method === "update") {
+	  const result = await (
+		database_models[model][method] as (
+		  values: Partial<T>,
+		  options: UpdateOptions
+		) => Promise<[number, T[]]>
+	  )(values, condition);
+  
+	  return result;
+	} else {
+	  throw new Error("Invalid method type for update operation");
+	}
+  };

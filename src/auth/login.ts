@@ -49,7 +49,7 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check if user is approved (if applicable)
-    if (user && !user.apporvalStatus) {
+    if (user && user.approvalStatus) {
       res.status(403).json({ message: "Account pending approval" });
       return;
     }

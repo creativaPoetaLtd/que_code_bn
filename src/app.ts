@@ -25,8 +25,7 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/v1", router);
-app.use("/api/v1/auth", authRouter); // Register the auth routes for Google OAuth
-
+app.use("/api/v1/auth", authRouter); // Register the auth routes for Google OAuths
 app.get("/api/v1", (_req: Request, res: Response) => {
   res.status(200).json({
     message: "Welcome to qew code backend!",

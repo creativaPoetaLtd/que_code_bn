@@ -17,7 +17,7 @@ export interface OrganizationModelAttributes {
     cell: string;
     logo: string | string[] | null;
     operationalDocument: string | string[] | null;
-    apporvalStatus: boolean;
+    approvalStatus: boolean;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -41,7 +41,7 @@ export type OrganizationCreationAttributes = Optional<
     cell: string;
     logo: string | string[] | null;
     operationalDocument: string | string[] | null;
-    apporvalStatus: boolean;
+    approvalStatus: boolean;
 };
 
 export interface UserModelAttributes {
@@ -56,9 +56,11 @@ export interface UserModelAttributes {
     district: string;
     sector: string;
     national_id: string | string[] | null;
-    apporvalStatus: boolean;
+    approvalStatus: boolean;
     createdAt?: Date;
     updatedAt?: Date;
+    resetTokenExpires?: Date;
+    resetToken?: string;
 }
 
 export type UserCreationAttributes = Optional<
@@ -75,6 +77,8 @@ export type UserCreationAttributes = Optional<
     district: string;
     sector: string;
     national_id: string | string[] | null;
-    apporvalStatus: boolean;
+    approvalStatus: boolean;
+    resetTokenExpires?: Date;
+    resetToken?: string;
 };
 

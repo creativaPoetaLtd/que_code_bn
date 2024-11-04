@@ -24,7 +24,9 @@ module.exports = (sequelize, DataTypes) => {
     district: DataTypes.STRING,
     sector: DataTypes.STRING,
     national_id: DataTypes.STRING,
-    approvalStatus: DataTypes.STRING
+    approvalStatus: DataTypes.STRING,
+    resetTokenExpires: DataTypes.DATE,
+    resetToken: DataTypes.STRING
   }, {
     sequelize,
     modelName: 'User',

@@ -88,7 +88,7 @@ const organization_model = (sequelize: Sequelize) => {
             type: DataTypes.STRING,
             allowNull: true,
         },
-        apporvalStatus: {
+        approvalStatus: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
