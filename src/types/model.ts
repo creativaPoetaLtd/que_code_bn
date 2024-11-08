@@ -61,6 +61,10 @@ export interface UserModelAttributes {
     updatedAt?: Date;
     resetTokenExpires?: Date;
     resetToken?: string;
+    otp?: string|null;
+    otpExpires?: Date | null;
+    lastOtpSent?: Date | null;
+    isVerified?: boolean;
 }
 
 export type UserCreationAttributes = Optional<
@@ -80,5 +84,9 @@ export type UserCreationAttributes = Optional<
     approvalStatus: boolean;
     resetTokenExpires?: Date;
     resetToken?: string;
+    otp?: string;
+    otpExpires?: Date;
+    lastOtpSent?: Date;
+    isVerified?: boolean;
 };
 

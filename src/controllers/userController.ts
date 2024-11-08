@@ -3,6 +3,7 @@ import { insert_function, read_function } from "../utils/db_methods";
 import { UserCreationAttributes, UserModelAttributes } from "../types/model";
 import cloudinary from "../helpers/cloudinary";
 import bcrypt from 'bcrypt';
+import sendEmail from '../helpers/email';
 
 
 interface MulterRequest extends Request {
@@ -22,23 +23,23 @@ const create_user = async (req: MulterRequest, res: Response): Promise<void> => 
             return;
         }
 
-        const {
-            firstName, lastName, phone, email, password, province, district, sector, gender
-        } = req.body;
-
+        const { firstName, lastName, phone, email, password, province, district, sector, gender } = req.body;
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
         let national_id = '';
-
         if (req.files) {
             const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
             if (files.national_id && files.national_id[0]) {
                 const national_idUpload = await cloudinary.uploader.upload(files.national_id[0].path);
                 national_id = national_idUpload.secure_url;
             }
         }
+
+        // Generate OTP and expiration time
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Random 6-digit number
+        const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // Expires in 10 minutes
 
         const userData: UserCreationAttributes = {
             firstName,
@@ -51,27 +52,26 @@ const create_user = async (req: MulterRequest, res: Response): Promise<void> => 
             district,
             sector,
             national_id,
-            approvalStatus: false
+            approvalStatus: false,
+            otp,
+            otpExpires
         };
-
-        const newUser = await insert_function<UserModelAttributes>(
-            "User",
-            "create",
-            userData
-        );
-
+        const newUser = await insert_function<UserModelAttributes>("User", "create", userData);
+        await sendEmail({
+            to: email,
+            subject: 'Your OTP Code',
+            text: `Use the following OTP code to complete your registration: ${otp}`,
+          });
         const { password: _, ...userWithoutPassword } = newUser;
         res.status(201).json({
-            message: "User registered successfully",
+            message: "User registered successfully. Please verify your email using the OTP sent.",
             data: userWithoutPassword
         });
     } catch (error) {
         console.error("User registration error:", error);
-        res.status(500).json({
-            message: "An error occurred while registering the user"
-        });
+        res.status(500).json({ message: "An error occurred while registering the user" });
     }
-}
+};
 const get_all_users = async (req: Request, res: Response): Promise<void> => {
     try {
         const allUsers = await read_function<UserModelAttributes[]>(
@@ -234,7 +234,107 @@ const get_unapproved_users = async (req: Request, res: Response): Promise<void> 
         res.status(500).json({ message: "An error occurred while fetching all unapproved users" });
     }
 }
+// In your OTP verification controller
+const verify_otp = async (req: Request, res: Response): Promise<void> => {
+    const { email, otp } = req.body;
 
+    try {
+        const user = await read_function<UserModelAttributes>("User", "findOne", {
+            where: { email }
+        });
+
+        if (!user) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        if (user.isVerified) {
+            res.status(400).json({ message: "User already verified" });
+            return;
+        }
+
+        if (user.otp !== otp || new Date() > user.otpExpires!) {
+            res.status(400).json({ message: "Invalid or expired OTP" });
+            return;
+        }
+
+        // Mark as verified
+        user.isVerified = true;
+        user.otp = null;
+        user.otpExpires = null;
+        await insert_function<UserModelAttributes>(
+            "User",
+            "update",
+            { isVerified: true, otp: null, otpExpires: null },
+            { where: { email } }
+        );
+
+        res.status(200).json({ message: "OTP verified successfully. You can now log in." });
+    } catch (error) {
+        console.error("OTP verification error:", error);
+        res.status(500).json({ message: "An error occurred during OTP verification" });
+    }
+};
+
+
+const RESEND_COOLDOWN = 1 * 60 * 1000; // 1 minute
+
+const resend_otp = async (req: Request, res: Response): Promise<void> => {
+    const { email } = req.body;
+
+    try {
+        const user = await read_function<UserModelAttributes>("User", "findOne", {
+            where: { email }
+        });
+
+        if (!user) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        if (user.approvalStatus) {
+            res.status(400).json({ message: "User is already verified" });
+            return;
+        }
+
+        const now = Date.now();
+        const lastOtpSent = user.lastOtpSent ? user.lastOtpSent.getTime() : 0;
+
+        if (now - lastOtpSent < RESEND_COOLDOWN) {
+            res.status(429).json({ message: "Please wait before requesting a new OTP" });
+            return;
+        }
+
+        // Generate a new OTP and expiration time
+        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpires = new Date(now + 10 * 60 * 1000); // 10 minutes from now
+
+        // Update OTP, expiration, and lastOtpSent in the user's record
+        user.otp = newOtp;
+        user.otpExpires = otpExpires;
+        user.lastOtpSent = new Date(now);
+        await insert_function<UserModelAttributes>(
+            "User",
+            "update",
+            { otp: newOtp, otpExpires, lastOtpSent: new Date(now) },
+            { where: { email } }
+        );
+
+        // Resend OTP via email
+        
+        await sendEmail({
+            to: email,
+            subject: 'Your OTP Code',
+            text: `Use the following OTP code to complete your registration: ${newOtp}`,
+          });
+
+
+        res.status(200).json({ message: "A new OTP has been sent to your email" });
+    } catch (error) {
+        console.error("Error resending OTP:", error);
+        res.status(500).json({ message: "An error occurred while resending OTP" });
+    }
+};
 
 export default {
     create_user,
@@ -245,5 +345,7 @@ export default {
     approve_user,
     disapprove_user,
     get_approved_users,
-    get_unapproved_users
+    get_unapproved_users,
+    verify_otp,
+    resend_otp
 };

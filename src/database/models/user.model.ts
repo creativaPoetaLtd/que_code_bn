@@ -18,6 +18,10 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public approvalStatus!: boolean;
     public resetToken?: string;
     public resetTokenExpires?: Date;
+    public otp?: string;
+    public otpExpires?: Date;
+    public lastOtpSent?: Date;
+    public isVerified!: boolean;
 }
 
 const User_model = (sequelize: Sequelize) => {
@@ -80,6 +84,23 @@ const User_model = (sequelize: Sequelize) => {
         resetTokenExpires: {
             type: DataTypes.DATE,
             allowNull: true,
+        },
+        otp: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        otpExpires: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        lastOtpSent: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        isVerified: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
         },
     }, {
         sequelize,

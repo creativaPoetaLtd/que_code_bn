@@ -26,7 +26,11 @@ module.exports = (sequelize, DataTypes) => {
     national_id: DataTypes.STRING,
     approvalStatus: DataTypes.STRING,
     resetTokenExpires: DataTypes.DATE,
-    resetToken: DataTypes.STRING
+    resetToken: DataTypes.STRING,
+    isVerified: DataTypes.BOOLEAN,
+    lastOtpSent: DataTypes.DATE,
+    otp: DataTypes.STRING,
+    otpExpires: DataTypes.DATE
   }, {
     sequelize,
     modelName: 'User',

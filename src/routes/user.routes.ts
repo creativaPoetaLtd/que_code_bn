@@ -19,6 +19,8 @@ userRouter.put("/:id/approve", userController.approve_user);
 userRouter.put("/:id/disapprove", userController.disapprove_user);
 userRouter.get("/approved", userController.get_approved_users);
 userRouter.get("/unapproved", userController.get_unapproved_users);
+userRouter.post('/verify-otp', userController.verify_otp);
+userRouter.post('/resend-otp', userController.resend_otp);
 
 export default userRouter;
 

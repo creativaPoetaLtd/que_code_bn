@@ -48,6 +48,18 @@ module.exports = {
       resetToken: {
         type: Sequelize.STRING
       },
+      isVerified: {
+        type: Sequelize.BOOLEAN
+      },
+      lastOtpSent: {
+        type: Sequelize.DATE
+      },
+      otp: {
+        type: Sequelize.STRING
+      },
+      otpExpires: {
+        type: Sequelize.DATE
+      },
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE
