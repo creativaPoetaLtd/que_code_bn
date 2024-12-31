@@ -68,10 +68,10 @@ const User_model = (sequelize: Sequelize) => {
             type: DataTypes.STRING,
             allowNull: true,
         },
-        national_id: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
+        // national_id: {
+        //     type: DataTypes.STRING,
+        //     allowNull: true,
+        // },
         approvalStatus: {
             type: DataTypes.BOOLEAN,
             allowNull: false,

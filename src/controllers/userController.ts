@@ -1,17 +1,27 @@
 import { Request, Response } from 'express';
 import { insert_function, read_function } from "../utils/db_methods";
 import { UserCreationAttributes, UserModelAttributes } from "../types/model";
-import cloudinary from "../helpers/cloudinary";
+// import cloudinary from "../helpers/cloudinary";
 import bcrypt from 'bcrypt';
 import sendEmail from '../helpers/email';
-
+import jwt from 'jsonwebtoken';
 
 interface MulterRequest extends Request {
-    file?: Express.Multer.File;
+    files?: {
+        [fieldname: string]: Express.Multer.File[];
+    } | Express.Multer.File[];
 }
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
-const create_user = async (req: MulterRequest, res: Response): Promise<void> => {
+const create_user = async (req: Request, res: Response): Promise<void> => {
     try {
+        // if (!req.files || !('national_id' in req.files) || !req.files.national_id[0]) {
+        //     res.status(400).json({ message: "National ID Document is required" });
+        //     return;
+        // }
+
+        // const file = Array.isArray(req.files) ? req.files[0] : req.files.national_id[0];
+
         const existingUser = await read_function<UserModelAttributes>(
             "User",
             "findOne",
@@ -26,20 +36,14 @@ const create_user = async (req: MulterRequest, res: Response): Promise<void> => 
         const { firstName, lastName, phone, email, password, province, district, sector, gender } = req.body;
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        let national_id = '';
-        if (req.files) {
-            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-            if (files.national_id && files.national_id[0]) {
-                const national_idUpload = await cloudinary.uploader.upload(files.national_id[0].path);
-                national_id = national_idUpload.secure_url;
-            }
-        }
-
         // Generate OTP and expiration time
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Random 6-digit number
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // Expires in 10 minutes
+        // const national_idUpload = await cloudinary.uploader.upload(file.path, {
+        //     folder: 'national_ids',
+        //     resource_type: 'auto'
+        // });
 
         const userData: UserCreationAttributes = {
             firstName,
@@ -51,17 +55,20 @@ const create_user = async (req: MulterRequest, res: Response): Promise<void> => 
             password: hashedPassword,
             district,
             sector,
-            national_id,
+            // national_id: national_idUpload.secure_url,
             approvalStatus: false,
             otp,
             otpExpires
         };
         const newUser = await insert_function<UserModelAttributes>("User", "create", userData);
+        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '10m' });
+        const verificationUrl = `${process.env.FRONTEND_URL}/auth/otp?token=${token}`;
         await sendEmail({
             to: email,
             subject: 'Your OTP Code',
-            text: `Use the following OTP code to complete your registration: ${otp}`,
-          });
+            type: 'code',
+            data: { code: `${otp}`, verificationUrl }
+        });
         const { password: _, ...userWithoutPassword } = newUser;
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
@@ -236,9 +243,11 @@ const get_unapproved_users = async (req: Request, res: Response): Promise<void> 
 }
 // In your OTP verification controller
 const verify_otp = async (req: Request, res: Response): Promise<void> => {
-    const { email, otp } = req.body;
+    const { token, otp } = req.body;
 
     try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
+        const email = decoded.email;
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
         });
@@ -280,8 +289,9 @@ const verify_otp = async (req: Request, res: Response): Promise<void> => {
 const RESEND_COOLDOWN = 1 * 60 * 1000; // 1 minute
 
 const resend_otp = async (req: Request, res: Response): Promise<void> => {
-    const { email } = req.body;
-
+    const { token } = req.body;
+    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
+    const email = decoded.email;
     try {
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
@@ -325,8 +335,11 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
         await sendEmail({
             to: email,
             subject: 'Your OTP Code',
-            text: `Use the following OTP code to complete your registration: ${newOtp}`,
-          });
+            type: 'code',
+            data: {
+                code: `${newOtp}`
+            },
+        });
 
 
         res.status(200).json({ message: "A new OTP has been sent to your email" });

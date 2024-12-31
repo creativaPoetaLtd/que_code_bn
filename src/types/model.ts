@@ -55,7 +55,7 @@ export interface UserModelAttributes {
     province: string;
     district: string;
     sector: string;
-    national_id: string | string[] | null;
+    // national_id: string | string[] | null;
     approvalStatus: boolean;
     createdAt?: Date;
     updatedAt?: Date;
@@ -80,7 +80,7 @@ export type UserCreationAttributes = Optional<
     province: string;
     district: string;
     sector: string;
-    national_id: string | string[] | null;
+    // national_id: string | string[] | null;
     approvalStatus: boolean;
     resetTokenExpires?: Date;
     resetToken?: string;
