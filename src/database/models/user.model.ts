@@ -2,7 +2,7 @@ import { DataTypes, Model, Sequelize, UUIDV4, CreationOptional } from "sequelize
 import { UserCreationAttributes, UserModelAttributes } from "../../types/model";
 
 class User extends Model<UserModelAttributes, UserCreationAttributes> {
-    public id!: CreationOptional<number>;
+    public id!: string;
     public firstName!: string;
     public lastName!: string;
     public email!: string;
@@ -22,13 +22,14 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public otpExpires?: Date;
     public lastOtpSent?: Date;
     public isVerified!: boolean;
+    public qrCode !: string;
 }
 
 const User_model = (sequelize: Sequelize) => {
     User.init({
         id: {
-            type: DataTypes.INTEGER,
-            autoIncrement: true,
+            type: DataTypes.UUID,
+            defaultValue: UUIDV4,
             primaryKey: true,
         },
         firstName: {
@@ -101,6 +102,10 @@ const User_model = (sequelize: Sequelize) => {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
+        },
+        qrCode: {
+            type: DataTypes.TEXT,
+            allowNull: true
         },
     }, {
         sequelize,

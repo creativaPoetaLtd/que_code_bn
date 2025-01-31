@@ -1,3 +1,4 @@
+import { UUID } from "crypto";
 import { Optional } from "sequelize";
 
 export interface OrganizationModelAttributes {
@@ -61,15 +62,16 @@ export interface UserModelAttributes {
     updatedAt?: Date;
     resetTokenExpires?: Date;
     resetToken?: string;
-    otp?: string|null;
+    otp?: string | null;
     otpExpires?: Date | null;
     lastOtpSent?: Date | null;
     isVerified?: boolean;
+    qrCode?: string;
 }
 
 export type UserCreationAttributes = Optional<
     UserModelAttributes,
-    "id" | "createdAt" | "updatedAt"
+    "id" | "createdAt" | "updatedAt" | "qrCode"
 > & {
     firstName: string;
     lastName: string;
