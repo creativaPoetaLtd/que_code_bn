@@ -6,14 +6,20 @@ import passport from "./auth/passport";
 import authRouter from "./routes/auth.routes";
 import router from "./routes";
 import { SESSION_SECRET } from "./utils/keys";
+import pgSession from 'connect-pg-simple';
 
 const app = express();
 
 app.use(
   session({
+    store: new (pgSession(session))({
+      // Connection options
+    }),
     secret: SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
+    cookie: { secure: true }
+    // Additional options
   })
 );
 
