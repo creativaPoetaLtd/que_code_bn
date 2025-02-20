@@ -24,15 +24,20 @@ const isLocal = DB_HOST_MODE === "local";
 const dialect_option = isLocal
 	? {}
 	: {
-			ssl: {
-				require: process.env.SSL,
-				rejectUnauthorized: true,
-			},
-		};
+		ssl: {
+			require: process.env.SSL,
+			rejectUnauthorized: false,
+		},
+	};
 
-export const sequelizeConnection: Sequelize = new Sequelize(db_uri, {
-	dialect: "postgres",
-	dialectOptions: dialect_option,
+const sequelizeConnection = new Sequelize(db_uri, {
+	dialect: 'postgres',
+	dialectOptions: {
+		ssl: {
+			require: true,
+			rejectUnauthorized: false, // For self-signed certificates
+		},
+	},
 	logging: false,
 	pool: {
 		max: 10,
