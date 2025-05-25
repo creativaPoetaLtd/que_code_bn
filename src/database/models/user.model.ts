@@ -27,6 +27,8 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public showPhoneOnWelcome?: boolean;
     public showProfileImageOnWelcome?: boolean;
     public showStatusMessageOnWelcome?: boolean;
+    public profileLink?: string;
+    public publicId?: string;
 }
 
 const User_model = (sequelize: Sequelize) => {
@@ -129,6 +131,15 @@ const User_model = (sequelize: Sequelize) => {
             allowNull: false,
             defaultValue: true,
         },
+        publicId: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        profileLink: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+
     }, {
         sequelize,
         tableName: "Users",
