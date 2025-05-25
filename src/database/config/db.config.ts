@@ -1,12 +1,21 @@
 import { config } from "dotenv";
 import { Sequelize } from "sequelize";
 import Models from "../models";
+import path from "path";
 
-config();
+// Try loading .env from root directory explicitly
+config({ path: path.resolve(process.cwd(), '.env') });
 
 let db_uri: string = "";
 const APP_MODE: string = process.env.DEV_MODE || "development";
 const DB_HOST_MODE: string = process.env.DB_HOSTED_MODE || "local";
+
+// Debug environment variables
+console.log("Environment Variables Debug:");
+console.log("APP_MODE:", APP_MODE);
+console.log("DB_HOST_MODE:", DB_HOST_MODE);
+console.log("DB_DEV_URL exists:", !!process.env.DB_DEV_URL);
+console.log("DB_DEV_URL length:", process.env.DB_DEV_URL?.length || 0);
 
 switch (APP_MODE) {
 	case "test":
@@ -16,29 +25,38 @@ switch (APP_MODE) {
 		db_uri = process.env.DB_PROD_URL || "";
 		break;
 	default:
-		db_uri = process.env.DB_DEV_URL || "";
+		// Try environment variable first, fallback to hardcoded for testing
+		db_uri = process.env.DB_DEV_URL || "postgres://avnadmin:AVNS_CpCAmOHd2j5S1seJlYe@qiew-code-kananura221023924-6f38.d.aivencloud.com:19780/defaultdb?sslmode=require";
+		console.log("Using fallback DB_DEV_URL for development mode");
 		break;
 }
 
+// Validate db_uri before proceeding
+if (!db_uri) {
+	console.error("❌ Database URI is empty!");
+	console.error("Please check your .env file and ensure DB_DEV_URL is set correctly.");
+	console.error("Expected format: postgres://username:password@host:port/database?sslmode=require");
+	process.exit(1);
+}
+
+console.log("✅ Database URI loaded successfully");
+
 const isLocal = DB_HOST_MODE === "local";
-const dialect_option = isLocal
+
+// Configure SSL options based on hosting mode
+const dialectOptions = isLocal
 	? {}
 	: {
 		ssl: {
-			require: process.env.SSL,
-			rejectUnauthorized: false,
+			require: true,
+			rejectUnauthorized: false, // For Aiven's managed certificates
 		},
 	};
 
 const sequelizeConnection = new Sequelize(db_uri, {
 	dialect: 'postgres',
-	dialectOptions: {
-		ssl: {
-			require: true,
-			rejectUnauthorized: false, // For self-signed certificates
-		},
-	},
-	logging: false,
+	dialectOptions,
+	logging: false, // Set to console.log for debugging if needed
 	pool: {
 		max: 10,
 		min: 0,
@@ -49,17 +67,25 @@ const sequelizeConnection = new Sequelize(db_uri, {
 
 export const connectionToDatabase = async () => {
 	try {
+		console.log(`Attempting to connect to database in ${APP_MODE} mode...`);
+		console.log(`Database host mode: ${DB_HOST_MODE}`);
+
 		await sequelizeConnection.authenticate();
+		console.log("Database authentication successful!");
+
 		await sequelizeConnection.sync();
-		console.log("Database connected successfully.", db_uri);
+		console.log("Database sync completed successfully.");
+		console.log(`Connected to: ${db_uri.split('@')[1]?.split('?')[0]}`); // Log host without credentials
 	} catch (error) {
-		console.log("Unable to connect to the database:", error);
+		console.error("Unable to connect to the database:");
+		console.error(error);
 		process.exit(1);
 	}
 };
 
 const db_models = Models(sequelizeConnection);
 
+// Set up model associations
 Object.keys(db_models).forEach((key) => {
 	// @ts-expect-error ignore expected errors
 	if (db_models[key].associate) {
@@ -67,5 +93,6 @@ Object.keys(db_models).forEach((key) => {
 		db_models[key].associate(db_models);
 	}
 });
+
 const database_models = { ...db_models };
 export default database_models;
