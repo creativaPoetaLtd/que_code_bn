@@ -72,6 +72,8 @@ export interface UserModelAttributes {
     showPhoneOnWelcome?: boolean;
     showProfileImageOnWelcome?: boolean;
     showStatusMessageOnWelcome?: boolean;
+    publicId?: string;
+    profileLink?: string;
 }
 
 export type UserCreationAttributes = Optional<
@@ -144,5 +146,10 @@ export type TransactionCreationAttributes = Optional<
     senderId: string;
     receiverId: string;
     amount: number;
+    publicId?: string;
+    profileLink?: string;
+    qrCode?: string;
+
 };
 
+export interface AuthenticatedUser extends UserModelAttributes { }

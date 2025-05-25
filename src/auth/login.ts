@@ -23,9 +23,9 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       read_function<UserModelAttributes>(
         "User",
         "findOne",
-        { 
+        {
           where: { email },
-          attributes: { 
+          attributes: {
             exclude: ['createdAt', 'updatedAt'] // Exclude unnecessary fields
           }
         }
@@ -33,9 +33,9 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       read_function<OrganizationModelAttributes>(
         "Organization",
         "findOne",
-        { 
+        {
           where: { email },
-          attributes: { 
+          attributes: {
             exclude: ['createdAt', 'updatedAt']
           }
         }
@@ -60,28 +60,24 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
     if (!user.isVerified) {
       res.status(403).json({ message: "Account not verified. Please verify your OTP before logging in." });
       return;
-  }
+    }
 
     const token = jwt.sign({
       id: account.id,
       email: account.email,
       name: user ? user.firstName : organization.name,
       accountType: user ? 'user' : 'organization',
-      // Add any other necessary claims
     }, JWT_SECRET, {
-      expiresIn: '1h',
+      expiresIn: '1d',
       algorithm: 'HS256'
     });
 
-    // Remove sensitive data
     const { password: _, ...accountWithoutPassword } = account;
 
     res.status(200).json({
       message: "Login successful",
+      account: accountWithoutPassword,
       token,
-      accountType: user ? 'user' : 'organization',
-      data: accountWithoutPassword,
-      permissions: user ? 'user_permissions' : 'organization_permissions'
     });
 
   } catch (error) {
