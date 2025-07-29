@@ -13,7 +13,13 @@ userRouter.post(
 
 userRouter.get("/", userController.get_all_users);
 userRouter.get("/:id", userController.get_user_by_id);
-userRouter.put("/:id", userController.update_user);
+userRouter.put(
+  "/:id",
+  fileUpload.fields([
+    { name: "profileImage", maxCount: 1 }
+  ]),
+  userController.update_user
+);
 userRouter.delete("/:id", userController.delete_user);
 userRouter.put("/:id/approve", userController.approve_user);
 userRouter.put("/:id/disapprove", userController.disapprove_user);

@@ -64,6 +64,7 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign({
       id: account.id,
       email: account.email,
+      name: user ? user.firstName : organization.name,
       accountType: user ? 'user' : 'organization',
       // Add any other necessary claims
     }, JWT_SECRET, {

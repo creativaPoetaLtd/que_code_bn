@@ -67,6 +67,11 @@ export interface UserModelAttributes {
     lastOtpSent?: Date | null;
     isVerified?: boolean;
     qrCode?: string;
+    profileImage?: string; // Cloudinary URL
+    statusMessage?: string;
+    showPhoneOnWelcome?: boolean;
+    showProfileImageOnWelcome?: boolean;
+    showStatusMessageOnWelcome?: boolean;
 }
 
 export type UserCreationAttributes = Optional<
@@ -90,6 +95,11 @@ export type UserCreationAttributes = Optional<
     otpExpires?: Date;
     lastOtpSent?: Date;
     isVerified?: boolean;
+    profileImage?: string;
+    statusMessage?: string;
+    showPhoneOnWelcome?: boolean;
+    showProfileImageOnWelcome?: boolean;
+    showStatusMessageOnWelcome?: boolean;
 };
 
 export interface WalletModelAttributes {
