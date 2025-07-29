@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@sequelize/postgres": "^7.0.0-alpha.43",
+    "axios": "^1.11.0",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.5.1",
     "connect-pg-simple": "^10.0.0",

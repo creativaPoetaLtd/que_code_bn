@@ -92,3 +92,47 @@ export type UserCreationAttributes = Optional<
     isVerified?: boolean;
 };
 
+export interface WalletModelAttributes {
+    id: string;
+    userId: string;
+    balance: number;
+    currency: string;
+    isActive: boolean;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
+export type WalletCreationAttributes = Optional<
+    WalletModelAttributes,
+    "id" | "balance" | "currency" | "isActive" | "createdAt" | "updatedAt"
+> & {
+    userId: string;
+};
+
+export interface TransactionModelAttributes {
+    id: string;
+    transactionId: string;
+    senderId: string;
+    receiverId: string;
+    amount: number;
+    fee: number;
+    totalAmount: number;
+    currency: string;
+    status: 'pending' | 'completed' | 'failed' | 'cancelled';
+    type: 'transfer' | 'deposit' | 'withdrawal';
+    description?: string;
+    metadata?: any;
+    processedAt?: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
+export type TransactionCreationAttributes = Optional<
+    TransactionModelAttributes,
+    "id" | "transactionId" | "fee" | "totalAmount" | "currency" | "status" | "type" | "description" | "metadata" | "processedAt" | "createdAt" | "updatedAt"
+> & {
+    senderId: string;
+    receiverId: string;
+    amount: number;
+};
+
