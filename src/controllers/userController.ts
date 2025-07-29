@@ -7,6 +7,7 @@ import sendEmail from '../helpers/email';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
+import { uploadSingle } from "../helpers/upload";
 
 interface MulterRequest extends Request {
     files?: {
@@ -14,6 +15,11 @@ interface MulterRequest extends Request {
     } | Express.Multer.File[];
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
+
+// Helper type guard
+function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
+    return obj && typeof obj.get === 'function';
+}
 
 const create_user = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -54,7 +60,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
 
         // Generate the QR Code
-        const userProfileLink = `${process.env.FRONTEND_URL}/home/transfer/${newUser.id}`;
+        const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
         const qrCodeData = await QRCode.toDataURL(userProfileLink);
 
         // Update user with QR code URL
@@ -70,7 +76,8 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
             data: { code: `${otp}`, verificationUrl }
         });
 
-        const { password: _, ...userWithoutPassword } = newUser;
+        const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
+        const { password: _, ...userWithoutPassword } = plainUser;
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
             data: { ...userWithoutPassword, qrCode: qrCodeData }
@@ -80,14 +87,17 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         res.status(500).json({ message: "An error occurred while registering the user" });
     }
 };
+
 const get_all_users = async (req: Request, res: Response): Promise<void> => {
     try {
         const allUsers = await read_function<UserModelAttributes[]>(
             "User",
             "findAll"
         );
-
-        res.status(200).json(allUsers);
+        const plainUsers = Array.isArray(allUsers)
+            ? allUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
+            : [];
+        res.status(200).json(plainUsers);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while fetching all users" });
     }
@@ -106,7 +116,16 @@ const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        res.status(200).json(user);
+        const plainUser = isSequelizeInstance(user) ? user.get({ plain: true }) : user;
+        // Ensure welcome preferences are always present (default true)
+        const userWithWelcomePrefs = {
+            ...plainUser,
+            showPhoneOnWelcome: plainUser.showPhoneOnWelcome !== undefined ? plainUser.showPhoneOnWelcome : true,
+            showProfileImageOnWelcome: plainUser.showProfileImageOnWelcome !== undefined ? plainUser.showProfileImageOnWelcome : true,
+            showStatusMessageOnWelcome: plainUser.showStatusMessageOnWelcome !== undefined ? plainUser.showStatusMessageOnWelcome : true,
+        };
+
+        res.status(200).json(userWithWelcomePrefs);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while fetching the user" });
     }
@@ -114,6 +133,7 @@ const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
 
 const update_user = async (req: Request, res: Response): Promise<void> => {
     try {
+        console.log('Incoming files:', (req as any).files);
         const user = await read_function<UserModelAttributes>(
             "User",
             "findOne",
@@ -125,15 +145,60 @@ const update_user = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        let profileImageUrl = user.profileImage;
+        if ((req as any).files && (req as any).files.profileImage && (req as any).files.profileImage[0]) {
+            const filePath = (req as any).files.profileImage[0].path;
+            console.log('Profile image file path:', filePath);
+            const uploadResult = await uploadSingle(filePath);
+            console.log('Cloudinary upload result:', uploadResult);
+            if (uploadResult && typeof uploadResult === 'object' && 'secure_url' in uploadResult) {
+                profileImageUrl = (uploadResult as any).secure_url;
+            } else if (uploadResult && typeof uploadResult === 'object' && 'error' in uploadResult) {
+                console.error('Profile image upload failed:', uploadResult.error);
+                res.status(400).json({ message: 'Profile image upload failed', error: uploadResult.error });
+                return;
+            }
+        } else {
+            console.log('No profileImage file found in request.');
+        }
+
+        const updateData: Partial<UserModelAttributes> = {
+            ...req.body,
+            profileImage: profileImageUrl,
+        };
+        if (req.body.statusMessage !== undefined) {
+            updateData.statusMessage = req.body.statusMessage;
+        }
+        // Allow updating welcome preferences
+        if (req.body.showPhoneOnWelcome !== undefined) {
+            updateData.showPhoneOnWelcome = req.body.showPhoneOnWelcome;
+        }
+        if (req.body.showProfileImageOnWelcome !== undefined) {
+            updateData.showProfileImageOnWelcome = req.body.showProfileImageOnWelcome;
+        }
+        if (req.body.showStatusMessageOnWelcome !== undefined) {
+            updateData.showStatusMessageOnWelcome = req.body.showStatusMessageOnWelcome;
+        }
+
         const updatedUser = await insert_function<UserModelAttributes>(
             "User",
             "update",
-            req.body,
+            updateData,
             { where: { id: req.params.id } }
         );
 
-        res.status(200).json(updatedUser);
+        const plainUser = isSequelizeInstance(updatedUser) ? updatedUser.get({ plain: true }) : updatedUser;
+        // Ensure welcome preferences are always present (default true)
+        const updatedUserWithPrefs = {
+            ...plainUser,
+            showPhoneOnWelcome: updateData.showPhoneOnWelcome !== undefined ? updateData.showPhoneOnWelcome : (user.showPhoneOnWelcome !== undefined ? user.showPhoneOnWelcome : true),
+            showProfileImageOnWelcome: updateData.showProfileImageOnWelcome !== undefined ? updateData.showProfileImageOnWelcome : (user.showProfileImageOnWelcome !== undefined ? user.showProfileImageOnWelcome : true),
+            showStatusMessageOnWelcome: updateData.showStatusMessageOnWelcome !== undefined ? updateData.showStatusMessageOnWelcome : (user.showStatusMessageOnWelcome !== undefined ? user.showStatusMessageOnWelcome : true),
+        };
+
+        res.status(200).json(updatedUserWithPrefs);
     } catch (error) {
+        console.error('Error in update_user:', error);
         res.status(500).json({ message: "An error occurred while updating the user" });
     }
 }
@@ -183,7 +248,8 @@ const approve_user = async (req: Request, res: Response): Promise<void> => {
             { where: { id: req.params.id } }
         );
 
-        res.status(200).json(approvedUser);
+        const plainUser = isSequelizeInstance(approvedUser) ? approvedUser.get({ plain: true }) : approvedUser;
+        res.status(200).json(plainUser);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while approving the user" });
     }
@@ -209,7 +275,8 @@ const disapprove_user = async (req: Request, res: Response): Promise<void> => {
             { where: { id: req.params.id } }
         );
 
-        res.status(200).json(disapprovedUser);
+        const plainUser = isSequelizeInstance(disapprovedUser) ? disapprovedUser.get({ plain: true }) : disapprovedUser;
+        res.status(200).json(plainUser);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while disapproving the user" });
     }
@@ -222,8 +289,10 @@ const get_approved_users = async (req: Request, res: Response): Promise<void> =>
             "findAll",
             { where: { approvalStatus: true } }
         );
-
-        res.status(200).json(approvedUsers);
+        const plainUsers = Array.isArray(approvedUsers)
+            ? approvedUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
+            : [];
+        res.status(200).json(plainUsers);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while fetching all approved users" });
     }
@@ -236,8 +305,10 @@ const get_unapproved_users = async (req: Request, res: Response): Promise<void> 
             "findAll",
             { where: { approvalStatus: false } }
         );
-
-        res.status(200).json(unapprovedUsers);
+        const plainUsers = Array.isArray(unapprovedUsers)
+            ? unapprovedUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
+            : [];
+        res.status(200).json(plainUsers);
     } catch (error) {
         res.status(500).json({ message: "An error occurred while fetching all unapproved users" });
     }
