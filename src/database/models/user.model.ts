@@ -23,6 +23,11 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public lastOtpSent?: Date;
     public isVerified!: boolean;
     public qrCode !: string;
+    public profileImage?: string;
+    public statusMessage?: string;
+    public showPhoneOnWelcome?: boolean;
+    public showProfileImageOnWelcome?: boolean;
+    public showStatusMessageOnWelcome?: boolean;
 }
 
 const User_model = (sequelize: Sequelize) => {
@@ -106,6 +111,29 @@ const User_model = (sequelize: Sequelize) => {
         qrCode: {
             type: DataTypes.TEXT,
             allowNull: true
+        },
+        profileImage: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        statusMessage: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        showPhoneOnWelcome: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true,
+        },
+        showProfileImageOnWelcome: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true,
+        },
+        showStatusMessageOnWelcome: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true,
         },
     }, {
         sequelize,
