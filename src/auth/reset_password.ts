@@ -19,14 +19,17 @@ const forgotPassword = async (req: Request, res: Response): Promise<void> => {
       const resetToken = crypto.randomBytes(32).toString("hex");
       const resetTokenExpires = new Date(Date.now() + 3600000);
       await update_function("User", "update", { resetToken, resetTokenExpires }, { where: { email } });
-      const resetUrl = `http://localhost:3000/auth/reset-password/${resetToken}`;
+      const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/${resetToken}`;
       const message = `You are receiving this because you requested a password reset. Please click on the following link, or paste this into your browser to complete the process:\n\n${resetUrl}`;
 
       await sendEmail({
         to: user.email,
         subject: "Password Reset",
         type: 'notification',
-        data: { message },
+        data: { 
+          title: "Password Reset Request",
+          body: message 
+        },
       });
 
       res.status(200).json({ message: "Reset email sent" });
