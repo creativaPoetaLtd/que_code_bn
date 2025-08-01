@@ -2,7 +2,7 @@
 import { CreateOptions, FindOptions, UpdateOptions } from "sequelize";
 import database_models from "../database/config/db.config";
 
-type ModelTypes = "Organization" | "User";
+type ModelTypes = "Organization" | "User" | "Wallet" | "Transaction";
 // Updated MethodTypes to include "findByPk"
 type MethodTypes = "findAll" | "findOne" | "destroy" | "create" | "update" | "findByPk";
 

@@ -47,7 +47,8 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       res.status(404).json({ message: "Account not found" });
       return;
     }
-    if (user && user.approvalStatus) {
+
+    if (user && user.approvalStatus === false) {
       res.status(403).json({ message: "Account pending approval" });
       return;
     }

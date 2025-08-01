@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { insert_function, read_function } from "../utils/db_methods";
-import { UserCreationAttributes, UserModelAttributes } from "../types/model";
+import { UserCreationAttributes, UserModelAttributes, WalletCreationAttributes } from "../types/model";
 // import cloudinary from "../helpers/cloudinary";
 import bcrypt from 'bcrypt';
 import sendEmail from '../helpers/email';
@@ -58,6 +58,21 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         };
 
         const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
+
+        // Create wallet for the new user
+        try {
+            const walletData: WalletCreationAttributes = {
+                userId: newUser.id,
+                balance: 0, // Start with zero balance
+                currency: 'RWF',
+                isActive: true
+            };
+            
+            await insert_function("Wallet", "create", walletData);
+        } catch (walletError) {
+            console.error("Error creating wallet for user:", walletError);
+            // Don't fail user creation if wallet creation fails
+        }
 
         // Generate the QR Code
         const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;

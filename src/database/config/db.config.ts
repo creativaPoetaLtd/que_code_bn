@@ -73,7 +73,12 @@ export const connectionToDatabase = async () => {
 		await sequelizeConnection.authenticate();
 		console.log("Database authentication successful!");
 
-		await sequelizeConnection.sync();
+		// Sync models with force: true in development to recreate tables
+		const syncOptions = APP_MODE === 'development' 
+			? { force: false, alter: false } 
+			: { alter: false };
+			
+		await sequelizeConnection.sync(syncOptions);
 		console.log("Database sync completed successfully.");
 		console.log(`Connected to: ${db_uri.split('@')[1]?.split('?')[0]}`); // Log host without credentials
 	} catch (error) {
