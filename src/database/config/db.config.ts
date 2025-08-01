@@ -8,7 +8,7 @@ config({ path: path.resolve(process.cwd(), '.env') });
 
 let db_uri: string = "";
 const APP_MODE: string = process.env.DEV_MODE || "development";
-const DB_HOST_MODE: string = (process.env.DB_HOST_MODE || "local").replace(/"/g, ''); // Remove quotes
+const DB_HOST_MODE: string = process.env.DB_HOSTED_MODE || "local";
 
 // Debug environment variables
 console.log("Environment Variables Debug:");
@@ -16,7 +16,6 @@ console.log("APP_MODE:", APP_MODE);
 console.log("DB_HOST_MODE:", DB_HOST_MODE);
 console.log("DB_DEV_URL exists:", !!process.env.DB_DEV_URL);
 console.log("DB_DEV_URL length:", process.env.DB_DEV_URL?.length || 0);
-console.log("DB_DEV_URL value:", process.env.DB_DEV_URL ? "***configured***" : "not set");
 
 switch (APP_MODE) {
 	case "test":
@@ -27,7 +26,7 @@ switch (APP_MODE) {
 		break;
 	default:
 		// Try environment variable first, fallback to hardcoded for testing
-		db_uri = process.env.DB_DEV_URL || "postgresql://postgres:4321@localhost:5432/postgres";
+		db_uri = process.env.DB_DEV_URL || "postgres://avnadmin:AVNS_CpCAmOHd2j5S1seJlYe@qiew-code-kananura221023924-6f38.d.aivencloud.com:19780/defaultdb?sslmode=require";
 		console.log("Using fallback DB_DEV_URL for development mode");
 		break;
 }
