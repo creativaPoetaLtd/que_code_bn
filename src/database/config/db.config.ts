@@ -76,8 +76,8 @@ export const connectionToDatabase = async () => {
 
 		// Sync models with force: true in development to recreate tables
 		const syncOptions = APP_MODE === 'development' 
-			? { force: true, alter: false } 
-			: { alter: true };
+			? { force: false, alter: false } 
+			: { alter: false };
 			
 		await sequelizeConnection.sync(syncOptions);
 		console.log("Database sync completed successfully.");
