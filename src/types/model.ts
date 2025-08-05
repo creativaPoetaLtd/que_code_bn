@@ -57,7 +57,6 @@ export interface UserModelAttributes {
     district: string;
     sector: string;
     // national_id: string | string[] | null;
-    approvalStatus: boolean;
     createdAt?: Date;
     updatedAt?: Date;
     resetTokenExpires?: Date;
@@ -90,7 +89,6 @@ export type UserCreationAttributes = Optional<
     district: string;
     sector: string;
     // national_id: string | string[] | null;
-    approvalStatus: boolean;
     resetTokenExpires?: Date;
     resetToken?: string;
     otp?: string;

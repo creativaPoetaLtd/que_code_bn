@@ -19,7 +19,6 @@ module.exports = {
       district: { type: Sequelize.STRING },
       sector: { type: Sequelize.STRING },
       national_id: { type: Sequelize.STRING },
-      approvalStatus: { type: Sequelize.STRING },
       resetTokenExpires: { type: Sequelize.DATE },
       resetToken: { type: Sequelize.STRING },
       isVerified: { type: Sequelize.BOOLEAN },

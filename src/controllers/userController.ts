@@ -56,7 +56,6 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
             password: hashedPassword,
             district,
             sector,
-            approvalStatus: false,
             otp,
             otpExpires,
             publicId,
@@ -398,7 +397,7 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        if (user.approvalStatus) {
+        if (user.isVerified) {
             res.status(400).json({ message: "User is already verified" });
             return;
         }
