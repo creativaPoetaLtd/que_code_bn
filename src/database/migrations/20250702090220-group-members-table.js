@@ -80,25 +80,42 @@ module.exports = {
     // Indexes
     await queryInterface.addIndex('GroupMembers', ['groupId', 'userId'], {
       unique: true,
-      name: 'unique_group_user',
+      name: 'idx_group_members_unique_group_user',
     });
 
-    await queryInterface.addIndex('GroupMembers', ['groupId']);
-    await queryInterface.addIndex('GroupMembers', ['userId']);
-    await queryInterface.addIndex('GroupMembers', ['status']);
-    await queryInterface.addIndex('GroupMembers', ['role']);
-    await queryInterface.addIndex('GroupMembers', ['invitedBy']);
-    await queryInterface.addIndex('GroupMembers', ['invitationToken']);
+    await queryInterface.addIndex('GroupMembers', ['groupId'], {
+      name: 'idx_group_members_group_id'
+    });
+
+    await queryInterface.addIndex('GroupMembers', ['userId'], {
+      name: 'idx_group_members_user_id'
+    });
+
+    await queryInterface.addIndex('GroupMembers', ['status'], {
+      name: 'idx_group_members_status'
+    });
+
+    await queryInterface.addIndex('GroupMembers', ['role'], {
+      name: 'idx_group_members_role'
+    });
+
+    await queryInterface.addIndex('GroupMembers', ['invitedBy'], {
+      name: 'idx_group_members_invited_by'
+    });
+
+    await queryInterface.addIndex('GroupMembers', ['invitationToken'], {
+      name: 'idx_group_members_invitation_token'
+    });
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.removeIndex('GroupMembers', 'unique_group_user');
-    await queryInterface.removeIndex('GroupMembers', ['groupId']);
-    await queryInterface.removeIndex('GroupMembers', ['userId']);
-    await queryInterface.removeIndex('GroupMembers', ['status']);
-    await queryInterface.removeIndex('GroupMembers', ['role']);
-    await queryInterface.removeIndex('GroupMembers', ['invitedBy']);
-    await queryInterface.removeIndex('GroupMembers', ['invitationToken']);
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_unique_group_user');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_group_id');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_user_id');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_status');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_role');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_invited_by');
+    await queryInterface.removeIndex('GroupMembers', 'idx_group_members_invitation_token');
     await queryInterface.dropTable('GroupMembers');
     await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_GroupMembers_role";');
     await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_GroupMembers_status";');
