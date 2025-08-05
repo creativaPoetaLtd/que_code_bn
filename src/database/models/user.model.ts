@@ -15,7 +15,6 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public cell!: string;
     public logo!: CreationOptional<string>;
     public national_id!: CreationOptional<string>;
-    public approvalStatus!: boolean;
     public resetToken?: string;
     public resetTokenExpires?: Date;
     public otp?: string;
@@ -78,11 +77,6 @@ const User_model = (sequelize: Sequelize) => {
         //     type: DataTypes.STRING,
         //     allowNull: true,
         // },
-        approvalStatus: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: false,
-        },
         resetToken: {
             type: DataTypes.STRING,
             allowNull: true,

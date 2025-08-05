@@ -39,7 +39,7 @@ const transfer_money = async (req: Request, res: Response): Promise<void> => {
             { where: { id: senderId } }
         );
 
-        if (!sender || !sender.approvalStatus) {
+        if (!sender || !sender.isVerified) {
             res.status(404).json({ message: "Sender not found or not approved" });
             return;
         }
@@ -51,7 +51,7 @@ const transfer_money = async (req: Request, res: Response): Promise<void> => {
             { where: { id: receiverId } }
         );
 
-        if (!receiver || !receiver.approvalStatus) {
+        if (!receiver || !receiver.isVerified) {
             res.status(404).json({ message: "Receiver not found or not approved" });
             return;
         }

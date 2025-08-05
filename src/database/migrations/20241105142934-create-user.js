@@ -19,7 +19,6 @@ module.exports = {
       district: { type: Sequelize.STRING },
       sector: { type: Sequelize.STRING },
       national_id: { type: Sequelize.STRING },
-      approvalStatus: { type: Sequelize.STRING },
       resetTokenExpires: { type: Sequelize.DATE },
       resetToken: { type: Sequelize.STRING },
       isVerified: { type: Sequelize.BOOLEAN },
@@ -27,7 +26,7 @@ module.exports = {
       otp: { type: Sequelize.STRING },
       qrCode: {
         type: Sequelize.TEXT,
-        allowNull: true,
+        allowNull: true
       },
       otpExpires: { type: Sequelize.DATE },
       profileImage: {
@@ -65,6 +64,8 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('Users');
+    await queryInterface.dropTable('Users', {
+      cascade: true
+    });
   }
 };

@@ -3,19 +3,12 @@ import { Sequelize } from "sequelize";
 import Models from "../models";
 import path from "path";
 
-// Try loading .env from root directory explicitly
 config({ path: path.resolve(process.cwd(), '.env') });
 
 let db_uri: string = "";
 const APP_MODE: string = process.env.DEV_MODE || "development";
 const DB_HOST_MODE: string = process.env.DB_HOSTED_MODE || "local";
 
-// Debug environment variables
-console.log("Environment Variables Debug:");
-console.log("APP_MODE:", APP_MODE);
-console.log("DB_HOST_MODE:", DB_HOST_MODE);
-console.log("DB_DEV_URL exists:", !!process.env.DB_DEV_URL);
-console.log("DB_DEV_URL length:", process.env.DB_DEV_URL?.length || 0);
 
 switch (APP_MODE) {
 	case "test":
@@ -25,13 +18,11 @@ switch (APP_MODE) {
 		db_uri = process.env.DB_PROD_URL || "";
 		break;
 	default:
-		// Try environment variable first, fallback to hardcoded for testing
-		db_uri = process.env.DB_DEV_URL || "postgres://avnadmin:AVNS_CpCAmOHd2j5S1seJlYe@qiew-code-kananura221023924-6f38.d.aivencloud.com:19780/defaultdb?sslmode=require";
+		db_uri = process.env.DB_DEV_URL || "";
 		console.log("Using fallback DB_DEV_URL for development mode");
 		break;
 }
 
-// Validate db_uri before proceeding
 if (!db_uri) {
 	console.error("❌ Database URI is empty!");
 	console.error("Please check your .env file and ensure DB_DEV_URL is set correctly.");
@@ -43,20 +34,20 @@ console.log("✅ Database URI loaded successfully");
 
 const isLocal = DB_HOST_MODE === "local";
 
-// Configure SSL options based on hosting mode
+
 const dialectOptions = isLocal
 	? {}
 	: {
 		ssl: {
 			require: true,
-			rejectUnauthorized: false, // For Aiven's managed certificates
+			rejectUnauthorized: false,
 		},
 	};
 
-const sequelizeConnection = new Sequelize(db_uri, {
+export const sequelizeConnection = new Sequelize(db_uri, {
 	dialect: 'postgres',
 	dialectOptions,
-	logging: false, // Set to console.log for debugging if needed
+	logging: false,
 	pool: {
 		max: 10,
 		min: 0,
@@ -80,7 +71,7 @@ export const connectionToDatabase = async () => {
 			
 		await sequelizeConnection.sync(syncOptions);
 		console.log("Database sync completed successfully.");
-		console.log(`Connected to: ${db_uri.split('@')[1]?.split('?')[0]}`); // Log host without credentials
+		console.log(`Connected to: ${db_uri.split('@')[1]?.split('?')[0]}`);
 	} catch (error) {
 		console.error("Unable to connect to the database:");
 		console.error(error);
@@ -90,7 +81,6 @@ export const connectionToDatabase = async () => {
 
 const db_models = Models(sequelizeConnection);
 
-// Set up model associations
 Object.keys(db_models).forEach((key) => {
 	// @ts-expect-error ignore expected errors
 	if (db_models[key].associate) {

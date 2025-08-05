@@ -57,7 +57,6 @@ export interface UserModelAttributes {
     district: string;
     sector: string;
     // national_id: string | string[] | null;
-    approvalStatus: boolean;
     createdAt?: Date;
     updatedAt?: Date;
     resetTokenExpires?: Date;
@@ -72,6 +71,8 @@ export interface UserModelAttributes {
     showPhoneOnWelcome?: boolean;
     showProfileImageOnWelcome?: boolean;
     showStatusMessageOnWelcome?: boolean;
+    publicId?: string;
+    profileLink?: string;
 }
 
 export type UserCreationAttributes = Optional<
@@ -88,7 +89,6 @@ export type UserCreationAttributes = Optional<
     district: string;
     sector: string;
     // national_id: string | string[] | null;
-    approvalStatus: boolean;
     resetTokenExpires?: Date;
     resetToken?: string;
     otp?: string;
@@ -144,5 +144,10 @@ export type TransactionCreationAttributes = Optional<
     senderId: string;
     receiverId: string;
     amount: number;
+    publicId?: string;
+    profileLink?: string;
+    qrCode?: string;
+
 };
 
+export interface AuthenticatedUser extends UserModelAttributes { }

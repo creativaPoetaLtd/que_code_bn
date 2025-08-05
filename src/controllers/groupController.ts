@@ -1,0 +1,1273 @@
+import { Response, NextFunction } from "express";
+import { v4 as uuidv4 } from "uuid";
+import { Op } from "sequelize";
+import QRCode from 'qrcode';
+import Models from "../database/models";
+import { AuthenticatedRequest } from "../types/requests";
+import { ContactStatus } from "../types/contact";
+
+import {
+    CreateGroupRequest,
+    InviteToGroupRequest,
+    RespondToGroupInvitationRequest,
+    JoinGroupByLinkRequest,
+    UpdateGroupRequest,
+    RequestToJoinGroupRequest
+} from "../types/group";
+import sendEmail from "../helpers/email";
+import { GroupMemberRole, GroupMemberStatus } from "../database/models/groupMember.model";
+import { NotificationType } from "../utils/notificationConfig";
+import { createAndSendNotification, markNotificationAsRead, getUserNotifications } from "../utils/notificationService";
+
+const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { name, description, picture, isPrivate = false, maxMembers = 100, memberIds = [] }: CreateGroupRequest = req.body;
+        const ownerId = req.user.id;
+
+        if (!name || name.trim().length < 2) {
+            res.status(400).json({ message: "Group name is required and must be at least 2 characters" });
+            return;
+        }
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Generate unique access token and link
+        const accessToken = uuidv4();
+        const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
+
+        // Create the group
+        const group = await models.Group.create({
+            id: uuidv4(),
+            name: name.trim(),
+            description: description?.trim(),
+            picture,
+            ownerId,
+            accessToken,
+            accessLink,
+            isPrivate,
+            maxMembers,
+            memberCount: 1
+        });
+
+        // Generate QR code for the group
+        try {
+            const qrCodeData = await QRCode.toDataURL(accessLink);
+            await group.update({ qrCode: qrCodeData });
+        } catch (qrError) {
+            console.error("Failed to generate QR code:", qrError);
+        }
+
+        // Add owner as a member
+        await models.GroupMember.create({
+            id: uuidv4(),
+            groupId: group.id,
+            userId: ownerId,
+            role: GroupMemberRole.OWNER,
+            status: GroupMemberStatus.ACCEPTED,
+            invitedBy: ownerId,
+            joinedAt: new Date(),
+            invitedAt: new Date()
+        });
+
+        // Invite initial members if provided
+        if (memberIds.length > 0) {
+            await inviteUsersToGroup(group.id, memberIds, ownerId, models);
+        }
+
+        // Get owner details for response
+        const owner = await models.User.findByPk(ownerId);
+
+        // Send notification to owner (example)
+        await createAndSendNotification(req.app, {
+            type: NotificationType.GROUP_CREATED,
+            recipientId: ownerId,
+            data: {
+                groupId: group.id,
+                groupName: group.name,
+                message: `You created the group '${group.name}' successfully.`
+            }
+        });
+
+        res.status(201).json({
+            message: "Group created successfully",
+            data: {
+                id: group.id,
+                name: group.name,
+                description: group.description,
+                picture: group.picture,
+                ownerId: group.ownerId,
+                ownerName: owner ? `${owner.firstName} ${owner.lastName}` : undefined,
+                qrCode: group.qrCode,
+                accessLink: group.accessLink,
+                isPrivate: group.isPrivate,
+                maxMembers: group.maxMembers,
+                memberCount: group.memberCount,
+                createdAt: group.createdAt,
+                updatedAt: group.updatedAt,
+                userRole: GroupMemberRole.OWNER,
+                userStatus: GroupMemberStatus.ACCEPTED
+            }
+        });
+    } catch (error) {
+        console.error("Create group error:", error);
+        next(error);
+    }
+};
+
+const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId, memberIds }: InviteToGroupRequest = req.body;
+        const inviterId = req.user.id;
+
+        if (!groupId || !memberIds || memberIds.length === 0) {
+            res.status(400).json({ message: "Group ID and member IDs are required" });
+            return;
+        }
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if group exists and user has permission to invite
+        const group = await models.Group.findByPk(groupId);
+        if (!group) {
+            res.status(404).json({ message: "Group not found" });
+            return;
+        }
+
+        // Check if user is a member with permission to invite
+        const inviterMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId: inviterId,
+                status: GroupMemberStatus.ACCEPTED,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
+            }
+        });
+
+        if (!inviterMembership) {
+            res.status(403).json({ message: "You don't have permission to invite members to this group" });
+            return;
+        }
+
+        const results = await inviteUsersToGroup(groupId, memberIds, inviterId, models);
+
+        res.status(200).json({
+            message: "Invitations processed",
+            data: {
+                successful: results.successful,
+                failed: results.failed,
+                totalInvited: results.successful.length
+            }
+        });
+    } catch (error) {
+        console.error("Invite to group error:", error);
+        next(error);
+    }
+};
+
+const respondToGroupInvitation = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { membershipId } = req.params;
+        const { action }: RespondToGroupInvitationRequest = req.body;
+        const userId = req.user.id;
+
+        if (!membershipId || !action || !['accept', 'reject'].includes(action)) {
+            res.status(400).json({ message: "Membership ID and valid action (accept/reject) are required" });
+            return;
+        }
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Find the group invitation
+        const membership: any = await models.GroupMember.findOne({
+            where: {
+                id: membershipId,
+                userId,
+                status: GroupMemberStatus.PENDING
+            },
+            include: [
+                {
+                    model: models.Group,
+                    as: 'group'
+                },
+                {
+                    model: models.User,
+                    as: 'inviter',
+                    attributes: ['id', 'firstName', 'lastName', 'email']
+                }
+            ]
+        });
+
+        if (!membership) {
+            res.status(404).json({ message: "Group invitation not found or already responded to" });
+            return;
+        }
+
+        // Check if group is full (only for accept action)
+        if (action === 'accept') {
+            const group = membership.group;
+            if (group.maxMembers && group.memberCount >= group.maxMembers) {
+                res.status(400).json({ message: "Group is full" });
+                return;
+            }
+        }
+
+        // Update membership status
+        const newStatus = action === 'accept' ? GroupMemberStatus.ACCEPTED : GroupMemberStatus.REJECTED;
+        await membership.update({
+            status: newStatus,
+            joinedAt: action === 'accept' ? new Date() : null,
+            respondedAt: new Date()
+        });
+
+        // Update group member count if accepted
+        if (action === 'accept') {
+            await models.Group.increment('memberCount', { where: { id: membership.groupId } });
+        }
+
+        // Send notification email to inviter
+        try {
+            const currentUser = await models.User.findByPk(userId);
+            if (currentUser && membership.inviter) {
+                await sendEmail({
+                    to: membership.inviter.email,
+                    subject: `Group Invitation ${action === 'accept' ? 'Accepted' : 'Rejected'} - ${membership.group.name}`,
+                    type: 'invitation_response',
+                    data: {
+                        responderName: `${currentUser.firstName} ${currentUser.lastName}`,
+                        groupName: membership.group.name,
+                        action: action,
+                        actionText: action === 'accept' ? 'accepted' : 'rejected'
+                    }
+                });
+            }
+        } catch (emailError) {
+            console.error("Failed to send response notification email:", emailError);
+        }
+
+        const message = action === 'accept'
+            ? `Successfully joined ${membership.group.name}`
+            : `Group invitation rejected`;
+
+        res.status(200).json({
+            message,
+            data: {
+                id: membership.id,
+                groupId: membership.groupId,
+                groupName: membership.group.name,
+                status: membership.status,
+                role: membership.role,
+                joinedAt: membership.joinedAt,
+                respondedAt: membership.respondedAt
+            }
+        });
+    } catch (error) {
+        console.error("Respond to group invitation error:", error);
+        next(error);
+    }
+};
+
+const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { accessToken, qrCodeData }: JoinGroupByLinkRequest = req.body;
+        const userId = req.user.id;
+
+        if (!accessToken && !qrCodeData) {
+            res.status(400).json({ message: "Access token or QR code data is required" });
+            return;
+        }
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Find group by access token or QR code
+        let group;
+        if (accessToken) {
+            group = await models.Group.findOne({
+                where: { accessToken }
+            });
+        } else if (qrCodeData) {
+            const tokenMatch = qrCodeData.match(/token=([^&]+)/);
+            if (tokenMatch) {
+                group = await models.Group.findOne({
+                    where: { accessToken: tokenMatch[1] }
+                });
+            }
+        }
+
+        if (!group) {
+            res.status(404).json({ message: "Invalid access link or QR code" });
+            return;
+        }
+
+        // Check if user is already associated with the group
+        const existingMembership = await models.GroupMember.findOne({
+            where: {
+                groupId: group.id,
+                userId
+            }
+        });
+
+        if (existingMembership) {
+            let message = "You are already associated with this group";
+
+            if (existingMembership.status === GroupMemberStatus.PENDING) {
+                message = "You already have a pending request to join this group";
+            } else if (existingMembership.status === GroupMemberStatus.ACCEPTED) {
+                message = "You are already a member of this group";
+            } else if (existingMembership.status === GroupMemberStatus.REJECTED) {
+                message = "Your previous request to join was rejected";
+            }
+
+            res.status(400).json({ message });
+            return;
+        }
+
+        // Check if group is full
+        if (group.maxMembers && group.memberCount >= group.maxMembers) {
+            res.status(400).json({ message: "Group is full" });
+            return;
+        }
+
+        // Create join request (always requires approval)
+        const membership = await models.GroupMember.create({
+            id: uuidv4(),
+            groupId: group.id,
+            userId,
+            role: GroupMemberRole.MEMBER,
+            status: GroupMemberStatus.PENDING,
+            invitedBy: userId, // Self-invited
+            invitedAt: new Date()
+        });
+
+        // Notify group owner with approve/decline actions
+        const [user, owner] = await Promise.all([
+            models.User.findByPk(userId),
+            models.User.findByPk(group.ownerId)
+        ]);
+
+        if (user && owner) {
+            // In-app notification
+            await createAndSendNotification(req.app, {
+                type: NotificationType.GROUP_JOIN_REQUEST,
+                recipientId: group.ownerId,
+                data: {
+                    groupId: group.id,
+                    groupName: group.name,
+                    requestId: membership.id,
+                    userId: user.id,
+                    userName: `${user.firstName} ${user.lastName}`,
+                    message: `${user.firstName} wants to join your group`,
+                    actions: [
+                        {
+                            type: 'approve',
+                            label: 'Approve',
+                            url: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=approve`
+                        },
+                        {
+                            type: 'decline',
+                            label: 'Decline',
+                            url: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=decline`
+                        }
+                    ]
+                }
+            });
+
+            // Email notification
+            await sendEmail({
+                to: owner.email,
+                subject: `New Join Request for ${group.name}`,
+                type: "group_join_request",
+                data: {
+                    userName: `${user.firstName} ${user.lastName}`,
+                    userEmail: user.email,
+                    groupName: group.name,
+                    approveUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=approve`,
+                    declineUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=decline`
+                }
+            });
+        }
+
+        res.status(200).json({
+            message: "Join request sent. Waiting for owner approval.",
+            data: {
+                requestId: membership.id,
+                groupId: group.id,
+                groupName: group.name,
+                status: membership.status,
+                requiresApproval: true
+            }
+        });
+    } catch (error) {
+        console.error("Join group by link/QR code error:", error);
+        next(error);
+    }
+};
+
+const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const userId = req.user.id;
+        const { page = 1, limit = 10, status = 'accepted' } = req.query;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        const offset = (Number(page) - 1) * Number(limit);
+
+        // Ensure status is a string and matches the enum or 'all'
+        let statusValue: string | { [Op.ne]: string };
+        if (status === 'all') {
+            statusValue = { [Op.ne]: GroupMemberStatus.REMOVED };
+        } else if (typeof status === 'string') {
+            statusValue = status;
+        } else if (Array.isArray(status)) {
+            statusValue = String(status[0]);
+        } else {
+            statusValue = GroupMemberStatus.ACCEPTED;
+        }
+
+        const { count, rows: memberships } = await models.GroupMember.findAndCountAll({
+            where: {
+                userId,
+                status: statusValue
+            },
+            include: [
+                {
+                    model: models.Group,
+                    as: 'group',
+                    include: [
+                        {
+                            model: models.User,
+                            as: 'owner',
+                            attributes: ['id', 'firstName', 'lastName']
+                        }
+                    ]
+                }
+            ],
+            limit: Number(limit),
+            offset,
+            order: [['createdAt', 'DESC']]
+        });
+
+        const groups = memberships.map(membership => {
+            const group = (membership as any).group;
+            let ownerName: string | undefined = undefined;
+            if (group && group.owner) {
+                ownerName = `${group.owner.firstName} ${group.owner.lastName}`;
+            }
+            return {
+                id: group.id,
+                name: group.name,
+                description: group.description,
+                picture: group.picture,
+                ownerId: group.ownerId,
+                ownerName,
+                qrCode: group.qrCode,
+                accessLink: group.accessLink,
+                isPrivate: group.isPrivate,
+                maxMembers: group.maxMembers,
+                memberCount: group.memberCount,
+                createdAt: group.createdAt,
+                updatedAt: group.updatedAt,
+                userRole: membership.role,
+                userStatus: membership.status
+            };
+        });
+
+        res.status(200).json({
+            message: "Groups retrieved successfully",
+            data: {
+                groups,
+                total: count,
+                page: Number(page),
+                limit: Number(limit),
+                totalPages: Math.ceil(count / Number(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Get user groups error:", error);
+        next(error);
+    }
+};
+
+// Helper function to invite users to group
+const inviteUsersToGroup = async (
+    groupId: string,
+    memberIds: string[],
+    inviterId: string,
+    models: ReturnType<typeof Models>
+) => {
+    const successful: any[] = [];
+    const failed: any[] = [];
+
+    // Get inviter's contacts to validate invitations
+    const inviterContacts = await models.Contact.findAll({
+        where: {
+            [Op.or]: [
+                { inviterId, status: ContactStatus.ACCEPTED },
+                { inviteeId: inviterId, status: ContactStatus.ACCEPTED }
+            ]
+        }
+    });
+    const contactUserIds = inviterContacts.map(contact =>
+        contact.inviterId === inviterId ? contact.inviteeId : contact.inviterId
+    );
+
+    // Get group details for email
+    const group = await models.Group.findByPk(groupId);
+    const inviter = await models.User.findByPk(inviterId);
+
+    for (const publicId of memberIds) {
+
+        try {
+            // Find user by public ID
+            const user = await models.User.findOne({
+                where: { publicId }
+            });
+
+            if (!user) {
+                failed.push({ publicId, reason: "User not found" });
+                continue;
+            }
+
+            // Check if user is in inviter's contacts
+            if (!contactUserIds.includes(user.id)) {
+                failed.push({ publicId, reason: "User not in your contacts" });
+                continue;
+            }
+
+            // Check if user is already a member or has pending invitation
+            const existingMembership = await models.GroupMember.findOne({
+                where: {
+                    groupId,
+                    userId: user.id,
+                    status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACCEPTED] }
+                }
+            });
+
+            if (existingMembership) {
+                const reason = existingMembership.status === GroupMemberStatus.PENDING
+                    ? "Already has pending invitation"
+                    : "Already a member";
+                failed.push({ publicId, reason });
+                continue;
+            }
+
+            // Create group membership invitation
+            const invitationToken = uuidv4();
+            const membership = await models.GroupMember.create({
+                id: uuidv4(),
+                groupId,
+                userId: user.id,
+                role: GroupMemberRole.MEMBER,
+                status: GroupMemberStatus.PENDING,
+                invitedBy: inviterId,
+                invitedAt: new Date(),
+                invitationToken
+            });
+            // Send invitation email
+            try {
+                const acceptUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=accept&membershipId=${membership.id}`;
+                const rejectUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=reject&membershipId=${membership.id}`;
+
+                await sendEmail({
+                    to: user.email,
+                    subject: `You're Invited to Join ${group?.name}`,
+                    type: 'group_invitation',
+                    data: {
+                        inviterName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone',
+                        groupName: group?.name || 'Unnamed Group',
+                        groupDescription: group?.description || '',
+                        acceptUrl,
+                        rejectUrl
+                    }
+                });
+            } catch (emailError) {
+                console.error("Failed to send group invitation email:", emailError);
+            }
+
+            successful.push({
+                publicId,
+                userId: user.id,
+                userName: `${user.firstName} ${user.lastName}`,
+                membershipId: membership.id
+            });
+
+        } catch (error) {
+            console.error(`Error inviting user ${publicId}:`, error);
+            failed.push({ publicId, reason: "Server error" });
+        }
+    }
+
+    return { successful, failed };
+};
+
+const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Get group details
+        const group = await models.Group.findByPk(groupId);
+
+        if (!group) {
+            res.status(404).json({ message: "Group not found" });
+            return;
+        }
+
+        // Get owner's user record
+        const owner = await models.User.findByPk(group.ownerId);
+
+        // Get user's membership status
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: { [Op.ne]: GroupMemberStatus.REMOVED }
+            }
+        });
+
+        // Only show sensitive info (QR code, access link) to members
+        const canViewSensitiveInfo = userMembership && userMembership.status === GroupMemberStatus.ACCEPTED;
+
+        res.status(200).json({
+            message: "Group details retrieved successfully",
+            data: {
+                id: group.id,
+                name: group.name,
+                description: group.description,
+                picture: group.picture,
+                ownerId: group.ownerId,
+                ownerName: owner ? `${owner.firstName} ${owner.lastName}` : undefined,
+                qrCode: canViewSensitiveInfo ? group.qrCode : undefined,
+                accessLink: canViewSensitiveInfo ? group.accessLink : undefined,
+                isPrivate: group.isPrivate,
+                maxMembers: group.maxMembers,
+                memberCount: group.memberCount,
+                createdAt: group.createdAt,
+                updatedAt: group.updatedAt,
+                userRole: userMembership?.role,
+                userStatus: userMembership?.status
+            }
+        });
+    } catch (error) {
+        console.error("Get group details error:", error);
+        next(error);
+    }
+};
+
+const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const { page = 1, limit = 20, status = 'accepted' } = req.query;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if user is a member of the group
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED,
+            }
+        });
+
+        if (!userMembership) {
+            res.status(403).json({ message: "You are not a member of this group" });
+            return;
+        }
+
+        const offset = (Number(page) - 1) * Number(limit);
+
+        // Ensure status is a string and matches the enum or 'all'
+        let statusValue: string | { [Op.ne]: string };
+        if (status === 'all') {
+            statusValue = { [Op.ne]: GroupMemberStatus.REMOVED };
+        } else if (typeof status === 'string') {
+            statusValue = status;
+        } else if (Array.isArray(status)) {
+            statusValue = String(status[0]);
+        } else {
+            statusValue = GroupMemberStatus.ACCEPTED;
+        }
+
+        const { count, rows: members } = await models.GroupMember.findAndCountAll({
+            where: {
+                groupId,
+                status: statusValue
+            },
+            include: [
+                {
+                    model: models.User,
+                    as: 'user',
+                    attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+                },
+                {
+                    model: models.User,
+                    as: 'inviter',
+                    attributes: ['id', 'firstName', 'lastName']
+                }
+            ],
+            limit: Number(limit),
+            offset,
+            order: [
+                ['role', 'ASC'], // Owner first, then admin, then members
+                ['joinedAt', 'ASC']
+            ]
+        });
+
+        const membersList = members.map(member => {
+            const m = member as any;
+            return {
+                id: m.id,
+                userId: m.userId,
+                userName: `${m.user.firstName} ${m.user.lastName}`,
+                userEmail: m.user.email,
+                userPublicId: m.user.publicId,
+                role: m.role,
+                status: m.status,
+                joinedAt: m.joinedAt,
+                invitedAt: m.invitedAt,
+                invitedByName: m.inviter ? `${m.inviter.firstName} ${m.inviter.lastName}` : undefined
+            };
+        });
+
+        res.status(200).json({
+            message: "Group members retrieved successfully",
+            data: {
+                members: membersList,
+                total: count,
+                page: Number(page),
+                limit: Number(limit),
+                totalPages: Math.ceil(count / Number(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Get group members error:", error);
+        next(error);
+    }
+};
+
+const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const { name, description, picture, isPrivate, maxMembers }: UpdateGroupRequest = req.body;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if user is the owner or admin
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
+            }
+        });
+
+        if (!userMembership) {
+            res.status(403).json({ message: "You don't have permission to update this group" });
+            return;
+        }
+
+        const group = await models.Group.findByPk(groupId);
+        if (!group) {
+            res.status(404).json({ message: "Group not found" });
+            return;
+        }
+
+        // Prepare update data
+        const updateData: any = {};
+        if (name !== undefined && name.trim().length >= 2) updateData.name = name.trim();
+        if (description !== undefined) updateData.description = description?.trim();
+        if (picture !== undefined) updateData.picture = picture;
+        if (isPrivate !== undefined) updateData.isPrivate = isPrivate;
+        if (maxMembers !== undefined && maxMembers >= group.memberCount) updateData.maxMembers = maxMembers;
+
+        // Update the group
+        await group.update(updateData);
+
+        res.status(200).json({
+            message: "Group updated successfully",
+            data: {
+                id: group.id,
+                name: group.name,
+                description: group.description,
+                picture: group.picture,
+                isPrivate: group.isPrivate,
+                maxMembers: group.maxMembers,
+                updatedAt: group.updatedAt
+            }
+        });
+    } catch (error) {
+        console.error("Update group error:", error);
+        next(error);
+    }
+};
+
+const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        const membership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED
+            }
+        });
+
+        if (!membership) {
+            res.status(404).json({ message: "You are not a member of this group" });
+            return;
+        }
+
+        // Owners cannot leave their own group
+        if (membership.role === GroupMemberRole.OWNER) {
+            res.status(400).json({ message: "Group owners cannot leave. Transfer ownership or delete the group instead." });
+            return;
+        }
+
+        // Update membership status to LEFT
+        await membership.update({
+            status: GroupMemberStatus.LEFT,
+            respondedAt: new Date()
+        });
+
+        // Decrease group member count
+        await models.Group.decrement('memberCount', { where: { id: groupId } });
+
+        res.status(200).json({
+            message: "Successfully left the group"
+        });
+    } catch (error) {
+        console.error("Leave group error:", error);
+        next(error);
+    }
+};
+
+const removeMember = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId, memberId } = req.params;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if user has permission (owner or admin)
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
+            }
+        });
+
+        if (!userMembership) {
+            res.status(403).json({ message: "You don't have permission to remove members" });
+            return;
+        }
+
+        // Find the member to remove
+        const memberToRemove: any = await models.GroupMember.findOne({
+            where: {
+                id: memberId,
+                groupId,
+                status: GroupMemberStatus.ACCEPTED
+            },
+            include: [
+                {
+                    model: models.User,
+                    as: 'user',
+                    attributes: ['firstName', 'lastName', 'email']
+                }
+            ]
+        });
+
+        if (!memberToRemove) {
+            res.status(404).json({ message: "Member not found in this group" });
+            return;
+        }
+
+        // Cannot remove the owner
+        if (memberToRemove.role === GroupMemberRole.OWNER) {
+            res.status(400).json({ message: "Cannot remove the group owner" });
+            return;
+        }
+
+        // Admins can only be removed by owners
+        if (memberToRemove.role === GroupMemberRole.ADMIN && userMembership.role !== GroupMemberRole.OWNER) {
+            res.status(403).json({ message: "Only owners can remove admins" });
+            return;
+        }
+
+        // Update membership status to REMOVED
+        await memberToRemove.update({
+            status: GroupMemberStatus.REMOVED,
+            respondedAt: new Date()
+        });
+
+        // Decrease group member count
+        await models.Group.decrement('memberCount', { where: { id: groupId } });
+
+        res.status(200).json({
+            message: `Successfully removed ${memberToRemove.user.firstName} ${memberToRemove.user.lastName} from the group`
+        });
+    } catch (error) {
+        console.error("Remove member error:", error);
+        next(error);
+    }
+};
+
+const deleteGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if user is the owner
+        const group = await models.Group.findOne({
+            where: {
+                id: groupId,
+                ownerId: userId
+            }
+        });
+
+        if (!group) {
+            res.status(403).json({ message: "You can only delete groups you own" });
+            return;
+        }
+
+        // Delete all group members (cascade should handle this, but being explicit)
+        await models.GroupMember.destroy({
+            where: { groupId }
+        });
+
+        // Delete the group
+        await group.destroy();
+
+        res.status(200).json({
+            message: "Group deleted successfully"
+        });
+    } catch (error) {
+        console.error("Delete group error:", error);
+        next(error);
+    }
+};
+
+const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Check if group exists
+        const group = await models.Group.findByPk(groupId);
+        if (!group) {
+            res.status(404).json({ message: "Group not found" });
+            return;
+        }
+
+        // Check if user is already a member or has pending request
+        const existingMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACCEPTED] }
+            }
+        });
+
+        if (existingMembership) {
+            const message = existingMembership.status === GroupMemberStatus.PENDING
+                ? "You already have a pending request to join this group"
+                : "You are already a member of this group";
+            res.status(400).json({ message });
+            return;
+        }
+
+        // Check if group is full
+        if (group.maxMembers && group.memberCount >= group.maxMembers) {
+            res.status(400).json({ message: "Group is full" });
+            return;
+        }
+
+        // Create join request (without requestMessage)
+        const membership = await models.GroupMember.create({
+            id: uuidv4(),
+            groupId,
+            userId,
+            role: GroupMemberRole.MEMBER,
+            status: GroupMemberStatus.PENDING,
+            invitedBy: userId, // Self-invited for join requests
+            invitedAt: new Date()
+        });
+
+        // Get user and owner details for notification
+        const [user, owner] = await Promise.all([
+            models.User.findByPk(userId),
+            models.User.findByPk(group.ownerId)
+        ]);
+
+        if (user && owner) {
+            // Send email notification to group owner
+            await sendEmail({
+                to: owner.email,
+                subject: `New Join Request for ${group.name}`,
+                type: "group_join_request",
+                data: {
+                    userName: `${user.firstName} ${user.lastName}`,
+                    userEmail: user.email,
+                    groupName: group.name,
+                    approveUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=approve`,
+                    rejectUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=reject`
+                }
+            });
+
+            // Send in-app notification to group owner
+            await createAndSendNotification(req.app, {
+                type: NotificationType.GROUP_JOIN_REQUEST,
+                recipientId: group.ownerId,
+                data: {
+                    groupId: group.id,
+                    groupName: group.name,
+                    requestId: membership.id,
+                    userId: user.id,
+                    userName: `${user.firstName} ${user.lastName}`,
+                    message: `${user.firstName} wants to join your group ${group.name}`
+                }
+            });
+        }
+
+        res.status(200).json({
+            message: "Join request sent successfully",
+            data: {
+                requestId: membership.id,
+                groupId: group.id,
+                groupName: group.name,
+                status: membership.status,
+                requestedAt: membership.invitedAt
+            }
+        });
+    } catch (error) {
+        console.error("Request to join group error:", error);
+        next(error);
+    }
+};
+
+// Update the getJoinRequests method to remove requestMessage reference
+const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+        const { page = 1, limit = 20 } = req.query;
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+        const offset = (Number(page) - 1) * Number(limit);
+
+        // Check if user has permission to view requests (owner or admin)
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
+            }
+        });
+
+        if (!userMembership) {
+            res.status(403).json({ message: "You don't have permission to view join requests" });
+            return;
+        }
+
+        // Get pending join requests
+        const { count, rows: requests } = await models.GroupMember.findAndCountAll({
+            where: {
+                groupId,
+                status: GroupMemberStatus.PENDING,
+                invitedBy: { [Op.col]: 'userId' } // Self-invited requests
+            },
+            include: [
+                {
+                    model: models.User,
+                    as: 'user',
+                    attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+                }
+            ],
+            limit: Number(limit),
+            offset,
+            order: [['invitedAt', 'DESC']]
+        });
+
+        const formattedRequests = requests.map(request => {
+            const r = request as any;
+            return {
+                id: r.id,
+                userId: r.userId,
+                userName: `${r.user.firstName} ${r.user.lastName}`,
+                userEmail: r.user.email,
+                userPublicId: r.user.publicId,
+                userPicture: r.user.picture,
+                requestedAt: r.invitedAt
+            };
+        });
+
+        res.status(200).json({
+            message: "Join requests retrieved successfully",
+            data: {
+                requests: formattedRequests,
+                total: count,
+                page: Number(page),
+                limit: Number(limit),
+                totalPages: Math.ceil(count / Number(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Get join requests error:", error);
+        next(error);
+    }
+};
+const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId, requestId } = req.params;
+        const { action } = req.body; // 'approve' or 'decline'
+        const userId = req.user.id;
+
+        if (!action || !['approve', 'decline'].includes(action)) {
+            res.status(400).json({ message: "Valid action (approve/decline) is required" });
+            return;
+        }
+
+        const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Verify requester has permission (owner or admin)
+        const userMembership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACCEPTED,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
+            }
+        });
+        if (!userMembership) {
+            res.status(403).json({ message: "You don't have permission to respond to join requests" });
+            return;
+        }
+
+        // Find the join request
+        const joinRequest = await models.GroupMember.findOne({
+            where: {
+                id: requestId,
+                groupId,
+                status: GroupMemberStatus.PENDING
+            },
+            include: [
+                {
+                    model: models.User,
+                    as: 'user'
+                }
+            ]
+        });
+
+        if (!joinRequest) {
+            res.status(404).json({ message: "Join request not found or already processed" });
+            return;
+        }
+
+        // Update the request status
+        const newStatus = action === 'approve' ? GroupMemberStatus.ACCEPTED : GroupMemberStatus.REJECTED;
+        const updateData: any = {
+            status: newStatus,
+            respondedAt: new Date(),
+            invitedBy: userId
+        };
+
+        if (action === 'approve') {
+            updateData.joinedAt = new Date();
+            await models.Group.increment('memberCount', { where: { id: groupId } });
+        }
+
+        await joinRequest.update(updateData);
+
+        // Send notification to requester
+        const requesterId = joinRequest.userId;
+        const notificationType = action === 'approve'
+            ? NotificationType.GROUP_JOIN_APPROVED
+            : NotificationType.GROUP_JOIN_REJECTED;
+
+        await createAndSendNotification(req.app, {
+            type: notificationType,
+            recipientId: requesterId,
+            data: {
+                groupId,
+                groupName: (await models.Group.findByPk(groupId))?.name || 'Unknown Group',
+                requestId,
+                userId,
+                userName: `${req.user.firstName} ${req.user.lastName}`,
+                message: action === 'approve'
+                    ? `Your request to join the group has been approved`
+                    : `Your request to join the group has been declined`
+            }
+        });
+
+        // Send email notification
+        try {
+            const requester = await models.User.findByPk(requesterId);
+            const group = await models.Group.findByPk(groupId);
+
+            if (requester && group) {
+                await sendEmail({
+                    to: requester.email,
+                    subject: `Group Join Request ${action === 'approve' ? 'Approved' : 'Declined'}`,
+                    type: 'join_request_response',
+                    data: {
+                        groupName: group.name,
+                        action: action === 'approve' ? 'approved' : 'declined',
+                        message: action === 'approve'
+                            ? `You can now access the group and participate`
+                            : `You can request to join again if you wish`,
+                        groupLink: action === 'approve'
+                            ? `${process.env.FRONTEND_URL}/groups/${groupId}`
+                            : undefined
+                    }
+                });
+            }
+        } catch (emailError) {
+            console.error("Failed to send response notification email:", emailError);
+        }
+
+        res.status(200).json({
+            message: `Join request ${action === 'approve' ? 'approved' : 'declined'} successfully`,
+            data: {
+                requestId: joinRequest.id,
+                userId: joinRequest.userId,
+                status: joinRequest.status
+            }
+        });
+    } catch (error) {
+        console.error("Respond to join request error:", error);
+        next(error);
+    }
+};
+
+export {
+    createGroup,
+    inviteToGroup,
+    respondToGroupInvitation,
+    joinGroupByLink,
+    getUserGroups,
+    getGroupDetails,
+    getGroupMembers,
+    updateGroup,
+    leaveGroup,
+    removeMember,
+    deleteGroup,
+    requestToJoinGroup,
+    getJoinRequests,
+    respondToJoinRequest
+};

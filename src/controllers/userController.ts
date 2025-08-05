@@ -41,8 +41,12 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
+        // Generate unique public ID for sharing
+        const publicId = uuidv4().replace(/-/g, '').substring(0, 12);
+        const profileLink = `${process.env.FRONTEND_URL}/add-contact/${publicId}`;
+
         const userData: UserCreationAttributes = {
-            id: uuidv4(), // Generate a UUID manually
+            id: uuidv4(),
             firstName,
             lastName,
             phone,
@@ -52,9 +56,10 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
             password: hashedPassword,
             district,
             sector,
-            approvalStatus: false,
             otp,
-            otpExpires
+            otpExpires,
+            publicId,
+            profileLink
         };
 
         const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
@@ -78,7 +83,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
         const qrCodeData = await QRCode.toDataURL(userProfileLink);
 
-        // Update user with QR code URL
+        // Update user with QR code
         await newUser.update({ qrCode: qrCodeData });
 
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '10m' });
@@ -95,7 +100,10 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         const { password: _, ...userWithoutPassword } = plainUser;
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
-            data: { ...userWithoutPassword, qrCode: qrCodeData }
+            data: {
+                token,
+                otp
+            }
         });
     } catch (error: any) {
         console.error("User registration error:", error.message);
@@ -389,7 +397,7 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        if (user.approvalStatus) {
+        if (user.isVerified) {
             res.status(400).json({ message: "User is already verified" });
             return;
         }

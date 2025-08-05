@@ -11,7 +11,7 @@
     "migrate:reset": "npx sequelize-cli db:migrate:undo:all && npm run migrate && npm run seed",
     "migrate:down": "npx sequelize-cli db:migrate:undo:all",
     "migrate:undo": "npx sequelize-cli db:migrate:undo",
-    "migrate:undo:all": "npx sequelize-cli db:migrate:undo",
+    "migrate:undo:all": "npx sequelize-cli db:migrate:undo:all",
     "update-models": "npx sequelize-cli migration:generate --name update-models",
     "seed": "npx sequelize-cli db:seed:all",
     "seed:undo": "npx sequelize-cli db:seed:undo:all",
@@ -71,6 +71,7 @@
     "reflect-metadata": "^0.2.2",
     "sequelize": "^6.37.4",
     "sequelize-typescript": "^2.1.6",
+    "socket.io": "^4.8.1",
     "ts-node-dev": "^2.0.0",
     "undici-types": "^6.19.8",
     "uuid": "^11.0.5"
