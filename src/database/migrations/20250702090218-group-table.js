@@ -76,15 +76,27 @@ module.exports = {
     });
 
     // Indexes
-    await queryInterface.addIndex('Groups', ['ownerId']);
+    await queryInterface.addIndex('Groups', ['ownerId'], {
+      name: 'idx_groups_owner_id'
+    });
+
     await queryInterface.addIndex('Groups', ['accessLink'], {
-      unique: true,
+      name: 'idx_groups_access_link',
+      unique: true
     });
+
     await queryInterface.addIndex('Groups', ['accessToken'], {
-      unique: true,
+      name: 'idx_groups_access_token',
+      unique: true
     });
-    await queryInterface.addIndex('Groups', ['isPrivate']);
-    await queryInterface.addIndex('Groups', ['createdAt']);
+
+    await queryInterface.addIndex('Groups', ['isPrivate'], {
+      name: 'idx_groups_is_private'
+    });
+
+    await queryInterface.addIndex('Groups', ['createdAt'], {
+      name: 'idx_groups_created_at'
+    });
   },
 
   down: async (queryInterface, Sequelize) => {

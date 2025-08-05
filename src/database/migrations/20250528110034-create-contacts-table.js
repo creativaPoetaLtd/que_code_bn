@@ -2,15 +2,29 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    // Drop and recreate ENUM type for status
-    await queryInterface.sequelize.query(`
-      DROP TYPE IF EXISTS "enum_Contacts_status" CASCADE;
-    `);
+    // Check if table already exists
+    const tableExists = await queryInterface.sequelize.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'Contacts'
+      );`
+    );
 
-    await queryInterface.sequelize.query(`
-      CREATE TYPE "enum_Contacts_status" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
-    `);
+    if (tableExists[0][0].exists) {
+      console.log('Contacts table already exists - skipping creation');
+      return;
+    }
 
+    // Create enum type
+    await queryInterface.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_Contacts_status') THEN
+          CREATE TYPE "enum_Contacts_status" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
+        END IF;
+      END
+      $$;
+    `);
     // Create the Contacts table
     await queryInterface.createTable('Contacts', {
       id: {
@@ -70,25 +84,59 @@ module.exports = {
       }
     });
 
-    // Add the unique composite index
-    await queryInterface.addIndex('Contacts', ['inviterId', 'inviteeId'], {
-      unique: true,
-      name: 'unique_inviter_invitee'
-    });
 
-    // Add index on invitationToken
-    await queryInterface.addIndex('Contacts', ['invitationToken'], {
-      name: 'contacts_invitation_token_index'
-    });
 
-    // Add index on status
-    await queryInterface.addIndex('Contacts', ['status'], {
-      name: 'contacts_status_index'
-    });
+    // Safe index creation
+    await queryInterface.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE indexname = 'unique_inviter_invitee'
+        ) THEN
+          CREATE UNIQUE INDEX unique_inviter_invitee
+          ON "Contacts" ("inviterId", "inviteeId");
+        END IF;
+      END
+      $$;
+    `);
+
+    await queryInterface.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE indexname = 'contacts_invitation_token_index'
+        ) THEN
+          CREATE INDEX contacts_invitation_token_index
+          ON "Contacts" ("invitationToken");
+        END IF;
+      END
+      $$;
+    `);
+
+    await queryInterface.sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE indexname = 'contacts_status_index'
+        ) THEN
+          CREATE INDEX contacts_status_index
+          ON "Contacts" ("status");
+        END IF;
+      END
+      $$;
+    `);
   },
 
   down: async (queryInterface, Sequelize) => {
+    // Remove indexes first
+    await queryInterface.removeIndex('Contacts', 'unique_inviter_invitee');
+    await queryInterface.removeIndex('Contacts', 'contacts_invitation_token_index');
+    await queryInterface.removeIndex('Contacts', 'contacts_status_index');
+
+    // Drop table
     await queryInterface.dropTable('Contacts');
+
+    // Drop enum
     await queryInterface.sequelize.query(`
       DROP TYPE IF EXISTS "enum_Contacts_status";
     `);
