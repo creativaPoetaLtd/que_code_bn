@@ -7,19 +7,55 @@ export interface EmailOptions {
   data: { [key: string]: string | undefined };
 }
 
-const sendEmail = async ({ to, subject, type, data }: EmailOptions): Promise<void> => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+// Create a singleton transporter to reuse connections
+class EmailService {
+  private static instance: EmailService;
+  private transporter: nodemailer.Transporter;
+  private isConnected = false;
 
-  const generateEmailTemplate = (): string => {
+  private constructor() {
+    this.transporter = nodemailer.createTransport({
+      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      pool: true, // Enable connection pooling
+      maxConnections: 5, // Limit concurrent connections
+      maxMessages: 100, // Max messages per connection
+      rateLimit: 10, // Max 10 messages per second
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      // Add timeout settings
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 5000, // 5 seconds
+      socketTimeout: 30000, // 30 seconds
+    });
+
+    // Verify connection on startup
+    this.verifyConnection();
+  }
+
+  public static getInstance(): EmailService {
+    if (!EmailService.instance) {
+      EmailService.instance = new EmailService();
+    }
+    return EmailService.instance;
+  }
+
+  private async verifyConnection(): Promise<void> {
+    try {
+      await this.transporter.verify();
+      this.isConnected = true;
+      console.log('SMTP connection verified successfully');
+    } catch (error) {
+      console.error('SMTP connection verification failed:', error);
+      this.isConnected = false;
+    }
+  }
+
+  private generateEmailTemplate(type: string, data: { [key: string]: string | undefined }): string {
     switch (type) {
       case "code":
         // First check if data.code exists and is a string
@@ -257,49 +293,86 @@ const sendEmail = async ({ to, subject, type, data }: EmailOptions): Promise<voi
       default:
         return `<p style="text-align: center; color: #ff0000;">Invalid email type</p>`;
     }
-  };
-
-  const htmlTemplate = `
-    <div style="
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 20px auto;
-      border: 1px solid #e0e0e0;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      text-align: center;
-    ">
-      <div style="background-color: #00B512; color: #ffffff; padding: 20px;">
-        <img 
-          src="${process.env.EMAIL_LOGO_URL || 'https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png'}" 
-          alt="Company Logo" 
-          style="max-width: 120px; margin: 0 auto 10px; display: block;"
-        >
-        <h1 style="font-size: 26px; margin: 0;">${process.env.EMAIL_COMPANY_NAME || 'QiewCode'}</h1>
-      </div>
-      <div style="padding: 30px 20px;">
-        ${generateEmailTemplate()}
-      </div>
-      <div style="background-color: #f9f9f9; padding: 20px; color: #666; font-size: 14px;">
-        <p>${process.env.EMAIL_FOOTER_TEXT || 'Thank you for choosing us!'}</p>
-        <p>Need help? Contact us at <a href="mailto:${process.env.EMAIL_SUPPORT}" style="color: #00B512; text-decoration: none;">${process.env.EMAIL_SUPPORT || 'support@qiewcode.com'}</a></p>
-      </div>
-    </div>
-  `;
-
-  try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to,
-      subject,
-      html: htmlTemplate,
-    });
-    console.log(`Email sent successfully to ${to}`);
-  } catch (error) {
-    console.error(`Failed to send email to ${to}:`, error);
-    throw new Error("Email sending failed");
   }
+
+  public async sendEmail({ to, subject, type, data }: EmailOptions): Promise<void> {
+    // Verify connection if not connected
+    if (!this.isConnected) {
+      await this.verifyConnection();
+    }
+
+    const htmlTemplate = `
+      <div style="
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 20px auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      ">
+        <div style="background-color: #00B512; color: #ffffff; padding: 20px;">
+          <img 
+            src="${process.env.EMAIL_LOGO_URL || 'https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png'}" 
+            alt="Company Logo" 
+            style="max-width: 120px; margin: 0 auto 10px; display: block;"
+          >
+          <h1 style="font-size: 26px; margin: 0;">${process.env.EMAIL_COMPANY_NAME || 'QiewCode'}</h1>
+        </div>
+        <div style="padding: 30px 20px;">
+          ${this.generateEmailTemplate(type, data)}
+        </div>
+        <div style="background-color: #f9f9f9; padding: 20px; color: #666; font-size: 14px;">
+          <p>${process.env.EMAIL_FOOTER_TEXT || 'Thank you for choosing us!'}</p>
+          <p>Need help? Contact us at <a href="mailto:${process.env.EMAIL_SUPPORT}" style="color: #00B512; text-decoration: none;">${process.env.EMAIL_SUPPORT || 'support@qiewcode.com'}</a></p>
+        </div>
+      </div>
+    `;
+
+    const startTime = Date.now();
+
+    try {
+      await this.transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to,
+        subject,
+        html: htmlTemplate,
+      });
+
+      const duration = Date.now() - startTime;
+      console.log(`Email sent successfully to ${to} in ${duration}ms`);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`Failed to send email to ${to} after ${duration}ms:`, error);
+
+      // Try to reconnect on failure
+      this.isConnected = false;
+      throw new Error("Email sending failed");
+    }
+  }
+
+  // Method to close connections gracefully
+  public async close(): Promise<void> {
+    this.transporter.close();
+    console.log('Email transporter closed');
+  }
+}
+
+// Export the singleton instance method
+const emailService = EmailService.getInstance();
+
+const sendEmail = async (options: EmailOptions): Promise<void> => {
+  return emailService.sendEmail(options);
 };
 
 export default sendEmail;
+
+// For graceful shutdown
+process.on('SIGTERM', async () => {
+  await emailService.close();
+});
+
+process.on('SIGINT', async () => {
+  await emailService.close();
+});
