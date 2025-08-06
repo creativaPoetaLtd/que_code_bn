@@ -100,6 +100,10 @@ export type UserCreationAttributes = Optional<
     showPhoneOnWelcome?: boolean;
     showProfileImageOnWelcome?: boolean;
     showStatusMessageOnWelcome?: boolean;
+    publicId?: string;
+    profileLink?: string;
+    qrCode?: string;
+
 };
 
 export interface WalletModelAttributes {
@@ -149,5 +153,7 @@ export type TransactionCreationAttributes = Optional<
     qrCode?: string;
 
 };
+
+
 
 export interface AuthenticatedUser extends UserModelAttributes { }

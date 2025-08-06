@@ -1,4 +1,5 @@
 'use strict';
+
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -9,63 +10,129 @@ module.exports = {
         type: Sequelize.UUID,
         defaultValue: Sequelize.UUIDV4
       },
-      firstName: { type: Sequelize.STRING },
-      lastName: { type: Sequelize.STRING },
-      email: { type: Sequelize.STRING },
-      password: { type: Sequelize.STRING },
-      gender: { type: Sequelize.STRING },
-      phone: { type: Sequelize.STRING },
-      province: { type: Sequelize.STRING },
-      district: { type: Sequelize.STRING },
-      sector: { type: Sequelize.STRING },
-      national_id: { type: Sequelize.STRING },
-      resetTokenExpires: { type: Sequelize.DATE },
-      resetToken: { type: Sequelize.STRING },
-      isVerified: { type: Sequelize.BOOLEAN },
-      lastOtpSent: { type: Sequelize.DATE },
-      otp: { type: Sequelize.STRING },
+      firstName: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      lastName: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      email: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true
+      },
+      password: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      gender: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      phone: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      province: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      district: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      sector: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      cell: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      logo: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      national_id: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      resetToken: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      resetTokenExpires: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      otp: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      otpExpires: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      lastOtpSent: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      isVerified: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       qrCode: {
         type: Sequelize.TEXT,
         allowNull: true
       },
-      otpExpires: { type: Sequelize.DATE },
       profileImage: {
         type: Sequelize.STRING,
-        allowNull: true,
+        allowNull: true
       },
       statusMessage: {
         type: Sequelize.STRING,
-        allowNull: true,
+        allowNull: true
       },
       showPhoneOnWelcome: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true,
+        defaultValue: true
       },
       showProfileImageOnWelcome: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true,
+        defaultValue: true
       },
       showStatusMessageOnWelcome: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true,
+        defaultValue: true
+      },
+      publicId: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      profileLink: {
+        type: Sequelize.STRING,
+        allowNull: true
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       }
     });
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('Users', {
-      cascade: true
-    });
+    await queryInterface.dropTable('Users');
   }
 };

@@ -82,6 +82,8 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         // Generate the QR Code
         const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
         const qrCodeData = await QRCode.toDataURL(userProfileLink);
+        // Generate QR Code with the profile link
+        // const qrCodeData = await QRCode.toDataURL(profileLink);
 
         // Update user with QR code
         await newUser.update({ qrCode: qrCodeData });
@@ -98,6 +100,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
 
         const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
         const { password: _, ...userWithoutPassword } = plainUser;
+        // const { password: _, ...userWithoutPassword } = newUser.toJSON();
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
             data: {
