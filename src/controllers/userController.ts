@@ -4,22 +4,23 @@ import { UserCreationAttributes, UserModelAttributes, WalletCreationAttributes }
 // import cloudinary from "../helpers/cloudinary";
 import bcrypt from 'bcrypt';
 import sendEmail from '../helpers/email';
-import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadSingle } from "../helpers/upload";
+import jwt from 'jsonwebtoken';
 
 interface MulterRequest extends Request {
     files?: {
         [fieldname: string]: Express.Multer.File[];
     } | Express.Multer.File[];
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
 // Helper type guard
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
     return obj && typeof obj.get === 'function';
 }
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
 const create_user = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -35,31 +36,28 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         }
 
         const { firstName, lastName, phone, email, password, province, district, sector, gender } = req.body;
+        const normalizedEmail = email.toLowerCase();
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-        // Generate unique public ID for sharing
-        const publicId = uuidv4().replace(/-/g, '').substring(0, 12);
-        const profileLink = `${process.env.FRONTEND_URL}/add-contact/${publicId}`;
+        // Set OTP expiry to 2 days
+        const otpExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
 
         const userData: UserCreationAttributes = {
-            id: uuidv4(),
+            id: uuidv4(), // Generate a UUID manually
             firstName,
             lastName,
             phone,
             gender,
-            email,
+            email: normalizedEmail,
             province,
             password: hashedPassword,
             district,
             sector,
+            approvalStatus: false,
             otp,
-            otpExpires,
-            publicId,
-            profileLink
+            otpExpires
         };
 
         const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
@@ -82,17 +80,22 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         // Generate the QR Code
         const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
         const qrCodeData = await QRCode.toDataURL(userProfileLink);
-        // Generate QR Code with the profile link
-        // const qrCodeData = await QRCode.toDataURL(profileLink);
 
-        // Update user with QR code
+        // Update user with QR code URL
         await newUser.update({ qrCode: qrCodeData });
 
-        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '10m' });
+        // Generate verification token (valid for 2 days)
+        const verificationToken = jwt.sign(
+            { email: newUser.email, id: newUser.id },
+            JWT_SECRET,
+            { expiresIn: '2d', algorithm: 'HS256' }
+        );
+        // Verification URL (frontend can handle this route)
+        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify?token=${verificationToken}`;
 
-        const verificationUrl = `${process.env.FRONTEND_URL}/auth/otp?token=${token}`;
+        // Send OTP and verification link via email
         await sendEmail({
-            to: email,
+            to: normalizedEmail,
             subject: 'Your OTP Code',
             type: 'code',
             data: { code: `${otp}`, verificationUrl }
@@ -100,13 +103,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
 
         const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
         const { password: _, ...userWithoutPassword } = plainUser;
-        // const { password: _, ...userWithoutPassword } = newUser.toJSON();
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
-            data: {
-                token,
-                otp
-            }
+            data: { ...userWithoutPassword, qrCode: qrCodeData }
         });
     } catch (error: any) {
         console.error("User registration error:", error.message);
@@ -341,11 +340,15 @@ const get_unapproved_users = async (req: Request, res: Response): Promise<void> 
 }
 // In your OTP verification controller
 const verify_otp = async (req: Request, res: Response): Promise<void> => {
-    const { token, otp } = req.body;
+    const { email, otp } = req.body;
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
-        const email = decoded.email;
+        // Validate input
+        if (!email || !otp) {
+            res.status(400).json({ message: "Email and OTP are required" });
+            return;
+        }
+
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
         });
@@ -387,10 +390,15 @@ const verify_otp = async (req: Request, res: Response): Promise<void> => {
 const RESEND_COOLDOWN = 1 * 60 * 1000; // 1 minute
 
 const resend_otp = async (req: Request, res: Response): Promise<void> => {
-    const { token } = req.body;
-    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
-    const email = decoded.email;
+    const { email } = req.body;
+    
     try {
+        // Validate input
+        if (!email) {
+            res.status(400).json({ message: "Email is required" });
+            return;
+        }
+
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
         });
@@ -429,7 +437,6 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
         );
 
         // Resend OTP via email
-
         await sendEmail({
             to: email,
             subject: 'Your OTP Code',
@@ -439,11 +446,71 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
             },
         });
 
-
         res.status(200).json({ message: "A new OTP has been sent to your email" });
     } catch (error) {
         console.error("Error resending OTP:", error);
         res.status(500).json({ message: "An error occurred while resending OTP" });
+    }
+};
+
+// Email verification via token
+const verify_email_token = async (req: Request, res: Response): Promise<void> => {
+    console.log('=== VERIFY EMAIL TOKEN FUNCTION CALLED ===');
+    try {
+        console.log('Starting email verification...');
+        const { token } = req.query;
+        console.log('Token received:', token ? 'present' : 'missing');
+        
+        if (!token || typeof token !== 'string') {
+            res.status(400).json({ message: 'Verification token is required' });
+            return;
+        }
+        
+        let payload: any;
+        try {
+            payload = jwt.verify(token, JWT_SECRET);
+            console.log('JWT payload:', payload);
+        } catch (err) {
+            console.error('JWT verification failed:', err);
+            res.status(400).json({ message: 'Invalid or expired verification token' });
+            return;
+        }
+        
+        const normalizedEmail = payload.email.toLowerCase();
+        console.log('Looking for user with email:', normalizedEmail);
+        
+        try {
+            const user = await read_function<UserModelAttributes>("User", "findOne", { 
+                where: { email: normalizedEmail } 
+            });
+            console.log('User lookup result:', user ? 'found' : 'not found');
+            
+            if (!user) {
+                res.status(404).json({ message: 'User not found' });
+                return;
+            }
+            
+            if (user.isVerified) {
+                res.status(400).json({ message: 'User already verified' });
+                return;
+            }
+            
+            console.log('Updating user verification status...');
+            await insert_function<UserModelAttributes>(
+                "User",
+                "update",
+                { isVerified: true, otp: null, otpExpires: null },
+                { where: { email: normalizedEmail } }
+            );
+            
+            res.status(200).json({ message: 'Email verified successfully. You can now log in.' });
+        } catch (dbError) {
+            console.error('Database error during user lookup:', dbError);
+            res.status(500).json({ message: 'An error occurred while fetching the user' });
+        }
+    } catch (error) {
+        console.error('Email verification error:', error);
+        res.status(500).json({ message: 'An error occurred during email verification' });
     }
 };
 
@@ -458,5 +525,6 @@ export default {
     get_approved_users,
     get_unapproved_users,
     verify_otp,
-    resend_otp
+    resend_otp,
+    verify_email_token
 };

@@ -12,6 +12,9 @@ userRouter.post(
 );
 
 userRouter.get("/", userController.get_all_users);
+userRouter.get("/approved", userController.get_approved_users);
+userRouter.get("/unapproved", userController.get_unapproved_users);
+userRouter.get('/verify-email', userController.verify_email_token);
 userRouter.get("/:id", userController.get_user_by_id);
 userRouter.put(
   "/:id",
@@ -23,8 +26,6 @@ userRouter.put(
 userRouter.delete("/:id", userController.delete_user);
 userRouter.put("/:id/approve", userController.approve_user);
 userRouter.put("/:id/disapprove", userController.disapprove_user);
-userRouter.get("/approved", userController.get_approved_users);
-userRouter.get("/unapproved", userController.get_unapproved_users);
 userRouter.post('/verify-otp', userController.verify_otp);
 userRouter.post('/resend-otp', userController.resend_otp);
 
