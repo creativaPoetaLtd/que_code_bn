@@ -4,7 +4,6 @@ import { UserCreationAttributes, UserModelAttributes, WalletCreationAttributes }
 // import cloudinary from "../helpers/cloudinary";
 import bcrypt from 'bcrypt';
 import sendEmail from '../helpers/email';
-import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadSingle } from "../helpers/upload";
@@ -14,7 +13,6 @@ interface MulterRequest extends Request {
         [fieldname: string]: Express.Multer.File[];
     } | Express.Multer.File[];
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
 // Helper type guard
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
@@ -88,14 +86,12 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         // Update user with QR code
         await newUser.update({ qrCode: qrCodeData });
 
-        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '10m' });
-
-        const verificationUrl = `${process.env.FRONTEND_URL}/auth/otp?token=${token}`;
+        // Send OTP via email (no JWT token needed)
         await sendEmail({
             to: email,
             subject: 'Your OTP Code',
             type: 'code',
-            data: { code: `${otp}`, verificationUrl }
+            data: { code: `${otp}` }
         });
 
         const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
@@ -341,11 +337,15 @@ const get_unapproved_users = async (req: Request, res: Response): Promise<void> 
 }
 // In your OTP verification controller
 const verify_otp = async (req: Request, res: Response): Promise<void> => {
-    const { token, otp } = req.body;
+    const { email, otp } = req.body;
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
-        const email = decoded.email;
+        // Validate input
+        if (!email || !otp) {
+            res.status(400).json({ message: "Email and OTP are required" });
+            return;
+        }
+
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
         });
@@ -387,10 +387,15 @@ const verify_otp = async (req: Request, res: Response): Promise<void> => {
 const RESEND_COOLDOWN = 1 * 60 * 1000; // 1 minute
 
 const resend_otp = async (req: Request, res: Response): Promise<void> => {
-    const { token } = req.body;
-    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
-    const email = decoded.email;
+    const { email } = req.body;
+    
     try {
+        // Validate input
+        if (!email) {
+            res.status(400).json({ message: "Email is required" });
+            return;
+        }
+
         const user = await read_function<UserModelAttributes>("User", "findOne", {
             where: { email }
         });
@@ -429,7 +434,6 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
         );
 
         // Resend OTP via email
-
         await sendEmail({
             to: email,
             subject: 'Your OTP Code',
@@ -438,7 +442,6 @@ const resend_otp = async (req: Request, res: Response): Promise<void> => {
                 code: `${newOtp}`
             },
         });
-
 
         res.status(200).json({ message: "A new OTP has been sent to your email" });
     } catch (error) {
