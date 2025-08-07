@@ -64,34 +64,38 @@ class EmailService {
         }
 
         return `
-      <div style="text-align: center;">
-        <h2 style="color: #333; font-size: 22px; font-weight: bold;">Verification Code</h2>
-        <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-          Use the following verification code to complete your action. This code will expire in 10 minutes. Please do not share it with anyone.
-        </p>
-        <div style="display: inline-flex; justify-content: center; align-items: center; gap: 15px; margin: 0 auto 30px;">
-          ${data.code.split('').map(
-          (digit) => `
-                  <div style="
-                    width: 50px;
-                    height: 50px;
-                    font-size: 20px;
-                    font-weight: bold;
-                    color: #00B512;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    margin: 0 auto;
-                  ">
-                    ${digit}
-                  </div>
-                `
-        ).join('')}
-        </div>
-        ${data.verificationUrl
+          <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">Verification Code</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Use the following verification code to complete your action. This code will expire in 2 days. Please do not share it with anyone.
+            </p>
+            <div style="display: inline-flex; justify-content: center; align-items: center; gap: 15px; margin: 0 auto 30px;">
+              ${[...data.code]
+            .map(
+              (digit) => `
+                    <div style="
+                      width: 50px;
+                      height: 50px;
+                      font-size: 20px;
+                      font-weight: bold;
+                      color: #00B512;
+                      display: flex;
+                      justify-content: center;
+                      align-items: center;
+                      margin: 0 auto;
+                    ">
+                      ${digit}
+                    </div>
+                  `
+            )
+            .join("")}
+            </div>
+            ${data.verificationUrl
+
             ? `
-          <p>Click the link below:</p>
-          <a href="${data.verificationUrl}" style="color: #00B512; text-decoration: none;">Verify my account</a>`
+            <h2>or use the following link to verify your account</h2>
+            <p>Click the link below:</p>
+            <a href="${data.verificationUrl}" style="color: #00B512; text-decoration: none; background-color: #00B512; padding: 10px 20px; border-radius: 5px; color: #fff;">Verify my account</a>`
             : ""
           }
       </div>

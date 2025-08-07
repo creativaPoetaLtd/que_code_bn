@@ -47,11 +47,11 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       res.status(404).json({ message: "Account not found" });
       return;
     }
-    
-    if (user && user.isVerified === false) {
-      res.status(403).json({ message: "Account pending approval" });
-      return;
-    }
+
+    // if (user && user.approvalStatus === false) {
+    //   res.status(403).json({ message: "Account pending approval" });
+    //   return;
+    // }
     const isPasswordValid = await bcrypt.compare(password, account.password);
     if (!isPasswordValid) {
       res.status(401).json({ message: "Invalid credentials" });
