@@ -1,4 +1,4 @@
-import { Response, NextFunction } from "express";
+import { Response, NextFunction, Application } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { Op } from "sequelize";
 import QRCode from 'qrcode';
@@ -31,11 +31,9 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
-        // Generate unique access token and link
         const accessToken = uuidv4();
         const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
 
-        // Create the group
         const group = await models.Group.create({
             id: uuidv4(),
             name: name.trim(),
@@ -49,7 +47,6 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             memberCount: 1
         });
 
-        // Generate QR code for the group
         try {
             const qrCodeData = await QRCode.toDataURL(accessLink);
             await group.update({ qrCode: qrCodeData });
@@ -57,7 +54,6 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             console.error("Failed to generate QR code:", qrError);
         }
 
-        // Add owner as a member
         await models.GroupMember.create({
             id: uuidv4(),
             groupId: group.id,
@@ -69,15 +65,14 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             invitedAt: new Date()
         });
 
-        // Invite initial members if provided
+        // Send invitations with notifications
         if (memberIds.length > 0) {
-            await inviteUsersToGroup(group.id, memberIds, ownerId, models);
+            await inviteUsersToGroup(group.id, memberIds, ownerId, models, req.app);
         }
 
-        // Get owner details for response
         const owner = await models.User.findByPk(ownerId);
 
-        // Send notification to owner (example)
+        // Send notification to group owner
         await createAndSendNotification(req.app, {
             type: NotificationType.GROUP_CREATED,
             recipientId: ownerId,
@@ -116,7 +111,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
 
 const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { groupId, memberIds }: InviteToGroupRequest = req.body;
+        const { groupId, memberIds }: { groupId: string; memberIds: string[] } = req.body;
         const inviterId = req.user.id;
 
         if (!groupId || !memberIds || memberIds.length === 0) {
@@ -125,6 +120,7 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
         }
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
+        const app = req.app; // Get the express app instance for notifications
 
         // Check if group exists and user has permission to invite
         const group = await models.Group.findByPk(groupId);
@@ -148,13 +144,54 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
             return;
         }
 
-        const results = await inviteUsersToGroup(groupId, memberIds, inviterId, models);
+        const users = await models.User.findAll({
+            where: {
+                publicId: { [Op.in]: memberIds }
+            },
+            attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+        });
+
+        if (users.length === 0) {
+            res.status(400).json({ message: "No valid users found with the provided member IDs" });
+            return;
+        }
+
+        const foundMemberIds = users.map(user => user.publicId).filter((id): id is string => id !== undefined);
+        const notFoundMemberIds = memberIds.filter(id => !foundMemberIds.includes(id));
+        const inviter = await models.User.findByPk(inviterId);
+        const inviterName = inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone';
+
+        const results = await inviteUsersToGroup(groupId, foundMemberIds, inviterId, models, app);
+
+        const failedResults = [
+            ...results.failed,
+            ...notFoundMemberIds.map(id => ({
+                memberId: id,
+                error: 'User not found'
+            }))
+        ];
+
+        if (results.successful.length > 0) {
+            try {
+                await createAndSendNotification(app, {
+                    type: NotificationType.GROUP_INVITATION_SENT,
+                    recipientId: inviterId,
+                    data: {
+                        groupId: group.id,
+                        groupName: group.name,
+                        message: `You've successfully invited ${results.successful.length} member(s) to ${group.name}`,
+                    }
+                });
+            } catch (notificationError) {
+                console.error("Failed to send inviter notification:", notificationError);
+            }
+        }
 
         res.status(200).json({
             message: "Invitations processed",
             data: {
                 successful: results.successful,
-                failed: results.failed,
+                failed: failedResults,
                 totalInvited: results.successful.length
             }
         });
@@ -492,7 +529,8 @@ const inviteUsersToGroup = async (
     groupId: string,
     memberIds: string[],
     inviterId: string,
-    models: ReturnType<typeof Models>
+    models: ReturnType<typeof Models>,
+    app?: Application // Add app parameter to access notification service
 ) => {
     const successful: any[] = [];
     const failed: any[] = [];
@@ -515,7 +553,6 @@ const inviteUsersToGroup = async (
     const inviter = await models.User.findByPk(inviterId);
 
     for (const publicId of memberIds) {
-
         try {
             // Find user by public ID
             const user = await models.User.findOne({
@@ -562,11 +599,13 @@ const inviteUsersToGroup = async (
                 invitedAt: new Date(),
                 invitationToken
             });
+
+            // Create URLs for accept/reject actions
+            const acceptUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=accept&membershipId=${membership.id}`;
+            const rejectUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=reject&membershipId=${membership.id}`;
+
             // Send invitation email
             try {
-                const acceptUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=accept&membershipId=${membership.id}`;
-                const rejectUrl = `${process.env.FRONTEND_URL}/groups/respond?token=${invitationToken}&action=reject&membershipId=${membership.id}`;
-
                 await sendEmail({
                     to: user.email,
                     subject: `You're Invited to Join ${group?.name}`,
@@ -581,6 +620,37 @@ const inviteUsersToGroup = async (
                 });
             } catch (emailError) {
                 console.error("Failed to send group invitation email:", emailError);
+            }
+
+            // Send notification to invited user
+            if (app) {
+                try {
+                    await createAndSendNotification(app, {
+                        type: NotificationType.GROUP_INVITATION,
+                        recipientId: user.id,
+                        data: {
+                            groupId: group?.id,
+                            groupName: group?.name,
+                            userId: inviterId,
+                            userName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone',
+                            message: `${inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone'} invited you to join '${group?.name}'`,
+                            actions: [
+                                {
+                                    type: 'accept',
+                                    label: 'Accept',
+                                    url: acceptUrl
+                                },
+                                {
+                                    type: 'decline',
+                                    label: 'Decline',
+                                    url: rejectUrl
+                                }
+                            ]
+                        }
+                    });
+                } catch (notificationError) {
+                    console.error("Failed to send group invitation notification:", notificationError);
+                }
             }
 
             successful.push({
@@ -812,7 +882,6 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
         const userId = req.user.id;
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
-
         const membership = await models.GroupMember.findOne({
             where: {
                 groupId,
@@ -831,6 +900,8 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
             res.status(400).json({ message: "Group owners cannot leave. Transfer ownership or delete the group instead." });
             return;
         }
+        const group = await models.Group.findByPk(groupId);
+        const user = await models.User.findByPk(userId);
 
         // Update membership status to LEFT
         await membership.update({
@@ -840,7 +911,28 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
 
         // Decrease group member count
         await models.Group.decrement('memberCount', { where: { id: groupId } });
+        const members = await models.GroupMember.findAll({
+            where: {
+                groupId,
+                userId: { [Op.ne]: userId },
+                status: GroupMemberStatus.ACCEPTED
+            }
+        })
+        const notificationPromises = members.map(member =>
+            createAndSendNotification(req.app, {
+                type: NotificationType.GROUP_MEMBER_LEFT,
+                recipientId: member.userId,
+                data: {
+                    groupId: groupId,
+                    groupName: group?.name,
+                    userId: userId,
+                    userName: user ? `${user.firstName} ${user.lastName}` : 'Unknown user',
+                    message: `${user?.firstName} ${user?.lastName} has left the group '${group?.name}'`
+                }
+            })
+        );
 
+        await Promise.all(notificationPromises);
         res.status(200).json({
             message: "Successfully left the group"
         });
@@ -913,6 +1005,43 @@ const removeMember = async (req: AuthenticatedRequest, res: Response, next: Next
 
         // Decrease group member count
         await models.Group.decrement('memberCount', { where: { id: groupId } });
+        const group = await models.Group.findByPk(groupId);
+        const remover = await models.User.findByPk(userId);
+
+        // Notify the removed member
+        await createAndSendNotification(req.app, {
+            type: NotificationType.MEMBER_REMOVED_FROM_GROUP,
+            recipientId: memberId,
+            data: {
+                groupId: groupId,
+                groupName: group?.name,
+                userId: userId,
+                userName: remover ? `${remover.firstName} ${remover.lastName}` : 'Unknown admin',
+                message: `You have been removed from the group '${group?.name}' by ${remover?.firstName} ${remover?.lastName}`
+            }
+        });
+        const otherMembers = await models.GroupMember.findAll({
+            where: {
+                groupId,
+                userId: { [Op.ne]: userId },
+                status: GroupMemberStatus.ACCEPTED
+            }
+        });
+        const notificationPromises = otherMembers.map(member =>
+            createAndSendNotification(req.app, {
+                type: NotificationType.MEMBER_REMOVED_FROM_GROUP,
+                recipientId: member.userId,
+                data: {
+                    groupId: groupId,
+                    groupName: group?.name,
+                    userId: memberId,
+                    userName: `${memberToRemove.user.firstName} ${memberToRemove.user.lastName}`,
+                    message: `${memberToRemove.user.firstName} ${memberToRemove.user.lastName} has been removed from the group '${group?.name}' by ${remover?.firstName} ${remover?.lastName}`
+                }
+            })
+        );
+
+        await Promise.all(notificationPromises);
 
         res.status(200).json({
             message: `Successfully removed ${memberToRemove.user.firstName} ${memberToRemove.user.lastName} from the group`
@@ -942,6 +1071,35 @@ const deleteGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             res.status(403).json({ message: "You can only delete groups you own" });
             return;
         }
+
+        const members = await models.GroupMember.findAll({
+            where: { groupId },
+            include: [
+                {
+                    model: models.User,
+                    attributes: ['id', 'firstName', 'lastName']
+                }
+            ]
+        });
+
+        const owner = await models.User.findByPk(userId);
+        const notificationPromises = members
+            .filter(member => member.userId !== userId)
+            .map(member =>
+                createAndSendNotification(req.app, {
+                    type: NotificationType.GROUP_DELETED,
+                    recipientId: member.userId,
+                    data: {
+                        groupId: groupId,
+                        groupName: group?.name,
+                        userId: userId,
+                        userName: owner ? `${owner.firstName} ${owner.lastName}` : 'Unknown owner',
+                        message: `The group '${group?.name}' has been deleted by ${owner?.firstName} ${owner?.lastName}`
+                    }
+                })
+            );
+
+        await Promise.all(notificationPromises);
 
         // Delete all group members (cascade should handle this, but being explicit)
         await models.GroupMember.destroy({
