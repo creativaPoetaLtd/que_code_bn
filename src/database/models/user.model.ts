@@ -12,6 +12,7 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
     public province!: string;
     public district!: string;
     public sector!: string;
+    public approvalStatus!: boolean;
     public cell!: string;
     public logo!: CreationOptional<string>;
     public national_id!: CreationOptional<string>;
@@ -74,6 +75,11 @@ const User_model = (sequelize: Sequelize) => {
         sector: {
             type: DataTypes.STRING,
             allowNull: true,
+        },
+        approvalStatus: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
         },
         // national_id: {
         //     type: DataTypes.STRING,

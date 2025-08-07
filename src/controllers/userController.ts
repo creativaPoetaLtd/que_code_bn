@@ -44,12 +44,8 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         // Set OTP expiry to 2 days
         const otpExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
 
-        // Generate unique public ID for sharing
-        const publicId = uuidv4().replace(/-/g, '').substring(0, 12);
-        const profileLink = `${process.env.FRONTEND_URL}/add-contact/${publicId}`;
-
         const userData: UserCreationAttributes = {
-            id: uuidv4(),
+            id: uuidv4(), // Generate a UUID manually
             firstName,
             lastName,
             phone,
@@ -59,10 +55,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
             password: hashedPassword,
             district,
             sector,
+            approvalStatus: false,
             otp,
-            otpExpires,
-            publicId,
-            profileLink
+            otpExpires
         };
 
         const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
@@ -85,10 +80,8 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         // Generate the QR Code
         const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
         const qrCodeData = await QRCode.toDataURL(userProfileLink);
-        // Generate QR Code with the profile link
-        // const qrCodeData = await QRCode.toDataURL(profileLink);
 
-        // Update user with QR code
+        // Update user with QR code URL
         await newUser.update({ qrCode: qrCodeData });
 
         // Generate verification token (valid for 2 days)
@@ -110,13 +103,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
 
         const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
         const { password: _, ...userWithoutPassword } = plainUser;
-        // const { password: _, ...userWithoutPassword } = newUser.toJSON();
         res.status(201).json({
             message: "User registered successfully. Please verify your email using the OTP sent.",
-            data: {
-                token,
-                otp
-            }
+            data: { ...userWithoutPassword, qrCode: qrCodeData }
         });
     } catch (error: any) {
         console.error("User registration error:", error.message);
