@@ -7,7 +7,7 @@ import {
     UserModelAttributes 
 } from "../types/model";
 import { v4 as uuidv4 } from 'uuid';
-import { Op } from 'sequelize';
+import { Op, where, col, cast } from 'sequelize';
 
 // Calculate transaction fee (2% of amount) with proper decimal handling
 const calculateFee = (amount: number): number => {
@@ -202,7 +202,7 @@ const transfer_money = async (req: Request, res: Response): Promise<void> => {
 const get_transaction_history = async (req: Request, res: Response): Promise<void> => {
     try {
         const { userId } = req.params;
-        const { page = 1, limit = 10, type, status } = req.query;
+        const { page = 1, limit = 10, type, status, search, startDate, endDate } = req.query;
 
         // Build where condition
         const whereCondition: any = {
@@ -218,6 +218,22 @@ const get_transaction_history = async (req: Request, res: Response): Promise<voi
 
         if (status) {
             whereCondition.status = status;
+        }
+        // Search by description or type
+        if (search) {
+            whereCondition[Op.or].push(
+                { description: { [Op.iLike]: `%${search}%` } },
+                // Cast enum 'type' to text for case-insensitive search
+                where(cast(col('type'), 'text'), { [Op.iLike]: `%${search}%` })
+            );
+        }
+        // Date range filter
+        if (startDate && endDate) {
+            whereCondition.createdAt = { [Op.between]: [startDate, endDate] };
+        } else if (startDate) {
+            whereCondition.createdAt = { [Op.gte]: startDate };
+        } else if (endDate) {
+            whereCondition.createdAt = { [Op.lte]: endDate };
         }
 
         const offset = (Number(page) - 1) * Number(limit);
