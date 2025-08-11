@@ -66,7 +66,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         try {
             const walletData: WalletCreationAttributes = {
                 userId: newUser.id,
-                balance: 0, // Start with zero balance
+                balance: 67000, // Start with zero balance
                 currency: 'RWF',
                 isActive: true
             };
