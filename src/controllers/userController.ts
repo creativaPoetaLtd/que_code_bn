@@ -55,7 +55,6 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
             password: hashedPassword,
             district,
             sector,
-            approvalStatus: false,
             otp,
             otpExpires
         };

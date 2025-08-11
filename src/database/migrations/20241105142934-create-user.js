@@ -111,6 +111,11 @@ module.exports = {
         allowNull: false,
         defaultValue: true
       },
+      approvalStatus: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       publicId: {
         type: Sequelize.STRING,
         allowNull: true
