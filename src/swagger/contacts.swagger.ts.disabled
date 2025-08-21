@@ -1,0 +1,237 @@
+/**
+ * @swagger
+ * tags:
+ *   name: Contacts
+ *   description: Contact management endpoints (Note: Contacts are created when invitations are accepted)
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Contact:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         userAId:
+ *           type: string
+ *           format: uuid
+ *         userBId:
+ *           type: string
+ *           format: uuid
+ *         status:
+ *           type: string
+ *           enum: [active, blocked]
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *         otherUser:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *               format: uuid
+ *             firstName:
+ *               type: string
+ *             lastName:
+ *               type: string
+ *             email:
+ *               type: string
+ *               format: email
+ */
+
+/**
+ * @swagger
+ * /api/contacts:
+ *   get:
+ *     summary: Get all contacts for current user
+ *     tags: [Contacts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, blocked]
+ *         description: Filter by status
+ *     responses:
+ *       200:
+ *         description: List of user contacts with user details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Contact'
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contacts/{id}:
+ *   get:
+ *     summary: Get contact by ID
+ *     tags: [Contacts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Contact ID
+ *     responses:
+ *       200:
+ *         description: Contact found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Contact'
+ *       404:
+ *         description: Contact not found
+ *       403:
+ *         description: Not authorized to view this contact
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contacts/{id}:
+ *   put:
+ *     summary: Update contact status (block/unblock)
+ *     tags: [Contacts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Contact ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [active, blocked]
+ *                 description: New contact status
+ *     responses:
+ *       200:
+ *         description: Contact updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Contact'
+ *       404:
+ *         description: Contact not found
+ *       403:
+ *         description: Not authorized to update this contact
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contacts/{id}:
+ *   delete:
+ *     summary: Remove a contact (delete the relationship)
+ *     tags: [Contacts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Contact ID
+ *     responses:
+ *       200:
+ *         description: Contact removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Contact not found
+ *       403:
+ *         description: Not authorized to remove this contact
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contacts/search:
+ *   get:
+ *     summary: Search for users to potentially invite as contacts
+ *     tags: [Contacts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search query (name or email)
+ *         required: true
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Maximum number of results
+ *     responses:
+ *       200:
+ *         description: Search results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     format: uuid
+ *                   firstName:
+ *                     type: string
+ *                   lastName:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                     format: email
+ *                   relationshipStatus:
+ *                     type: string
+ *                     enum: [none, active, blocked, pending_invitation]
+ *                     description: Current relationship status with this user
+ *       400:
+ *         description: Search query required
+ *       500:
+ *         description: Internal server error
+ */

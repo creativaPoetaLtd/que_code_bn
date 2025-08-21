@@ -1,23 +1,25 @@
-import express from "express";
-import * as contactController from "../controllers/contactController";
+import { Router } from "express";
+import contactController from "../controllers/contactController";
 import { authenticate } from "../middleware/auth.middleware";
 
-const contactRouter = express.Router();
+const router = Router();
 
-// Apply authentication middleware to all contact routes
-contactRouter.use(authenticate);
+// All routes require authentication
+router.use(authenticate);
 
-// Contact invitation endpoints
-contactRouter.post("/invite", contactController.inviteContact as express.RequestHandler);
-contactRouter.put("/respond/:contactId", contactController.respondToInvitation as express.RequestHandler);
+// Search users for potential contacts
+router.get("/search", contactController.search_users);
 
-// Contact management endpoints
-contactRouter.get("/", contactController.getContacts as express.RequestHandler);
-contactRouter.get("/pending", contactController.getPendingInvitations as express.RequestHandler);
-contactRouter.get("/accepted", contactController.getAcceptedContacts as express.RequestHandler);
-// contactRouter.delete("/:contactId", contactController.removeContact);
+// Get current user's contacts
+router.get("/", contactController.get_user_contacts);
 
-// Public endpoint (no authentication required)
+// Get contact by ID
+router.get("/:id", contactController.get_contact_by_id);
 
+// Update contact status (block/unblock)
+router.put("/:id", contactController.update_contact_status);
 
-export default contactRouter;
+// Remove contact
+router.delete("/:id", contactController.remove_contact);
+
+export default router;

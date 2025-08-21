@@ -1,105 +1,54 @@
-import { DataTypes, Model, Sequelize, UUIDV4, CreationOptional } from "sequelize";
-import { OrganizationCreationAttributes, OrganizationModelAttributes } from "../../types/model";
+import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
+import {
+  OrganizationCreationAttributes,
+  OrganizationModelAttributes,
+} from "../../types/model";
 
-class Organization extends Model<OrganizationModelAttributes, OrganizationCreationAttributes> {
-    public id!: CreationOptional<number>;
-    public name!: string;
-    public type!: string;
-    public email!: string;
-    public ownerPhone!: string;
-    public ownerEmail!: string;
-    public password!: string;
-    public contactPhone!: string;
-    public tinNumber!: string;
-    public registrationNumber!: string;
-    public province!: string;
-    public district!: string;
-    public sector!: string;
-    public cell!: string;
-    public logo!: CreationOptional<string>;
-    public operationalDocument!: CreationOptional<string>;
+class Organization extends Model<
+  OrganizationModelAttributes,
+  OrganizationCreationAttributes
+> {
+  public id!: string;
+  public name!: string;
+  public email!: string;
+  public password!: string;
+  public ownerName!: string;
+  public ownerEmail!: string;
+  public ownerPhone!: string;
+  public approvalStatus!: boolean;
+  public categoryId?: string;
+
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
 }
 
-const organization_model = (sequelize: Sequelize) => {
-    Organization.init({
-        id: {
-            type: DataTypes.INTEGER,
-            autoIncrement: true,
-            primaryKey: true,
+const Organization_model = (sequelize: Sequelize) => {
+  Organization.init(
+    {
+      id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
+      name: { type: DataTypes.STRING, allowNull: false },
+      email: { type: DataTypes.STRING, unique: true, allowNull: false },
+      password: { type: DataTypes.STRING, allowNull: false },
+      ownerName: { type: DataTypes.STRING, allowNull: false },
+      ownerEmail: { type: DataTypes.STRING, allowNull: false },
+      ownerPhone: { type: DataTypes.STRING, allowNull: false },
+      approvalStatus: { type: DataTypes.BOOLEAN, defaultValue: false },
+      categoryId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "OrganizationCategories",
+          key: "id",
         },
-        name: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        type: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        email: {
-            type: DataTypes.STRING,
-            allowNull: false,
-            unique: true,
-        },
-        password: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        ownerPhone: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        ownerEmail: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        contactPhone: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        tinNumber: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        registrationNumber: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        province: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        district: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        sector: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        cell: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        logo: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        operationalDocument: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        approvalStatus: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: false,
-        },
-    }, {
-        sequelize,
-        tableName: "organizations2",
-    });
+      },
+    },
+    {
+      sequelize,
+      tableName: "Organizations",
+    }
+  );
 
-    return Organization;
+  return Organization;
 };
 
-export default organization_model;
-
+export default Organization_model;

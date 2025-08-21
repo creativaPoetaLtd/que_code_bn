@@ -1,529 +1,593 @@
-import { Request, Response } from 'express';
+import { Request, Response } from "express";
 import { insert_function, read_function } from "../utils/db_methods";
-import { UserCreationAttributes, UserModelAttributes, WalletCreationAttributes } from "../types/model";
-// import cloudinary from "../helpers/cloudinary";
-import bcrypt from 'bcrypt';
-import sendEmail from '../helpers/email';
-import QRCode from 'qrcode';
-import { v4 as uuidv4 } from 'uuid';
-import { uploadSingle } from "../helpers/upload";
-import jwt from 'jsonwebtoken';
+import {
+  UserCreationAttributes,
+  UserModelAttributes,
+  WalletCreationAttributes,
+  ProfileCreationAttributes,
+  ProfileModelAttributes,
+} from "../types/model";
+import bcrypt from "bcrypt";
+import sendEmail from "../helpers/email.simple";
+import QRCode from "qrcode";
+import jwt from "jsonwebtoken";
 
-interface MulterRequest extends Request {
-    files?: {
-        [fieldname: string]: Express.Multer.File[];
-    } | Express.Multer.File[];
-}
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 // Helper type guard
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
-    return obj && typeof obj.get === 'function';
+  return obj && typeof obj.get === "function";
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
-
-const create_user = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const existingUser = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { email: req.body.email } }
-        );
-
-        if (existingUser) {
-            res.status(400).json({ message: "User already exists" });
-            return;
-        }
-
-        const { firstName, lastName, phone, email, password, province, district, sector, gender } = req.body;
-        const normalizedEmail = email.toLowerCase();
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        // Set OTP expiry to 2 days
-        const otpExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-
-        const userData: UserCreationAttributes = {
-            id: uuidv4(), // Generate a UUID manually
-            firstName,
-            lastName,
-            phone,
-            gender,
-            email: normalizedEmail,
-            province,
-            password: hashedPassword,
-            district,
-            sector,
-            otp,
-            otpExpires
-        };
-
-        const newUser: any = await insert_function<UserModelAttributes>("User", "create", userData);
-
-        // Create wallet for the new user
-        try {
-            const walletData: WalletCreationAttributes = {
-                userId: newUser.id,
-                balance: 67000, // Start with zero balance
-                currency: 'RWF',
-                isActive: true
-            };
-            
-            await insert_function("Wallet", "create", walletData);
-        } catch (walletError) {
-            console.error("Error creating wallet for user:", walletError);
-            // Don't fail user creation if wallet creation fails
-        }
-
-        // Generate the QR Code
-        const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
-        const qrCodeData = await QRCode.toDataURL(userProfileLink);
-
-        // Update user with QR code URL
-        await newUser.update({ qrCode: qrCodeData });
-
-        // Generate verification token (valid for 2 days)
-        const verificationToken = jwt.sign(
-            { email: newUser.email, id: newUser.id },
-            JWT_SECRET,
-            { expiresIn: '2d', algorithm: 'HS256' }
-        );
-        // Verification URL (frontend can handle this route)
-        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify?token=${verificationToken}`;
-
-        // Send OTP and verification link via email
-        await sendEmail({
-            to: normalizedEmail,
-            subject: 'Your OTP Code',
-            type: 'code',
-            data: { code: `${otp}`, verificationUrl }
-        });
-
-        const plainUser = isSequelizeInstance(newUser) ? newUser.get({ plain: true }) : newUser;
-        const { password: _, ...userWithoutPassword } = plainUser;
-        res.status(201).json({
-            message: "User registered successfully. Please verify your email using the OTP sent.",
-            data: { ...userWithoutPassword, qrCode: qrCodeData }
-        });
-    } catch (error: any) {
-        console.error("User registration error:", error.message);
-        res.status(500).json({ message: "An error occurred while registering the user" });
-    }
+// Generate a 6-digit OTP
+const generateOTP = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-const get_all_users = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const allUsers = await read_function<UserModelAttributes[]>(
-            "User",
-            "findAll"
-        );
-        const plainUsers = Array.isArray(allUsers)
-            ? allUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
-            : [];
-        res.status(200).json(plainUsers);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while fetching all users" });
+// Register a new user
+const create_user = async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log("🚀 User registration started");
+    console.log("📥 Request body:", req.body);
+
+    const { firstName, lastName, phone, email, password } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !phone || !email || !password) {
+      console.log("❌ Missing required fields");
+      res.status(400).json({
+        message: "Missing required fields",
+        required: ["firstName", "lastName", "phone", "email", "password"],
+      });
+      return;
     }
-}
+
+    console.log("✅ All required fields provided");
+    console.log(
+      "🔍 Checking if user already exists with email:",
+      email.toLowerCase()
+    );
+
+    // Check if user already exists
+    const existingUser = await read_function<UserModelAttributes>(
+      "User",
+      "findOne",
+      { where: { email: email.toLowerCase() } }
+    );
+
+    if (existingUser) {
+      console.log("❌ User already exists with email:", email.toLowerCase());
+      res.status(400).json({ message: "User already exists" });
+      return;
+    }
+
+    console.log("✅ User does not exist, proceeding with registration");
+
+    // Hash password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    console.log("✅ Password hashed successfully");
+
+    // Generate OTP and set expiration (10 minutes)
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000); // 2 days
+    // Create user
+    const userData: UserCreationAttributes = {
+      firstName,
+      lastName,
+      phone,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      otp,
+      otpExpires,
+    };
+
+    console.log("📝 Creating user with data:", {
+      ...userData,
+      password: "[HASHED]",
+      otp: "[HIDDEN]",
+    });
+
+    const newUser = await insert_function<UserModelAttributes>(
+      "User",
+      "create",
+      userData
+    );
+
+    console.log("✅ User created successfully with ID:", newUser.id);
+
+    // Generate QR Code for user profile
+    const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
+    const qrCodeData = await QRCode.toDataURL(userProfileLink);
+    console.log("✅ QR Code generated successfully");
+
+    // Create profile
+    const profileData: ProfileCreationAttributes = {
+      type: "individual",
+      userId: newUser.id,
+      qrCode: qrCodeData,
+    };
+
+    console.log("📝 Creating profile for user:", newUser.id);
+
+    await insert_function<ProfileModelAttributes>(
+      "Profile",
+      "create",
+      profileData
+    );
+
+    console.log("✅ Profile created successfully");
+
+    // Create wallet
+    try {
+      const walletData: WalletCreationAttributes = {
+        userId: newUser.id,
+      };
+
+      console.log(
+        "📝 Creating wallet for user:",
+        newUser.id,
+        "with initial balance of 65,000 RWF"
+      );
+
+      await insert_function("Wallet", "create", walletData);
+      console.log(
+        "✅ Wallet created successfully with initial balance of 65,000 RWF"
+      );
+    } catch (walletError) {
+      console.error("❌ Error creating wallet for user:", walletError);
+    }
+
+    // Generate verification token (2 days)
+    const verificationToken = jwt.sign(
+      { email: newUser.email, id: newUser.id },
+      JWT_SECRET,
+      { expiresIn: "2d", algorithm: "HS256" }
+    );
+
+    console.log("✅ Verification token generated");
+
+    // Verification URL
+    const verificationUrl = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/verify?token=${verificationToken}&otp=${otp}`; // Include OTP in URL
+
+    console.log("📧 Sending verification email to:", email.toLowerCase());
+
+    // Send verification email with OTP
+    let emailSent = false;
+    try {
+      await sendEmail({
+        to: email.toLowerCase(),
+        subject: "Email Verification Required - Complete Your Registration",
+        type: "email_verification",
+        data: {
+          verificationUrl,
+          name: `${firstName} ${lastName}`,
+          otp,
+        },
+      });
+      console.log("✅ Verification email with OTP sent successfully");
+      emailSent = true;
+    } catch (emailError: any) {
+      console.error(
+        "❌ Failed to send verification email:",
+        emailError.message
+      );
+      console.log("⚠️ Registration completed but email delivery failed");
+    }
+
+    const plainUser = isSequelizeInstance(newUser)
+      ? newUser.get({ plain: true })
+      : newUser;
+    const {
+      password: _,
+      otp: __,
+      otpExpires: ___,
+      ...userWithoutSensitive
+    } = plainUser;
+
+    console.log("🎉 User registration completed successfully");
+    console.log("👤 Created user:", userWithoutSensitive);
+
+    const message = emailSent
+      ? "User registered successfully. Please check your email for verification instructions and OTP."
+      : "User registered successfully. However, we couldn't send the verification email. Please contact support.";
+
+    res.status(201).json({
+      message,
+      data: userWithoutSensitive,
+      emailSent,
+    });
+  } catch (error: any) {
+    console.error("❌ User registration error:", error.message);
+    console.error("❌ Full error:", error);
+    res.status(500).json({
+      message: "An error occurred while registering the user",
+      error: error.message,
+    });
+  }
+};
+
+// Verify user email and OTP
+const verify_user_email = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { token, otp } = req.query;
+
+    console.log("🔍 User verification started");
+    console.log("📧 Token received:", token);
+    console.log("🔢 OTP received:", otp);
+
+    // Validate inputs
+    if (!token || typeof token !== "string") {
+      console.log("❌ No token provided");
+      res.status(400).json({ message: "Verification token is required" });
+      return;
+    }
+
+    if (!otp || typeof otp !== "string") {
+      console.log("❌ No OTP provided");
+      res.status(400).json({ message: "OTP is required" });
+      return;
+    }
+
+    // Verify and decode the token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+      console.log("✅ Token verified successfully");
+      console.log("👤 Decoded token:", {
+        email: decoded.email,
+        id: decoded.id,
+      });
+    } catch (tokenError: any) {
+      console.log("❌ Token verification failed:", tokenError.message);
+      res
+        .status(400)
+        .json({ message: "Invalid or expired verification token" });
+      return;
+    }
+
+    // Find the user
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: decoded.id, email: decoded.email },
+    });
+
+    if (!user) {
+      console.log("❌ User not found for token");
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    console.log("✅ User found:", decoded.email);
+
+    // Check if user is already verified
+    const plainUser = isSequelizeInstance(user)
+      ? user.get({ plain: true })
+      : user;
+    if (plainUser.isVerified) {
+      console.log("ℹ️ User already verified");
+      res.status(200).json({
+        message: "User is already verified",
+        verified: true,
+      });
+      return;
+    }
+
+    // Verify OTP
+    if (plainUser.otp !== otp) {
+      console.log("❌ Invalid OTP");
+      res.status(400).json({ message: "Invalid OTP" });
+      return;
+    }
+
+    // Check if OTP is expired
+    if (plainUser.otpExpires && new Date() > new Date(plainUser.otpExpires)) {
+      console.log("❌ OTP has expired");
+      res.status(400).json({ message: "OTP has expired" });
+      return;
+    }
+
+    // Update user verification status and clear OTP
+    await insert_function<UserModelAttributes>(
+      "User",
+      "update",
+      {
+        isVerified: true,
+        otp: null,
+        otpExpires: null,
+      },
+      { where: { id: decoded.id } }
+    );
+
+    console.log("✅ User verified successfully with token and OTP");
+
+    res.status(200).json({
+      message: "User verified successfully! You can now log in.",
+      verified: true,
+    });
+  } catch (error: any) {
+    console.error("❌ User verification error:", error.message);
+    console.error("❌ Full error:", error);
+    res.status(500).json({
+      message: "An error occurred while verifying the user",
+      error: error.message,
+    });
+  }
+};
+
+// filepath: /Users/izanyibukayvette/Desktop/WORK/CREATIVA/que_code_bn/src/controllers/userController.ts
+const resend_verification = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ message: "Email is required" });
+      return;
+    }
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { email: email.toLowerCase() },
+    });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+    if (user.isVerified) {
+      res.status(200).json({ message: "User is already verified" });
+      return;
+    }
+    // Generate new OTP and token
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await insert_function<UserModelAttributes>(
+      "User",
+      "update",
+      { otp, otpExpires },
+      { where: { id: user.id } }
+    );
+    const verificationToken = jwt.sign(
+      { email: user.email, id: user.id },
+      JWT_SECRET,
+      { expiresIn: "30d", algorithm: "HS256" }
+    );
+    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify?token=${verificationToken}&otp=${otp}`;
+    await sendEmail({
+      to: user.email,
+      subject: "Resend Email Verification",
+      type: "email_verification",
+      data: {
+        verificationUrl,
+        name: `${user.firstName} ${user.lastName}`,
+        otp,
+      },
+    });
+    res.status(200).json({ message: "Verification email resent successfully" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to resend verification email", error: error.message });
+  }
+};
+
+
+// Other endpoints (unchanged)
+const get_all_users = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const allUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll"
+    );
+    const plainUsers = Array.isArray(allUsers)
+      ? allUsers.map((u) =>
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+        )
+      : [];
+    res.status(200).json(plainUsers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching all users" });
+  }
+};
 
 const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const user = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { id: req.params.id } }
-        );
+  try {
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: req.params.id },
+    });
 
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        const plainUser = isSequelizeInstance(user) ? user.get({ plain: true }) : user;
-        // Ensure welcome preferences are always present (default true)
-        const userWithWelcomePrefs = {
-            ...plainUser,
-            showPhoneOnWelcome: plainUser.showPhoneOnWelcome !== undefined ? plainUser.showPhoneOnWelcome : true,
-            showProfileImageOnWelcome: plainUser.showProfileImageOnWelcome !== undefined ? plainUser.showProfileImageOnWelcome : true,
-            showStatusMessageOnWelcome: plainUser.showStatusMessageOnWelcome !== undefined ? plainUser.showStatusMessageOnWelcome : true,
-        };
-
-        res.status(200).json(userWithWelcomePrefs);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while fetching the user" });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
     }
-}
+
+    const plainUser = isSequelizeInstance(user)
+      ? user.get({ plain: true })
+      : user;
+    res.status(200).json(plainUser);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the user" });
+  }
+};
 
 const update_user = async (req: Request, res: Response): Promise<void> => {
-    try {
-        console.log('Incoming files:', (req as any).files);
-        const user = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { id: req.params.id } }
-        );
+  try {
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: req.params.id },
+    });
 
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        let profileImageUrl = user.profileImage;
-        if ((req as any).files && (req as any).files.profileImage && (req as any).files.profileImage[0]) {
-            const filePath = (req as any).files.profileImage[0].path;
-            console.log('Profile image file path:', filePath);
-            const uploadResult = await uploadSingle(filePath);
-            console.log('Cloudinary upload result:', uploadResult);
-            if (uploadResult && typeof uploadResult === 'object' && 'secure_url' in uploadResult) {
-                profileImageUrl = (uploadResult as any).secure_url;
-            } else if (uploadResult && typeof uploadResult === 'object' && 'error' in uploadResult) {
-                console.error('Profile image upload failed:', uploadResult.error);
-                res.status(400).json({ message: 'Profile image upload failed', error: uploadResult.error });
-                return;
-            }
-        } else {
-            console.log('No profileImage file found in request.');
-        }
-
-        const updateData: Partial<UserModelAttributes> = {
-            ...req.body,
-            profileImage: profileImageUrl,
-        };
-        if (req.body.statusMessage !== undefined) {
-            updateData.statusMessage = req.body.statusMessage;
-        }
-        // Allow updating welcome preferences
-        if (req.body.showPhoneOnWelcome !== undefined) {
-            updateData.showPhoneOnWelcome = req.body.showPhoneOnWelcome;
-        }
-        if (req.body.showProfileImageOnWelcome !== undefined) {
-            updateData.showProfileImageOnWelcome = req.body.showProfileImageOnWelcome;
-        }
-        if (req.body.showStatusMessageOnWelcome !== undefined) {
-            updateData.showStatusMessageOnWelcome = req.body.showStatusMessageOnWelcome;
-        }
-
-        const updatedUser = await insert_function<UserModelAttributes>(
-            "User",
-            "update",
-            updateData,
-            { where: { id: req.params.id } }
-        );
-
-        const plainUser = isSequelizeInstance(updatedUser) ? updatedUser.get({ plain: true }) : updatedUser;
-        // Ensure welcome preferences are always present (default true)
-        const updatedUserWithPrefs = {
-            ...plainUser,
-            showPhoneOnWelcome: updateData.showPhoneOnWelcome !== undefined ? updateData.showPhoneOnWelcome : (user.showPhoneOnWelcome !== undefined ? user.showPhoneOnWelcome : true),
-            showProfileImageOnWelcome: updateData.showProfileImageOnWelcome !== undefined ? updateData.showProfileImageOnWelcome : (user.showProfileImageOnWelcome !== undefined ? user.showProfileImageOnWelcome : true),
-            showStatusMessageOnWelcome: updateData.showStatusMessageOnWelcome !== undefined ? updateData.showStatusMessageOnWelcome : (user.showStatusMessageOnWelcome !== undefined ? user.showStatusMessageOnWelcome : true),
-        };
-
-        res.status(200).json(updatedUserWithPrefs);
-    } catch (error) {
-        console.error('Error in update_user:', error);
-        res.status(500).json({ message: "An error occurred while updating the user" });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
     }
-}
+
+    const updateData: Partial<UserModelAttributes> = {
+      ...req.body,
+    };
+
+    if (updateData.password) {
+      const saltRounds = 10;
+      updateData.password = await bcrypt.hash(updateData.password, saltRounds);
+    }
+
+    const updatedUser = await insert_function<UserModelAttributes>(
+      "User",
+      "update",
+      updateData,
+      { where: { id: req.params.id } }
+    );
+
+    const plainUser = isSequelizeInstance(updatedUser)
+      ? updatedUser.get({ plain: true })
+      : updatedUser;
+    res.status(200).json(plainUser);
+  } catch (error) {
+    console.error("Error in update_user:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while updating the user" });
+  }
+};
 
 const delete_user = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const user = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { id: req.params.id } }
-        );
+  try {
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: req.params.id },
+    });
 
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        await read_function<UserModelAttributes>(
-            "User",
-            "destroy",
-            { where: { id: req.params.id } }
-        );
-
-        res.status(200).json({ message: "User deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while deleting the user" });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
     }
-}
+
+    await read_function<UserModelAttributes>("User", "destroy", {
+      where: { id: req.params.id },
+    });
+
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while deleting the user" });
+  }
+};
 
 const approve_user = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const user = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { id: req.params.id } }
-        );
+  try {
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: req.params.id },
+    });
 
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        const approvedUser = await insert_function<UserModelAttributes>(
-            "User",
-            "update",
-            { approvalStatus: true },
-            { where: { id: req.params.id } }
-        );
-
-        const plainUser = isSequelizeInstance(approvedUser) ? approvedUser.get({ plain: true }) : approvedUser;
-        res.status(200).json(plainUser);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while approving the user" });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
     }
-}
+
+    const approvedUser = await insert_function<UserModelAttributes>(
+      "User",
+      "update",
+      { approvalStatus: true },
+      { where: { id: req.params.id } }
+    );
+
+    const plainUser = isSequelizeInstance(approvedUser)
+      ? approvedUser.get({ plain: true })
+      : approvedUser;
+    res.status(200).json(plainUser);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while approving the user" });
+  }
+};
 
 const disapprove_user = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const user = await read_function<UserModelAttributes>(
-            "User",
-            "findOne",
-            { where: { id: req.params.id } }
-        );
+  try {
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: req.params.id },
+    });
 
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        const disapprovedUser = await insert_function<UserModelAttributes>(
-            "User",
-            "update",
-            { approvalStatus: false },
-            { where: { id: req.params.id } }
-        );
-
-        const plainUser = isSequelizeInstance(disapprovedUser) ? disapprovedUser.get({ plain: true }) : disapprovedUser;
-        res.status(200).json(plainUser);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while disapproving the user" });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
     }
-}
 
-const get_approved_users = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const approvedUsers = await read_function<UserModelAttributes[]>(
-            "User",
-            "findAll",
-            { where: { approvalStatus: true } }
-        );
-        const plainUsers = Array.isArray(approvedUsers)
-            ? approvedUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
-            : [];
-        res.status(200).json(plainUsers);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while fetching all approved users" });
-    }
-}
+    const disapprovedUser = await insert_function<UserModelAttributes>(
+      "User",
+      "update",
+      { approvalStatus: false },
+      { where: { id: req.params.id } }
+    );
 
-const get_unapproved_users = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const unapprovedUsers = await read_function<UserModelAttributes[]>(
-            "User",
-            "findAll",
-            { where: { approvalStatus: false } }
-        );
-        const plainUsers = Array.isArray(unapprovedUsers)
-            ? unapprovedUsers.map(u => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
-            : [];
-        res.status(200).json(plainUsers);
-    } catch (error) {
-        res.status(500).json({ message: "An error occurred while fetching all unapproved users" });
-    }
-}
-// In your OTP verification controller
-const verify_otp = async (req: Request, res: Response): Promise<void> => {
-    const { email, otp } = req.body;
-
-    try {
-        // Validate input
-        if (!email || !otp) {
-            res.status(400).json({ message: "Email and OTP are required" });
-            return;
-        }
-
-        const user = await read_function<UserModelAttributes>("User", "findOne", {
-            where: { email }
-        });
-
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        if (user.isVerified) {
-            res.status(400).json({ message: "User already verified" });
-            return;
-        }
-
-        if (user.otp !== otp || new Date() > user.otpExpires!) {
-            res.status(400).json({ message: "Invalid or expired OTP" });
-            return;
-        }
-
-        // Mark as verified
-        user.isVerified = true;
-        user.otp = null;
-        user.otpExpires = null;
-        await insert_function<UserModelAttributes>(
-            "User",
-            "update",
-            { isVerified: true, otp: null, otpExpires: null },
-            { where: { email } }
-        );
-
-        res.status(200).json({ message: "OTP verified successfully. You can now log in." });
-    } catch (error) {
-        console.error("OTP verification error:", error);
-        res.status(500).json({ message: "An error occurred during OTP verification" });
-    }
+    const plainUser = isSequelizeInstance(disapprovedUser)
+      ? disapprovedUser.get({ plain: true })
+      : disapprovedUser;
+    res.status(200).json(plainUser);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while disapproving the user" });
+  }
 };
 
-
-const RESEND_COOLDOWN = 1 * 60 * 1000; // 1 minute
-
-const resend_otp = async (req: Request, res: Response): Promise<void> => {
-    const { email } = req.body;
-    
-    try {
-        // Validate input
-        if (!email) {
-            res.status(400).json({ message: "Email is required" });
-            return;
-        }
-
-        const user = await read_function<UserModelAttributes>("User", "findOne", {
-            where: { email }
-        });
-
-        if (!user) {
-            res.status(404).json({ message: "User not found" });
-            return;
-        }
-
-        if (user.isVerified) {
-            res.status(400).json({ message: "User is already verified" });
-            return;
-        }
-
-        const now = Date.now();
-        const lastOtpSent = user.lastOtpSent ? user.lastOtpSent.getTime() : 0;
-
-        if (now - lastOtpSent < RESEND_COOLDOWN) {
-            res.status(429).json({ message: "Please wait before requesting a new OTP" });
-            return;
-        }
-
-        // Generate a new OTP and expiration time
-        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpires = new Date(now + 10 * 60 * 1000); // 10 minutes from now
-
-        // Update OTP, expiration, and lastOtpSent in the user's record
-        user.otp = newOtp;
-        user.otpExpires = otpExpires;
-        user.lastOtpSent = new Date(now);
-        await insert_function<UserModelAttributes>(
-            "User",
-            "update",
-            { otp: newOtp, otpExpires, lastOtpSent: new Date(now) },
-            { where: { email } }
-        );
-
-        // Resend OTP via email
-        await sendEmail({
-            to: email,
-            subject: 'Your OTP Code',
-            type: 'code',
-            data: {
-                code: `${newOtp}`
-            },
-        });
-
-        res.status(200).json({ message: "A new OTP has been sent to your email" });
-    } catch (error) {
-        console.error("Error resending OTP:", error);
-        res.status(500).json({ message: "An error occurred while resending OTP" });
-    }
+const get_approved_users = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const approvedUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      { where: { approvalStatus: true } }
+    );
+    const plainUsers = Array.isArray(approvedUsers)
+      ? approvedUsers.map((u) =>
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+        )
+      : [];
+    res.status(200).json(plainUsers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching all approved users" });
+  }
 };
 
-// Email verification via token
-const verify_email_token = async (req: Request, res: Response): Promise<void> => {
-    console.log('=== VERIFY EMAIL TOKEN FUNCTION CALLED ===');
-    try {
-        console.log('Starting email verification...');
-        const { token } = req.query;
-        console.log('Token received:', token ? 'present' : 'missing');
-        
-        if (!token || typeof token !== 'string') {
-            res.status(400).json({ message: 'Verification token is required' });
-            return;
-        }
-        
-        let payload: any;
-        try {
-            payload = jwt.verify(token, JWT_SECRET);
-            console.log('JWT payload:', payload);
-        } catch (err) {
-            console.error('JWT verification failed:', err);
-            res.status(400).json({ message: 'Invalid or expired verification token' });
-            return;
-        }
-        
-        const normalizedEmail = payload.email.toLowerCase();
-        console.log('Looking for user with email:', normalizedEmail);
-        
-        try {
-            const user = await read_function<UserModelAttributes>("User", "findOne", { 
-                where: { email: normalizedEmail } 
-            });
-            console.log('User lookup result:', user ? 'found' : 'not found');
-            
-            if (!user) {
-                res.status(404).json({ message: 'User not found' });
-                return;
-            }
-            
-            if (user.isVerified) {
-                res.status(400).json({ message: 'User already verified' });
-                return;
-            }
-            
-            console.log('Updating user verification status...');
-            await insert_function<UserModelAttributes>(
-                "User",
-                "update",
-                { isVerified: true, otp: null, otpExpires: null },
-                { where: { email: normalizedEmail } }
-            );
-            
-            res.status(200).json({ message: 'Email verified successfully. You can now log in.' });
-        } catch (dbError) {
-            console.error('Database error during user lookup:', dbError);
-            res.status(500).json({ message: 'An error occurred while fetching the user' });
-        }
-    } catch (error) {
-        console.error('Email verification error:', error);
-        res.status(500).json({ message: 'An error occurred during email verification' });
-    }
+const get_unapproved_users = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const unapprovedUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      { where: { approvalStatus: false } }
+    );
+    const plainUsers = Array.isArray(unapprovedUsers)
+      ? unapprovedUsers.map((u) =>
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+        )
+      : [];
+    res.status(200).json(plainUsers);
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while fetching all unapproved users",
+    });
+  }
 };
 
 export default {
-    create_user,
-    get_all_users,
-    get_user_by_id,
-    update_user,
-    delete_user,
-    approve_user,
-    disapprove_user,
-    get_approved_users,
-    get_unapproved_users,
-    verify_otp,
-    resend_otp,
-    verify_email_token
+  create_user,
+  verify_user_email,
+  resend_verification,
+  get_all_users,
+  get_user_by_id,
+  update_user,
+  delete_user,
+  approve_user,
+  disapprove_user,
+  get_approved_users,
+  get_unapproved_users,
 };

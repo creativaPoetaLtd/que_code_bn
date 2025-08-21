@@ -1,158 +1,47 @@
-import { DataTypes, Model, Sequelize, UUIDV4, CreationOptional } from "sequelize";
+import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
 import { UserCreationAttributes, UserModelAttributes } from "../../types/model";
 
 class User extends Model<UserModelAttributes, UserCreationAttributes> {
-    public id!: string;
-    public firstName!: string;
-    public lastName!: string;
-    public email!: string;
-    public phone!: string;
-    public password!: string;
-    public gender!: string;
-    public province!: string;
-    public district!: string;
-    public sector!: string;
-    // public approvalStatus!: boolean;
-    public cell!: string;
-    public logo!: CreationOptional<string>;
-    public national_id!: CreationOptional<string>;
-    public resetToken?: string;
-    public resetTokenExpires?: Date;
-    public otp?: string;
-    public otpExpires?: Date;
-    public lastOtpSent?: Date;
-    public isVerified!: boolean;
-    public qrCode !: string;
-    public profileImage?: string;
-    public statusMessage?: string;
-    public showPhoneOnWelcome?: boolean;
-    public showProfileImageOnWelcome?: boolean;
-    public showStatusMessageOnWelcome?: boolean;
-    public profileLink?: string;
-    public publicId?: string;
+  public id!: string;
+  public firstName!: string;
+  public lastName!: string;
+  public email!: string;
+  public phone!: string;
+  public password!: string;
+  public isVerified!: boolean;
+  public approvalStatus!: boolean;
+  public otp!: string | null; // Added for OTP
+  public otpExpires!: Date | null; // Added for OTP expiration
+
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
 }
 
 const User_model = (sequelize: Sequelize) => {
-    User.init({
-        id: {
-            type: DataTypes.UUID,
-            defaultValue: UUIDV4,
-            primaryKey: true,
-        },
-        firstName: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        lastName: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        password: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        email: {
-            type: DataTypes.STRING,
-            allowNull: false,
-            unique: true,
-        },
-        gender: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        phone: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        province: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        district: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        sector: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        // approvalStatus: {
-        //     type: DataTypes.BOOLEAN,
-        //     allowNull: false,
-        //     defaultValue: false,
-        // },
-        // national_id: {
-        //     type: DataTypes.STRING,
-        //     allowNull: true,
-        // },
-        resetToken: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        resetTokenExpires: {
-            type: DataTypes.DATE,
-            allowNull: true,
-        },
-        otp: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        otpExpires: {
-            type: DataTypes.DATE,
-            allowNull: true,
-        },
-        lastOtpSent: {
-            type: DataTypes.DATE,
-            allowNull: true,
-        },
-        isVerified: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: false,
-        },
-        qrCode: {
-            type: DataTypes.TEXT,
-            allowNull: true
-        },
-        profileImage: {
-            type: DataTypes.STRING,
-            allowNull: true
-        },
-        statusMessage: {
-            type: DataTypes.STRING,
-            allowNull: true
-        },
-        showPhoneOnWelcome: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: true,
-        },
-        showProfileImageOnWelcome: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: true,
-        },
-        showStatusMessageOnWelcome: {
-            type: DataTypes.BOOLEAN,
-            allowNull: false,
-            defaultValue: true,
-        },
-        publicId: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        profileLink: {
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
+  User.init(
+    {
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: UUIDV4,
+        primaryKey: true,
+      },
+      firstName: { type: DataTypes.STRING, allowNull: false },
+      lastName: { type: DataTypes.STRING, allowNull: false },
+      email: { type: DataTypes.STRING, unique: true, allowNull: false },
+      phone: { type: DataTypes.STRING, unique: true, allowNull: false },
+      password: { type: DataTypes.STRING, allowNull: false },
+      isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
+      approvalStatus: { type: DataTypes.BOOLEAN, defaultValue: false },
+      otp: { type: DataTypes.STRING, allowNull: true }, // Added
+      otpExpires: { type: DataTypes.DATE, allowNull: true }, // Added
+    },
+    {
+      sequelize,
+      tableName: "Users",
+    }
+  );
 
-    }, {
-        sequelize,
-        tableName: "Users",
-    });
-
-    return User;
+  return User;
 };
 
 export default User_model;
-

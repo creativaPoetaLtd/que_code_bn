@@ -1,0 +1,365 @@
+import { Request, Response } from "express";
+import { insert_function, read_function } from "../utils/db_methods";
+import { ContactAttributes, UserModelAttributes } from "../types/model";
+
+// Helper type guard
+function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
+  return obj && typeof obj.get === "function";
+}
+
+// Get all contacts for current user
+const get_user_contacts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = (req as any).user?.id;
+    const { status } = req.query;
+
+    if (!userId) {
+      res.status(401).json({ message: "User not authenticated" });
+      return;
+    }
+
+    const whereClause: any = {
+      $or: [{ userAId: userId }, { userBId: userId }],
+    };
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const userContacts = await read_function<ContactAttributes[]>(
+      "Contact",
+      "findAll",
+      {
+        where: whereClause,
+        order: [["createdAt", "DESC"]],
+      }
+    );
+
+    const plainContacts = Array.isArray(userContacts)
+      ? userContacts.map((c) =>
+          isSequelizeInstance(c) ? c.get({ plain: true }) : c
+        )
+      : [];
+
+    // Get user details for each contact
+    const contactsWithUserDetails = await Promise.all(
+      plainContacts.map(async (contact) => {
+        const otherUserId =
+          contact.userAId === userId ? contact.userBId : contact.userAId;
+
+        const otherUser = await read_function<UserModelAttributes>(
+          "User",
+          "findOne",
+          {
+            where: { id: otherUserId },
+            attributes: ["id", "firstName", "lastName", "email"],
+          }
+        );
+
+        const otherUserData = isSequelizeInstance(otherUser)
+          ? otherUser.get({ plain: true })
+          : otherUser;
+
+        return {
+          ...contact,
+          otherUser: otherUserData,
+        };
+      })
+    );
+
+    res.status(200).json(contactsWithUserDetails);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching contacts" });
+  }
+};
+
+// Get contact by ID
+const get_contact_by_id = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "User not authenticated" });
+      return;
+    }
+
+    const contact = await read_function<ContactAttributes>(
+      "Contact",
+      "findOne",
+      { where: { id } }
+    );
+
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    const contactData = isSequelizeInstance(contact)
+      ? contact.get({ plain: true })
+      : contact;
+
+    // Check if current user is part of this contact
+    if (contactData.userAId !== userId && contactData.userBId !== userId) {
+      res.status(403).json({ message: "Not authorized to view this contact" });
+      return;
+    }
+
+    const otherUserId =
+      contactData.userAId === userId
+        ? contactData.userBId
+        : contactData.userAId;
+
+    const otherUser = await read_function<UserModelAttributes>(
+      "User",
+      "findOne",
+      {
+        where: { id: otherUserId },
+        attributes: ["id", "firstName", "lastName", "email"],
+      }
+    );
+
+    const otherUserData = isSequelizeInstance(otherUser)
+      ? otherUser.get({ plain: true })
+      : otherUser;
+
+    res.status(200).json({
+      ...contactData,
+      otherUser: otherUserData,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the contact" });
+  }
+};
+
+// Update contact status (block/unblock)
+const update_contact_status = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "User not authenticated" });
+      return;
+    }
+
+    if (!status || !["active", "blocked"].includes(status)) {
+      res
+        .status(400)
+        .json({ message: "Valid status (active or blocked) is required" });
+      return;
+    }
+
+    const contact = await read_function<ContactAttributes>(
+      "Contact",
+      "findOne",
+      { where: { id } }
+    );
+
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    const contactData = isSequelizeInstance(contact)
+      ? contact.get({ plain: true })
+      : contact;
+
+    // Check if current user is part of this contact
+    if (contactData.userAId !== userId && contactData.userBId !== userId) {
+      res
+        .status(403)
+        .json({ message: "Not authorized to update this contact" });
+      return;
+    }
+
+    await insert_function<ContactAttributes>(
+      "Contact",
+      "update",
+      { status },
+      { where: { id } }
+    );
+
+    const updatedContact = await read_function<ContactAttributes>(
+      "Contact",
+      "findOne",
+      { where: { id } }
+    );
+
+    const plainContact = isSequelizeInstance(updatedContact)
+      ? updatedContact.get({ plain: true })
+      : updatedContact;
+
+    res.status(200).json({
+      message: "Contact status updated successfully",
+      data: plainContact,
+    });
+  } catch (error) {
+    console.error("Error in update_contact_status:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while updating the contact" });
+  }
+};
+
+// Remove a contact (delete the relationship)
+const remove_contact = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "User not authenticated" });
+      return;
+    }
+
+    const contact = await read_function<ContactAttributes>(
+      "Contact",
+      "findOne",
+      { where: { id } }
+    );
+
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    const contactData = isSequelizeInstance(contact)
+      ? contact.get({ plain: true })
+      : contact;
+
+    // Check if current user is part of this contact
+    if (contactData.userAId !== userId && contactData.userBId !== userId) {
+      res
+        .status(403)
+        .json({ message: "Not authorized to remove this contact" });
+      return;
+    }
+
+    await read_function<ContactAttributes>("Contact", "destroy", {
+      where: { id },
+    });
+
+    res.status(200).json({ message: "Contact removed successfully" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while removing the contact" });
+  }
+};
+
+// Search for users to potentially invite as contacts
+const search_users = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.id;
+    const { q, limit = 10 } = req.query;
+
+    if (!userId) {
+      res.status(401).json({ message: "User not authenticated" });
+      return;
+    }
+
+    if (!q || typeof q !== "string") {
+      res.status(400).json({ message: "Search query is required" });
+      return;
+    }
+
+    // Search for users excluding current user
+    const users = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: {
+          id: { $ne: userId },
+          $or: [
+            { firstName: { $iLike: `%${q}%` } },
+            { lastName: { $iLike: `%${q}%` } },
+            { email: { $iLike: `%${q}%` } },
+          ],
+        },
+        attributes: ["id", "firstName", "lastName", "email"],
+        limit: parseInt(limit as string),
+      }
+    );
+
+    const plainUsers = Array.isArray(users)
+      ? users.map((u) => (isSequelizeInstance(u) ? u.get({ plain: true }) : u))
+      : [];
+
+    // Check which users are already contacts or have pending invitations
+    const usersWithStatus = await Promise.all(
+      plainUsers.map(async (user) => {
+        // Check if already a contact
+        const existingContact = await read_function<ContactAttributes>(
+          "Contact",
+          "findOne",
+          {
+            where: {
+              $or: [
+                { userAId: userId, userBId: user.id },
+                { userAId: user.id, userBId: userId },
+              ],
+            },
+          }
+        );
+
+        // Check if there's a pending invitation
+        const pendingInvitation = await read_function<any>(
+          "ContactInvitation",
+          "findOne",
+          {
+            where: {
+              $or: [
+                { inviterId: userId, inviteeId: user.id, status: "pending" },
+                { inviterId: user.id, inviteeId: userId, status: "pending" },
+              ],
+            },
+          }
+        );
+
+        let relationshipStatus = "none";
+        if (existingContact) {
+          const contactData = isSequelizeInstance(existingContact)
+            ? existingContact.get({ plain: true })
+            : existingContact;
+          relationshipStatus = contactData.status; // active or blocked
+        } else if (pendingInvitation) {
+          relationshipStatus = "pending_invitation";
+        }
+
+        return {
+          ...user,
+          relationshipStatus,
+        };
+      })
+    );
+
+    res.status(200).json(usersWithStatus);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "An error occurred while searching users" });
+  }
+};
+
+export default {
+  get_user_contacts,
+  get_contact_by_id,
+  update_contact_status,
+  remove_contact,
+  search_users,
+};

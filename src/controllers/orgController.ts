@@ -1,189 +1,313 @@
-import { Request, Response } from 'express';
+import { Request, Response } from "express";
 import { insert_function, read_function } from "../utils/db_methods";
-import { OrganizationCreationAttributes, OrganizationModelAttributes } from "../types/model";
-import cloudinary from "../helpers/cloudinary";
-import bcrypt from 'bcrypt';
+import database_models from "../database/config/db.config";
+import {
+  OrganizationCreationAttributes,
+  OrganizationModelAttributes,
+  WalletCreationAttributes,
+  ProfileCreationAttributes,
+  ProfileModelAttributes,
+} from "../types/model";
+import bcrypt from "bcrypt";
+import sendEmail from "../helpers/email";
+import QRCode from "qrcode";
+import jwt from "jsonwebtoken";
 
-interface MulterRequest extends Request {
-  file?: Express.Multer.File;
+// Helper type guard
+function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
+  return obj && typeof obj.get === "function";
 }
-const create_org = async (req: MulterRequest, res: Response): Promise<void> => {
+
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
+
+const create_organization = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const existingOrganization = await read_function<OrganizationModelAttributes>(
+    const {
+      name,
+      ownerName,
+      ownerEmail,
+      ownerPhone,
+      email,
+      password,
+      categoryId,
+    } = req.body;
+
+    // Validate required fields
+    if (
+      !name ||
+      !ownerName ||
+      !ownerEmail ||
+      !ownerPhone ||
+      !email ||
+      !password
+    ) {
+      res.status(400).json({
+        message: "Missing required fields",
+        required: [
+          "name",
+          "ownerName",
+          "ownerEmail",
+          "ownerPhone",
+          "email",
+          "password",
+        ],
+      });
+      return;
+    }
+
+    // Validate categoryId if provided
+    if (categoryId) {
+      const category = await read_function<any>(
+        "OrganizationCategory",
+        "findOne",
+        { where: { id: categoryId } }
+      );
+
+      if (!category) {
+        res.status(400).json({ message: "Invalid organization category" });
+        return;
+      }
+    }
+
+    // Check if organization already exists
+    const existingOrg = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { email: req.body.email } }
+      { where: { email: email.toLowerCase() } }
     );
 
-    if (existingOrganization) {
+    if (existingOrg) {
       res.status(400).json({ message: "Organization already exists" });
       return;
     }
 
-    const {
-      name, type, email, ownerPhone, ownerEmail, contactPhone, password,
-      tinNumber, registrationNumber, province, district, sector, cell
-    } = req.body;
+    // Hash password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    
-    let logo = '';
-    let operationalDocument = '';
-
-    if (req.files) {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-      if (files.logo && files.logo[0]) {
-        const logoUpload = await cloudinary.uploader.upload(files.logo[0].path);
-        logo = logoUpload.secure_url;
-      }
-
-      if (files.operationalDocument && files.operationalDocument[0]) {
-        const operationalDocumentUpload = await cloudinary.uploader.upload(files.operationalDocument[0].path);
-        operationalDocument = operationalDocumentUpload.secure_url;
-      }
-    }
-
-    const organizationData: OrganizationCreationAttributes = {
-      name, type, email, ownerPhone, ownerEmail, contactPhone,
-      tinNumber, registrationNumber, password:hashedPassword, province, district, sector, cell,
-      logo, operationalDocument, approvalStatus: false
+    // Create organization
+    const orgData: OrganizationCreationAttributes = {
+      name,
+      ownerName,
+      ownerEmail,
+      ownerPhone,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      approvalStatus: false,
+      categoryId: categoryId || undefined,
     };
 
-    const newOrganization = await insert_function<OrganizationModelAttributes>(
+    const newOrg: any = await insert_function<OrganizationModelAttributes>(
       "Organization",
       "create",
-      organizationData
+      orgData
     );
 
+    // Generate QR Code for organization profile
+    const orgProfileLink = `${process.env.FRONTEND_URL}/welcome/${newOrg.id}`;
+    const qrCodeData = await QRCode.toDataURL(orgProfileLink);
+
+    // Create profile for the new organization
+    const profileData: ProfileCreationAttributes = {
+      type: "organization",
+      organizationId: newOrg.id,
+      qrCode: qrCodeData,
+    };
+
+    await insert_function<ProfileModelAttributes>(
+      "Profile",
+      "create",
+      profileData
+    );
+
+    // Create wallet for the new organization
+    try {
+      const walletData: WalletCreationAttributes = {
+        organizationId: newOrg.id,
+      };
+
+      await insert_function("Wallet", "create", walletData);
+    } catch (walletError) {
+      console.error("Error creating wallet for organization:", walletError);
+    }
+
+    // Generate verification token (valid for 2 days)
+    const verificationToken = jwt.sign(
+      { email: newOrg.email, id: newOrg.id, type: "organization" },
+      JWT_SECRET,
+      { expiresIn: "2d", algorithm: "HS256" }
+    );
+
+    // Verification URL
+    const verificationUrl = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/verify?token=${verificationToken}`;
+
+    // Send verification email to owner's email
+    try {
+      await sendEmail({
+        to: ownerEmail.toLowerCase(),
+        subject: "Verify Your Organization Registration",
+        type: "notification",
+        data: {
+          title: `Welcome ${ownerName}!`,
+          body: `Thank you for registering your organization "${name}". Please click the link below to verify your email address and activate your organization account: <br><br><a href="${verificationUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Verify Email Address</a><br><br>This verification link will expire in 2 days.`,
+        },
+      });
+
+      console.log(
+        `Verification email sent successfully to owner: ${ownerEmail}`
+      );
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      // Don't fail the registration if email fails, but log the error
+    }
+
+    const plainOrg = isSequelizeInstance(newOrg)
+      ? newOrg.get({ plain: true })
+      : newOrg;
+    const { password: _, ...orgWithoutPassword } = plainOrg;
+
     res.status(201).json({
-      message: "Organization registered successfully",
-      organization: newOrganization,
+      message:
+        "Organization registered successfully. Please check your email for verification instructions.",
+      data: orgWithoutPassword,
     });
-  } catch (error) {
-    console.error("Error in registerOrganization:", error);
+  } catch (error: any) {
+    console.error("Organization registration error:", error.message);
     res.status(500).json({
-      message: "Error registering organization",
-      error: (error as Error).message,
+      message: "An error occurred while registering the organization",
     });
   }
 };
 
-const get_all_orgs = async (req: Request, res: Response): Promise<void> => {
+const get_all_organizations = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organizations = await read_function<OrganizationModelAttributes>(
+    const allOrgs = await read_function<OrganizationModelAttributes[]>(
       "Organization",
-      "findAll"
+      "findAll",
+      {
+        include: [
+          {
+            model: database_models.OrganizationCategory,
+            as: "Category",
+            attributes: ["id", "name", "description", "createdAt", "updatedAt"],
+          },
+        ],
+      }
+    );
+    const plainOrgs = Array.isArray(allOrgs)
+      ? allOrgs.map((o) =>
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+        )
+      : [];
+    res.status(200).json(plainOrgs);
+  } catch (error) {
+    console.error("Error fetching organizations:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching all organizations" });
+  }
+};
+
+const get_organization_by_id = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      {
+        where: { id: req.params.id },
+        include: [
+          {
+            model: database_models.OrganizationCategory,
+            as: "Category",
+            attributes: ["id", "name", "description", "createdAt", "updatedAt"],
+          },
+        ],
+      }
     );
 
-    res.status(200).json({ organizations });
-  } catch (error) {
-    console.error("Error in getOrganizations:", error);
-    res.status(500).json({
-      message: "Error fetching organizations",
-      error: (error as Error).message,
-    });
-  }
-}
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
 
-const get_org_by_id = async (req: Request, res: Response): Promise<void> => {
+    const plainOrg = isSequelizeInstance(org) ? org.get({ plain: true }) : org;
+    res.status(200).json(plainOrg);
+  } catch (error) {
+    console.error("Error fetching organization:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the organization" });
+  }
+};
+
+const update_organization = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organization = await read_function<OrganizationModelAttributes>(
+    const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
       { where: { id: req.params.id } }
     );
-    if (!organization) {
-      res.status(404).json({ message: "Organization not found" });
-      return;
-    }
-    res.status(200).json({ organization });
-  } catch (error) {
-    console.error("Error in getOrganizationById:", error);
-    res.status(500).json({
-      message: "Error fetching organization",
-      error: (error as Error).message,
-    });
-  }
-}
 
-const update_org = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const organization = await read_function<OrganizationModelAttributes>(
-      "Organization",
-      "findOne",
-      { where: { id: req.params.id } }
-    );
-
-    if (!organization) {
+    if (!org) {
       res.status(404).json({ message: "Organization not found" });
       return;
     }
 
-    let logo = organization.logo;
-    let operationalDocument = organization.operationalDocument;
-
-    if (req.files) {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-      if (files.logo && files.logo[0]) {
-        const logoUpload = await cloudinary.uploader.upload(files.logo[0].path);
-        logo = logoUpload.secure_url;
-      }
-
-      if (files.operationalDocument && files.operationalDocument[0]) {
-        const operationalDocumentUpload = await cloudinary.uploader.upload(files.operationalDocument[0].path);
-        operationalDocument = operationalDocumentUpload.secure_url;
-      }
-    }
-
-    const updatedData: Partial<OrganizationCreationAttributes> = {
-      name: req.body.name || organization.name,
-      type: req.body.type || organization.type,
-      email: req.body.email || organization.email,
-      ownerPhone: req.body.ownerPhone || organization.ownerPhone,
-      ownerEmail: req.body.ownerEmail || organization.ownerEmail,
-      contactPhone: req.body.contactPhone || organization.contactPhone,
-      tinNumber: req.body.tinNumber || organization.tinNumber,
-      registrationNumber: req.body.registrationNumber || organization.registrationNumber,
-      province: req.body.province || organization.province,
-      district: req.body.district || organization.district,
-      sector: req.body.sector || organization.sector,
-      cell: req.body.cell || organization.cell,
-      logo: logo,
-      operationalDocument: operationalDocument,
+    const updateData: Partial<OrganizationModelAttributes> = {
+      ...req.body,
     };
 
-    const updatedOrganization = await insert_function<OrganizationModelAttributes>(
+    // Hash password if provided
+    if (updateData.password) {
+      const saltRounds = 10;
+      updateData.password = await bcrypt.hash(updateData.password, saltRounds);
+    }
+
+    const updatedOrg = await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      updatedData,
+      updateData,
       { where: { id: req.params.id } }
     );
 
-    res.status(200).json({
-      message: "Organization updated successfully",
-      organization: organization,
-    });
+    const plainOrg = isSequelizeInstance(updatedOrg)
+      ? updatedOrg.get({ plain: true })
+      : updatedOrg;
+    res.status(200).json(plainOrg);
   } catch (error) {
-    console.error("Error in updateOrganization:", error);
-    res.status(500).json({
-      message: "Error updating organization",
-      error: (error as Error).message,
-    });
+    console.error("Error in update_organization:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while updating the organization" });
   }
-}
+};
 
-const delete_org = async (req: Request, res: Response): Promise<void> => {
+const delete_organization = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organization = await read_function<OrganizationModelAttributes>(
+    const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
       { where: { id: req.params.id } }
     );
 
-    if (!organization) {
+    if (!org) {
       res.status(404).json({ message: "Organization not found" });
       return;
     }
@@ -196,98 +320,182 @@ const delete_org = async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({ message: "Organization deleted successfully" });
   } catch (error) {
-
-    console.error("Error in deleteOrganization:", error);
-    res.status(500).json({
-      message: "Error deleting organization",
-      error: (error as Error).message,
-    });
+    res
+      .status(500)
+      .json({ message: "An error occurred while deleting the organization" });
   }
-}
+};
 
-const update_org_approval = async (req: Request, res: Response): Promise<void> => {
+const approve_organization = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organization = await read_function<OrganizationModelAttributes>(
+    const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
       { where: { id: req.params.id } }
     );
 
-    if (!organization) {
+    if (!org) {
       res.status(404).json({ message: "Organization not found" });
       return;
     }
 
-    const newApprovalStatus = !organization.approvalStatus;
-    const updatedData: Partial<OrganizationCreationAttributes> = {
-			approvalStatus: newApprovalStatus,
-		};
-
-    const updatedOrganization = await insert_function<OrganizationModelAttributes>(
+    const approvedOrg = await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      updatedData,
+      { approvalStatus: true },
       { where: { id: req.params.id } }
     );
-console.log("updatedOrganization", updatedOrganization);
 
-    res.status(200).json({
-      message: "Organization approval status updated successfully",
-      organization: organization,
-    });
+    const plainOrg = isSequelizeInstance(approvedOrg)
+      ? approvedOrg.get({ plain: true })
+      : approvedOrg;
+    res.status(200).json(plainOrg);
   } catch (error) {
-    console.error("Error in updateOrganizationApproval:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while approving the organization" });
+  }
+};
+
+const disapprove_organization = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      { where: { id: req.params.id } }
+    );
+
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    const disapprovedOrg = await insert_function<OrganizationModelAttributes>(
+      "Organization",
+      "update",
+      { approvalStatus: false },
+      { where: { id: req.params.id } }
+    );
+
+    const plainOrg = isSequelizeInstance(disapprovedOrg)
+      ? disapprovedOrg.get({ plain: true })
+      : disapprovedOrg;
+    res.status(200).json(plainOrg);
+  } catch (error) {
     res.status(500).json({
-      message: "Error updating organization approval status",
-      error: (error as Error).message,
+      message: "An error occurred while disapproving the organization",
     });
   }
-}
+};
 
-const get_approved_orgs = async (req: Request, res: Response): Promise<void> => {
+const get_approved_organizations = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organizations = await read_function<OrganizationModelAttributes>(
+    const approvedOrgs = await read_function<OrganizationModelAttributes[]>(
       "Organization",
       "findAll",
       { where: { approvalStatus: true } }
     );
-
-    res.status(200).json({ organizations });
+    const plainOrgs = Array.isArray(approvedOrgs)
+      ? approvedOrgs.map((o) =>
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+        )
+      : [];
+    res.status(200).json(plainOrgs);
   } catch (error) {
-    console.error("Error in getApprovedOrganizations:", error);
     res.status(500).json({
-      message: "Error fetching approved organizations",
-      error: (error as Error).message,
+      message: "An error occurred while fetching all approved organizations",
     });
   }
-}
+};
 
-const get_unapproved_orgs = async (req: Request, res: Response): Promise<void> => {
+const get_unapproved_organizations = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const organizations = await read_function<OrganizationModelAttributes>(
+    const unapprovedOrgs = await read_function<OrganizationModelAttributes[]>(
       "Organization",
       "findAll",
       { where: { approvalStatus: false } }
     );
-
-    res.status(200).json({ organizations });
+    const plainOrgs = Array.isArray(unapprovedOrgs)
+      ? unapprovedOrgs.map((o) =>
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+        )
+      : [];
+    res.status(200).json(plainOrgs);
   } catch (error) {
-    console.error("Error in getUnapprovedOrganizations:", error);
     res.status(500).json({
-      message: "Error fetching unapproved organizations",
-      error: (error as Error).message,
+      message: "An error occurred while fetching all unapproved organizations",
     });
   }
-}
-
-export default {
-  create_org,
-  get_all_orgs,
-  get_org_by_id,
-  update_org,
-  delete_org,
-  update_org_approval,
-  get_approved_orgs,
-  get_unapproved_orgs
 };
 
+// Email verification via token for organizations
+const verify_organization_email_token = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== "string") {
+      res.status(400).json({ message: "Verification token is required" });
+      return;
+    }
+
+    let payload: any;
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as any;
+    } catch (err) {
+      res
+        .status(400)
+        .json({ message: "Invalid or expired verification token" });
+      return;
+    }
+
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      {
+        where: { email: payload.email.toLowerCase() },
+      }
+    );
+
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    res.status(200).json({
+      message: "Organization email verified successfully. You can now log in.",
+    });
+  } catch (error) {
+    console.error("Organization email verification error:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred during email verification" });
+  }
+};
+
+export default {
+  create_organization,
+  get_all_organizations,
+  get_organization_by_id,
+  update_organization,
+  delete_organization,
+  approve_organization,
+  disapprove_organization,
+  get_approved_organizations,
+  get_unapproved_organizations,
+  verify_organization_email_token,
+};

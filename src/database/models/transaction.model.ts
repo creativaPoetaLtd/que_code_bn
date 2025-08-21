@@ -1,188 +1,78 @@
-import { DataTypes, Sequelize, Model, Optional } from "sequelize";
+// transaction.model.ts
+import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
+import { TransactionAttributes, TransactionCreationAttributes } from "../../types/model";
 
-export interface TransactionAttributes {
-  id: string;
-  transactionId: string;
-  senderId: string;
-  receiverId: string;
-  amount: number;
-  fee: number;
-  totalAmount: number;
-  currency: string;
-  status: 'pending' | 'completed' | 'failed' | 'cancelled';
-  type: 'transfer' | 'deposit' | 'withdrawal';
-  description?: string;
-  metadata?: any;
-  processedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface TransactionCreationAttributes extends Optional<TransactionAttributes, "id" | "transactionId" | "fee" | "currency" | "status" | "type" | "description" | "metadata" | "processedAt" | "createdAt" | "updatedAt"> {}
-
-export class Transaction extends Model<TransactionAttributes, TransactionCreationAttributes> implements TransactionAttributes {
+class Transaction extends Model<
+  TransactionAttributes,
+  TransactionCreationAttributes
+> {
   public id!: string;
-  public transactionId!: string;
-  public senderId!: string;
-  public receiverId!: string;
+  public referenceId!: string;
+  public senderWalletId!: string;
+  public receiverWalletId!: string;
   public amount!: number;
   public fee!: number;
   public totalAmount!: number;
   public currency!: string;
-  public status!: 'pending' | 'completed' | 'failed' | 'cancelled';
-  public type!: 'transfer' | 'deposit' | 'withdrawal';
-  public description?: string;
-  public metadata?: any;
-  public processedAt?: Date;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  public status!: "pending" | "completed" | "failed" | "cancelled";
+  public type!:
+    | "transfer"
+    | "payment"
+    | "donation"
+    | "vote"
+    | "topup"
+    | "withdrawal";
 }
 
-const transaction_model = (sequelize: Sequelize) => {
+const Transaction_model = (sequelize: Sequelize) => {
   Transaction.init(
     {
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-        allowNull: false,
-      },
-      transactionId: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        unique: true,
-        defaultValue: () => `TXN${Date.now()}${Math.floor(Math.random() * 1000)}`,
-      },
-      senderId: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: {
-          model: 'Users', // Changed from 'users' to 'Users'
-          key: 'id',
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'RESTRICT',
-      },
-      receiverId: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: {
-          model: 'Users', // Changed from 'users' to 'Users'
-          key: 'id',
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'RESTRICT',
-      },
-      amount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        validate: {
-          min: 0.01,
-        },
-      },
-      fee: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        defaultValue: 0.00,
-        validate: {
-          min: 0,
-        },
-      },
-      totalAmount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        validate: {
-          min: 0.01,
-        },
-      },
-      currency: {
-        type: DataTypes.STRING(3),
-        allowNull: false,
-        defaultValue: 'RWF',
-      },
+      id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
+      referenceId: { type: DataTypes.STRING, allowNull: false },
+      senderWalletId: { type: DataTypes.UUID, allowNull: false },
+      receiverWalletId: { type: DataTypes.UUID, allowNull: false },
+      amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      fee: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+      totalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      currency: { type: DataTypes.STRING, allowNull: false },
       status: {
-        type: DataTypes.ENUM('pending', 'completed', 'failed', 'cancelled'),
-        allowNull: false,
-        defaultValue: 'pending',
+        type: DataTypes.ENUM("pending", "completed", "failed", "cancelled"),
+        defaultValue: "pending",
       },
       type: {
-        type: DataTypes.ENUM('transfer', 'deposit', 'withdrawal'),
+        type: DataTypes.ENUM(
+          "transfer",
+          "payment",
+          "donation",
+          "vote",
+          "topup",
+          "withdrawal"
+        ),
         allowNull: false,
-        defaultValue: 'transfer',
       },
-      description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-      metadata: {
-        type: DataTypes.JSON,
-        allowNull: true,
-      },
-      processedAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-      },
-      createdAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
-      },
-      updatedAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
-      },
+      externalSenderName: DataTypes.STRING,
+      externalSenderContact: DataTypes.STRING,
+      externalSenderProvider: DataTypes.ENUM(
+        "mtn_momo",
+        "airtel_money",
+        "bank",
+        "visa",
+        "mastercard",
+        "paypal",
+        "other"
+      ),
+      externalSenderReference: DataTypes.STRING,
+      categoryId: DataTypes.UUID,
+      spendConstraintType: DataTypes.ENUM("none", "category", "recipient"),
+      constraintCategoryId: DataTypes.UUID,
+      constraintRecipientWalletId: DataTypes.UUID,
+      description: DataTypes.STRING,
+      hasAccount: { type: DataTypes.BOOLEAN, defaultValue: true },
+      senderNames: DataTypes.STRING,
     },
-    {
-      sequelize,
-      tableName: "transactions",
-      modelName: "Transaction",
-      timestamps: true,
-      indexes: [
-        {
-          unique: true,
-          fields: ['transactionId'],
-        },
-        {
-          fields: ['senderId'],
-        },
-        {
-          fields: ['receiverId'],
-        },
-        {
-          fields: ['status'],
-        },
-        {
-          fields: ['type'],
-        },
-        {
-          fields: ['createdAt'],
-        },
-        {
-          fields: ['senderId', 'receiverId'],
-        },
-      ],
-      hooks: {
-        beforeCreate: (transaction: Transaction) => {
-          // Calculate total amount as amount + fee
-          transaction.totalAmount = parseFloat(transaction.amount.toString()) + parseFloat(transaction.fee.toString());
-        },
-        beforeUpdate: (transaction: Transaction) => {
-          // Recalculate total amount if amount or fee changes
-          if (transaction.changed('amount') || transaction.changed('fee')) {
-            transaction.totalAmount = parseFloat(transaction.amount.toString()) + parseFloat(transaction.fee.toString());
-          }
-          
-          // Set processedAt when status changes to completed
-          if (transaction.changed('status') && transaction.status === 'completed' && !transaction.processedAt) {
-            transaction.processedAt = new Date();
-          }
-        },
-      },
-    }
+    { sequelize, tableName: "Transactions" }
   );
 
   return Transaction;
 };
-
-export default transaction_model;
+export default Transaction_model;
