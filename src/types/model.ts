@@ -137,6 +137,7 @@ export interface TransactionModelAttributes {
     status: 'pending' | 'completed' | 'failed' | 'cancelled';
     type: 'transfer' | 'deposit' | 'withdrawal';
     description?: string;
+    categoryId?: string;
     metadata?: any;
     processedAt?: Date;
     createdAt?: Date;

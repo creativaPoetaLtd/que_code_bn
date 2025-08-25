@@ -8,6 +8,7 @@ import {
 } from "../types/model";
 import { v4 as uuidv4 } from 'uuid';
 import { Op, where, col, cast } from 'sequelize';
+import { EXPENSE_CATEGORIES, getCategoryById } from '../constants/categories';
 
 // Calculate transaction fee (2% of amount) with proper decimal handling
 const calculateFee = (amount: number): number => {
@@ -18,12 +19,18 @@ const calculateFee = (amount: number): number => {
 // Transfer money between users
 const transfer_money = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { receiverId, amount, description } = req.body;
+        const { receiverId, amount, description, categoryId } = req.body;
         const senderId = req.body.senderId; // This should come from authenticated user
 
         // Validate input
         if (!receiverId || !amount || amount <= 0) {
             res.status(400).json({ message: "Invalid transfer data" });
+            return;
+        }
+
+        // Validate category if provided
+        if (categoryId && !getCategoryById(categoryId)) {
+            res.status(400).json({ message: "Invalid category" });
             return;
         }
 
@@ -109,6 +116,7 @@ const transfer_money = async (req: Request, res: Response): Promise<void> => {
             type: 'transfer',
             status: 'pending',
             description: description || `Transfer from ${sender.firstName} ${sender.lastName} to ${receiver.firstName} ${receiver.lastName}`,
+            categoryId: categoryId || null,
             metadata: {
                 senderName: `${sender.firstName} ${sender.lastName}`,
                 receiverName: `${receiver.firstName} ${receiver.lastName}`,
@@ -464,11 +472,25 @@ const get_transaction_by_id = async (req: Request, res: Response): Promise<void>
     }
 };
 
+// Get all available expense categories
+const getCategories = async (req: Request, res: Response): Promise<void> => {
+    try {
+        res.status(200).json({
+            success: true,
+            data: EXPENSE_CATEGORIES
+        });
+    } catch (error: any) {
+        console.error("Get categories error:", error.message);
+        res.status(500).json({ message: "An error occurred while fetching categories" });
+    }
+};
+
 export default {
     transfer_money,
     get_transaction_history,
     get_wallet_balance,
     create_wallet,
     add_money_to_wallet,
-    get_transaction_by_id
+    get_transaction_by_id,
+    getCategories
 };

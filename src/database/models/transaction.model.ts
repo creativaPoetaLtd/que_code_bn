@@ -12,6 +12,7 @@ export interface TransactionAttributes {
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
   type: 'transfer' | 'deposit' | 'withdrawal';
   description?: string;
+  categoryId?: string;
   metadata?: any;
   processedAt?: Date;
   createdAt: Date;
@@ -32,6 +33,7 @@ export class Transaction extends Model<TransactionAttributes, TransactionCreatio
   public status!: 'pending' | 'completed' | 'failed' | 'cancelled';
   public type!: 'transfer' | 'deposit' | 'withdrawal';
   public description?: string;
+  public categoryId?: string;
   public metadata?: any;
   public processedAt?: Date;
   public readonly createdAt!: Date;
@@ -113,6 +115,13 @@ const transaction_model = (sequelize: Sequelize) => {
       description: {
         type: DataTypes.TEXT,
         allowNull: true,
+      },
+      categoryId: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        validate: {
+          isIn: [['food', 'transport', 'entertainment', 'shopping', 'bills', 'healthcare', 'education', 'travel', 'other']]
+        }
       },
       metadata: {
         type: DataTypes.JSON,

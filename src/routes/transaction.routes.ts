@@ -18,6 +18,9 @@ router.post("/wallet/create", transactionController.create_wallet);
 // Add money to wallet (admin function or deposit)
 router.post("/wallet/deposit", transactionController.add_money_to_wallet);
 
+// Get all expense categories
+router.get("/categories", transactionController.getCategories);
+
 // Get transaction by ID
 router.get("/:transactionId", transactionController.get_transaction_by_id);
 
