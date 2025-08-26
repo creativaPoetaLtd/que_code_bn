@@ -14,37 +14,46 @@ module.exports = {
         allowNull: false,
         references: {
           model: "Users",
-          key: "id"
+          key: "id",
         },
-        onDelete: "CASCADE"
+        onUpdate: "CASCADE",
+        onDelete: "CASCADE",
       },
       type: {
         type: Sequelize.STRING,
         allowNull: false,
       },
       data: {
-        type: Sequelize.JSONB,
+        type: Sequelize.JSON,
         allowNull: false,
       },
       isRead: {
         type: Sequelize.BOOLEAN,
-        allowNull: false,
         defaultValue: false,
+        allowNull: false,
       },
       createdAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.fn('NOW')
+        defaultValue: Sequelize.NOW,
       },
       updatedAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.fn('NOW')
-      }
+        defaultValue: Sequelize.NOW,
+      },
+    });
+
+    // Add indexes
+    await queryInterface.addIndex("Notifications", ["userId"], {
+      name: "idx_notifications_user_id",
+    });
+    await queryInterface.addIndex("Notifications", ["isRead"], {
+      name: "idx_notifications_is_read",
     });
   },
 
   down: async (queryInterface, Sequelize) => {
     await queryInterface.dropTable("Notifications");
-  }
+  },
 };

@@ -1,9 +1,19 @@
-import nodemailer from "nodemailer";
+import * as nodemailer from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 
 export interface EmailOptions {
   to: string;
   subject: string;
-  type: "code" | "success" | "notification" | "contact_invitation" | "invitation_response" | "group_invitation" | "group_join_request" | "join_request_response";
+  type:
+    | "code"
+    | "success"
+    | "notification"
+    | "contact_invitation"
+    | "invitation_response"
+    | "group_invitation"
+    | "group_join_request"
+    | "join_request_response"
+    | "email_verification";
   data: { [key: string]: string | undefined };
 }
 
@@ -14,27 +24,23 @@ class EmailService {
   private isConnected = false;
 
   private constructor() {
-    this.transporter = nodemailer.createTransport({
-      service: "gmail",
+    const transportOptions: SMTPTransport.Options = {
       host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      pool: true, // Enable connection pooling
-      maxConnections: 5, // Limit concurrent connections
-      maxMessages: 100, // Max messages per connection
-      rateLimit: 10, // Max 10 messages per second
+      port: 587,
+      secure: false, // Use STARTTLS
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
-      // Add timeout settings
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 5000, // 5 seconds
-      socketTimeout: 30000, // 30 seconds
-    });
+      // Timeout settings to prevent hanging
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
+    };
 
-    // Verify connection on startup
-    this.verifyConnection();
+    this.transporter = nodemailer.createTransport(transportOptions);
+
+    // Don't verify connection on startup - do it when needed
   }
 
   public static getInstance(): EmailService {
@@ -48,18 +54,21 @@ class EmailService {
     try {
       await this.transporter.verify();
       this.isConnected = true;
-      console.log('SMTP connection verified successfully');
+      console.log("SMTP connection verified successfully");
     } catch (error) {
-      console.error('SMTP connection verification failed:', error);
+      console.error("SMTP connection verification failed:", error);
       this.isConnected = false;
     }
   }
 
-  private generateEmailTemplate(type: string, data: { [key: string]: string | undefined }): string {
+  private generateEmailTemplate(
+    type: string,
+    data: { [key: string]: string | undefined }
+  ): string {
     switch (type) {
       case "code":
         // First check if data.code exists and is a string
-        if (!data.code || typeof data.code !== 'string') {
+        if (!data.code || typeof data.code !== "string") {
           return `<p style="text-align: center; color: #ff0000;">Invalid verification code</p>`;
         }
 
@@ -71,8 +80,8 @@ class EmailService {
             </p>
             <div style="display: inline-flex; justify-content: center; align-items: center; gap: 15px; margin: 0 auto 30px;">
               ${[...data.code]
-            .map(
-              (digit) => `
+                .map(
+                  (digit) => `
                     <div style="
                       width: 50px;
                       height: 50px;
@@ -87,19 +96,48 @@ class EmailService {
                       ${digit}
                     </div>
                   `
-            )
-            .join("")}
+                )
+                .join("")}
             </div>
-            ${data.verificationUrl
-
-            ? `
+            ${
+              data.verificationUrl
+                ? `
             <h2>or use the following link to verify your account</h2>
             <p>Click the link below:</p>
             <a href="${data.verificationUrl}" style="color: #00B512; text-decoration: none; background-color: #00B512; padding: 10px 20px; border-radius: 5px; color: #fff;">Verify my account</a>`
-            : ""
-          }
+                : ""
+            }
       </div>
     `;
+      case "email_verification":
+        return `
+          <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">Welcome ${data.name}!</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Thank you for registering with us! To complete your registration and verify your email address, please click the button below.
+            </p>
+            <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
+              This verification link will expire in 2 days for security reasons.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.verificationUrl}" style="
+                display: inline-block;
+                padding: 15px 30px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                text-align: center;
+                background: #00B512;
+                color: white;
+                font-size: 16px;
+              ">Verify My Email Address</a>
+            </div>
+            <p style="color: #999; font-size: 12px; margin-top: 30px;">
+              If the button doesn't work, you can also copy and paste this link into your browser:<br/>
+              <span style="color: #00B512; word-break: break-all;">${data.verificationUrl}</span>
+            </p>
+          </div>
+        `;
       case "success":
         return `
           <div style="text-align: center;">
@@ -159,19 +197,24 @@ class EmailService {
           </div>
         `;
       case "invitation_response":
-        const isAccepted = data.action === 'accept';
-        const invitationBgColor = isAccepted ? '#28a745' : '#dc3545';
+        const isAccepted = data.action === "accept";
+        const invitationBgColor = isAccepted ? "#28a745" : "#dc3545";
         return `
           <div style="text-align: center;">
-            <h2 style="color: ${invitationBgColor}; font-size: 22px; font-weight: bold;">Invitation ${isAccepted ? 'Accepted' : 'Declined'}</h2>
+            <h2 style="color: ${invitationBgColor}; font-size: 22px; font-weight: bold;">Invitation ${
+          isAccepted ? "Accepted" : "Declined"
+        }</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-              <strong>${data.responderName}</strong> has <strong>${data.actionText}</strong> your contact invitation.
+              <strong>${data.responderName}</strong> has <strong>${
+          data.actionText
+        }</strong> your contact invitation.
             </p>
             
-            ${isAccepted ?
-            '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">You can now view them in your contacts list and start connecting!</p>' :
-            '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">Don\'t worry, you can always try reaching out through other means.</p>'
-          }
+            ${
+              isAccepted
+                ? '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">You can now view them in your contacts list and start connecting!</p>'
+                : '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">Don\'t worry, you can always try reaching out through other means.</p>'
+            }
           </div>
         `;
       case "group_invitation":
@@ -179,7 +222,11 @@ class EmailService {
     <div style="text-align: center;">
       <h2 style="color: #333; font-size: 22px; font-weight: bold;">You're Invited to Join a Group!</h2>
       <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-        <strong>${data.inviterName}</strong> has invited you to join the group <strong>${data.groupName}</strong>.
+        <strong>${
+          data.inviterName
+        }</strong> has invited you to join the group <strong>${
+          data.groupName
+        }</strong>.
       </p>
       <p style="color: #666; font-size: 16px; margin-bottom: 20px;">
         ${data.groupDescription || "No group description provided."}
@@ -211,8 +258,12 @@ class EmailService {
       </div>
 
       <p>If the buttons don't work, use these links:</p>
-      <p><strong>Accept:</strong> <a href="${data.acceptUrl}" style="color: #00B512;">${data.acceptUrl}</a></p>
-      <p><strong>Decline:</strong> <a href="${data.rejectUrl}" style="color: #dc3545;">${data.rejectUrl}</a></p>
+      <p><strong>Accept:</strong> <a href="${
+        data.acceptUrl
+      }" style="color: #00B512;">${data.acceptUrl}</a></p>
+      <p><strong>Decline:</strong> <a href="${
+        data.rejectUrl
+      }" style="color: #dc3545;">${data.rejectUrl}</a></p>
     </div>
   `;
       case "group_join_request":
@@ -254,23 +305,29 @@ class EmailService {
         </div>
     `;
       case "join_request_response":
-        const isApproved = data.action === 'approved';
-        const bgColor = isApproved ? '#28a745' : '#dc3545';
+        const isApproved = data.action === "approved";
+        const bgColor = isApproved ? "#28a745" : "#dc3545";
         return `
         <div style="text-align: center;">
             <h2 style="color: ${bgColor}; font-size: 22px; font-weight: bold;">
-                Join Request ${isApproved ? 'Approved' : 'Rejected'}
+                Join Request ${isApproved ? "Approved" : "Rejected"}
             </h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-                <strong>${data.responderName}</strong> has <strong>${data.action}</strong> your request to join 
+                <strong>${data.responderName}</strong> has <strong>${
+          data.action
+        }</strong> your request to join 
                 <strong>${data.groupName}</strong>.
             </p>
             
-            ${isApproved ? `
+            ${
+              isApproved
+                ? `
                 <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
                     ${data.message}
                 </p>
-                ${data.groupLink ? `
+                ${
+                  data.groupLink
+                    ? `
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="${data.groupLink}" style="
                         display: inline-block;
@@ -286,12 +343,16 @@ class EmailService {
                 </div>
                 <p>Or copy and paste this URL into your browser:</p>
                 <p><a href="${data.groupLink}" style="color: #00B512;">${data.groupLink}</a></p>
-                ` : ''}
-            ` : `
+                `
+                    : ""
+                }
+            `
+                : `
                 <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
                     ${data.message}
                 </p>
-            `}
+            `
+            }
         </div>
     `;
       default:
@@ -299,12 +360,23 @@ class EmailService {
     }
   }
 
-  public async sendEmail({ to, subject, type, data }: EmailOptions): Promise<void> {
+  public async sendEmail({
+    to,
+    subject,
+    type,
+    data,
+  }: EmailOptions): Promise<void> {
+    console.log(`📧 Starting email send to: ${to}`);
+    console.log(`📧 Email subject: ${subject}`);
+    console.log(`📧 Email type: ${type}`);
+
     // Verify connection if not connected
     if (!this.isConnected) {
+      console.log(`📧 Connection not verified, verifying...`);
       await this.verifyConnection();
     }
 
+    console.log(`📧 Generating email template...`);
     const htmlTemplate = `
       <div style="
         font-family: Arial, sans-serif;
@@ -318,48 +390,73 @@ class EmailService {
       ">
         <div style="background-color: #00B512; color: #ffffff; padding: 20px;">
           <img 
-            src="${process.env.EMAIL_LOGO_URL || 'https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png'}" 
+            src="${
+              process.env.EMAIL_LOGO_URL ||
+              "https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png"
+            }" 
             alt="Company Logo" 
             style="max-width: 120px; margin: 0 auto 10px; display: block;"
           >
-          <h1 style="font-size: 26px; margin: 0;">${process.env.EMAIL_COMPANY_NAME || 'QiewCode'}</h1>
+          <h1 style="font-size: 26px; margin: 0;">${
+            process.env.EMAIL_COMPANY_NAME || "QiewCode"
+          }</h1>
         </div>
         <div style="padding: 30px 20px;">
           ${this.generateEmailTemplate(type, data)}
         </div>
         <div style="background-color: #f9f9f9; padding: 20px; color: #666; font-size: 14px;">
-          <p>${process.env.EMAIL_FOOTER_TEXT || 'Thank you for choosing us!'}</p>
-          <p>Need help? Contact us at <a href="mailto:${process.env.EMAIL_SUPPORT}" style="color: #00B512; text-decoration: none;">${process.env.EMAIL_SUPPORT || 'support@qiewcode.com'}</a></p>
+          <p>${
+            process.env.EMAIL_FOOTER_TEXT || "Thank you for choosing us!"
+          }</p>
+          <p>Need help? Contact us at <a href="mailto:${
+            process.env.EMAIL_SUPPORT
+          }" style="color: #00B512; text-decoration: none;">${
+      process.env.EMAIL_SUPPORT || "support@qiewcode.com"
+    }</a></p>
         </div>
       </div>
     `;
 
+    console.log(`📧 Template generated, preparing to send...`);
     const startTime = Date.now();
 
     try {
-      await this.transporter.sendMail({
+      // Add a timeout promise
+      const emailPromise = this.transporter.sendMail({
         from: process.env.EMAIL_USER,
         to,
         subject,
         html: htmlTemplate,
       });
 
+      const timeoutPromise = new Promise(
+        (_, reject) =>
+          setTimeout(() => reject(new Error("Email sending timeout")), 15000) // 15 second timeout
+      );
+
+      console.log(`📧 Sending email to transporter...`);
+      await Promise.race([emailPromise, timeoutPromise]);
+
       const duration = Date.now() - startTime;
-      console.log(`Email sent successfully to ${to} in ${duration}ms`);
-    } catch (error) {
+      console.log(`✅ Email sent successfully to ${to} in ${duration}ms`);
+    } catch (error: any) {
       const duration = Date.now() - startTime;
-      console.error(`Failed to send email to ${to} after ${duration}ms:`, error);
+      console.error(
+        `❌ Failed to send email to ${to} after ${duration}ms:`,
+        error.message
+      );
+      console.error(`❌ Full error:`, error);
 
       // Try to reconnect on failure
       this.isConnected = false;
-      throw new Error("Email sending failed");
+      throw new Error(`Email sending failed: ${error.message}`);
     }
   }
 
   // Method to close connections gracefully
   public async close(): Promise<void> {
     this.transporter.close();
-    console.log('Email transporter closed');
+    console.log("Email transporter closed");
   }
 }
 
@@ -373,10 +470,10 @@ const sendEmail = async (options: EmailOptions): Promise<void> => {
 export default sendEmail;
 
 // For graceful shutdown
-process.on('SIGTERM', async () => {
+process.on("SIGTERM", async () => {
   await emailService.close();
 });
 
-process.on('SIGINT', async () => {
+process.on("SIGINT", async () => {
   await emailService.close();
 });

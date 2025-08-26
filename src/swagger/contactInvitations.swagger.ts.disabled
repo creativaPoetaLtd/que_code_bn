@@ -1,0 +1,221 @@
+/**
+ * @swagger
+ * tags:
+ *   name: Contact Invitations
+ *   description: Contact invitation management endpoints
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     ContactInvitation:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         inviterId:
+ *           type: string
+ *           format: uuid
+ *         inviteeId:
+ *           type: string
+ *           format: uuid
+ *         status:
+ *           type: string
+ *           enum: [pending, accepted, declined, expired]
+ *         invitationToken:
+ *           type: string
+ *         invitedAt:
+ *           type: string
+ *           format: date-time
+ *         respondedAt:
+ *           type: string
+ *           format: date-time
+ *         expiresAt:
+ *           type: string
+ *           format: date-time
+ */
+
+/**
+ * @swagger
+ * /api/contact-invitations:
+ *   post:
+ *     summary: Send a contact invitation
+ *     tags: [Contact Invitations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - inviteeEmail
+ *             properties:
+ *               inviteeEmail:
+ *                 type: string
+ *                 format: email
+ *                 description: Email of the user to invite
+ *               message:
+ *                 type: string
+ *                 description: Optional personal message
+ *     responses:
+ *       201:
+ *         description: Invitation sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/ContactInvitation'
+ *       400:
+ *         description: Bad request or invitation already exists
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contact-invitations/{id}/respond:
+ *   post:
+ *     summary: Respond to a contact invitation
+ *     tags: [Contact Invitations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Invitation ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - action
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [accept, decline]
+ *                 description: Response action
+ *     responses:
+ *       200:
+ *         description: Response recorded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 contactCreated:
+ *                   type: boolean
+ *       400:
+ *         description: Bad request or invalid action
+ *       404:
+ *         description: Invitation not found
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contact-invitations/received:
+ *   get:
+ *     summary: Get received invitations for current user
+ *     tags: [Contact Invitations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, accepted, declined, expired]
+ *         description: Filter by status
+ *     responses:
+ *       200:
+ *         description: List of received invitations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/ContactInvitation'
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contact-invitations/sent:
+ *   get:
+ *     summary: Get sent invitations for current user
+ *     tags: [Contact Invitations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, accepted, declined, expired]
+ *         description: Filter by status
+ *     responses:
+ *       200:
+ *         description: List of sent invitations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/ContactInvitation'
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/contact-invitations/{id}:
+ *   delete:
+ *     summary: Cancel a pending invitation
+ *     tags: [Contact Invitations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Invitation ID
+ *     responses:
+ *       200:
+ *         description: Invitation cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Invitation not found
+ *       400:
+ *         description: Cannot cancel non-pending invitation
+ *       500:
+ *         description: Internal server error
+ */
