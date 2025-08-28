@@ -209,27 +209,30 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// Verify user email and OTP
 const verify_user_email = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { token, otp } = req.query;
+    if (!JWT_SECRET) {
+      throw new Error("JWT_SECRET is not defined in environment variables");
+    }
+
+    const token = Array.isArray(req.query.token)
+      ? req.query.token[0]
+      : req.query.token;
+    const otp = Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp;
 
     console.log("🔍 User verification started");
     console.log("📧 Token received:", token);
     console.log("🔢 OTP received:", otp);
 
     // Validate inputs
-    if (!token || typeof token !== "string") {
-      console.log("❌ No token provided");
+    if (!token) {
       res.status(400).json({ message: "Verification token is required" });
       return;
     }
-
-    if (!otp || typeof otp !== "string") {
-      console.log("❌ No OTP provided");
+    if (!otp) {
       res.status(400).json({ message: "OTP is required" });
       return;
     }
@@ -237,17 +240,19 @@ const verify_user_email = async (
     // Verify and decode the token
     let decoded: any;
     try {
-      decoded = jwt.verify(token, JWT_SECRET);
-      console.log("✅ Token verified successfully");
-      console.log("👤 Decoded token:", {
+      decoded = jwt.verify(String(token), JWT_SECRET);
+      console.log("✅ Token verified successfully", {
         email: decoded.email,
         id: decoded.id,
       });
-    } catch (tokenError: any) {
-      console.log("❌ Token verification failed:", tokenError.message);
-      res
-        .status(400)
-        .json({ message: "Invalid or expired verification token" });
+    } catch (err: any) {
+      if (err.name === "TokenExpiredError") {
+        console.log("❌ Token expired");
+        res.status(400).json({ message: "Verification token has expired" });
+      } else {
+        console.log("❌ Invalid token");
+        res.status(400).json({ message: "Invalid verification token" });
+      }
       return;
     }
 
@@ -262,12 +267,13 @@ const verify_user_email = async (
       return;
     }
 
-    console.log("✅ User found:", decoded.email);
-
-    // Check if user is already verified
     const plainUser = isSequelizeInstance(user)
       ? user.get({ plain: true })
       : user;
+
+    console.log("✅ User found:", plainUser.email);
+
+    // Already verified?
     if (plainUser.isVerified) {
       console.log("ℹ️ User already verified");
       res.status(200).json({
@@ -277,21 +283,21 @@ const verify_user_email = async (
       return;
     }
 
-    // Verify OTP
-    if (plainUser.otp !== otp) {
-      console.log("❌ Invalid OTP");
-      res.status(400).json({ message: "Invalid OTP" });
-      return;
-    }
-
-    // Check if OTP is expired
+    // Check OTP expiry first
     if (plainUser.otpExpires && new Date() > new Date(plainUser.otpExpires)) {
       console.log("❌ OTP has expired");
       res.status(400).json({ message: "OTP has expired" });
       return;
     }
 
-    // Update user verification status and clear OTP
+    // Then check OTP match
+    if (plainUser.otp !== otp) {
+      console.log("❌ Invalid OTP");
+      res.status(400).json({ message: "Invalid OTP" });
+      return;
+    }
+
+    // Update verification status
     await insert_function<UserModelAttributes>(
       "User",
       "update",
@@ -303,7 +309,7 @@ const verify_user_email = async (
       { where: { id: decoded.id } }
     );
 
-    console.log("✅ User verified successfully with token and OTP");
+    console.log("✅ User verified successfully");
 
     res.status(200).json({
       message: "User verified successfully! You can now log in.",
@@ -311,7 +317,6 @@ const verify_user_email = async (
     });
   } catch (error: any) {
     console.error("❌ User verification error:", error.message);
-    console.error("❌ Full error:", error);
     res.status(500).json({
       message: "An error occurred while verifying the user",
       error: error.message,
@@ -319,40 +324,55 @@ const verify_user_email = async (
   }
 };
 
+
 // filepath: /Users/izanyibukayvette/Desktop/WORK/CREATIVA/que_code_bn/src/controllers/userController.ts
-const resend_verification = async (req: Request, res: Response): Promise<void> => {
+const resend_verification = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { email } = req.body;
     if (!email) {
       res.status(400).json({ message: "Email is required" });
       return;
     }
+
     const user = await read_function<UserModelAttributes>("User", "findOne", {
       where: { email: email.toLowerCase() },
     });
+
     if (!user) {
       res.status(404).json({ message: "User not found" });
       return;
     }
+
     if (user.isVerified) {
       res.status(200).json({ message: "User is already verified" });
       return;
     }
+
     // Generate new OTP and token
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
     await insert_function<UserModelAttributes>(
       "User",
       "update",
       { otp, otpExpires },
       { where: { id: user.id } }
     );
+
     const verificationToken = jwt.sign(
       { email: user.email, id: user.id },
       JWT_SECRET,
       { expiresIn: "30d", algorithm: "HS256" }
     );
-    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify?token=${verificationToken}&otp=${otp}`;
+
+    // ✅ Fix path: use /auth/verify instead of /verify
+    const verificationUrl = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/auth/verify?token=${verificationToken}&otp=${otp}`;
+
     await sendEmail({
       to: user.email,
       subject: "Resend Email Verification",
@@ -363,9 +383,13 @@ const resend_verification = async (req: Request, res: Response): Promise<void> =
         otp,
       },
     });
+
     res.status(200).json({ message: "Verification email resent successfully" });
   } catch (error: any) {
-    res.status(500).json({ message: "Failed to resend verification email", error: error.message });
+    res.status(500).json({
+      message: "Failed to resend verification email",
+      error: error.message,
+    });
   }
 };
 
