@@ -94,17 +94,10 @@ module.exports = {
       },
     });
 
-    // Add indexes
-    await queryInterface.addIndex("GroupMembers", ["groupId"], {
-      name: "idx_group_members_group_id",
-    });
-    await queryInterface.addIndex("GroupMembers", ["userId"], {
-      name: "idx_group_members_user_id",
-    });
-    await queryInterface.addIndex("GroupMembers", ["groupId", "userId"], {
-      name: "idx_group_members_group_user",
-      unique: true,
-    });
+    // Add indexes (guard with IF NOT EXISTS)
+    await queryInterface.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_group_members_group_id" ON "GroupMembers" ("groupId");');
+    await queryInterface.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_group_members_user_id" ON "GroupMembers" ("userId");');
+    await queryInterface.sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "idx_group_members_group_user" ON "GroupMembers" ("groupId", "userId");');
   },
 
   down: async (queryInterface, Sequelize) => {

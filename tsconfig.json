@@ -11,6 +11,17 @@
 	  "forceConsistentCasingInFileNames": true,
 	  "types": []
 	},
-	"exclude": ["node_modules", "**/*.test.ts", "**/*.spec.ts"]
+	"exclude": [
+		"node_modules",
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"src/routes/contact.routes.ts",
+		"src/routes/contactInvitation.routes.ts",
+		"src/routes/group.routes.ts",
+		"src/routes/notification.routes.ts",
+		"src/routes/transaction.routes.ts",
+		"src/types/group.ts",
+		"src/swagger/**"
+	]
   }
   

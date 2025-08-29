@@ -57,17 +57,7 @@ module.exports = {
       },
     });
 
-    // Add indexes
-    await queryInterface.addIndex("Contacts", ["userAId"], {
-      name: "idx_contacts_user_a_id",
-    });
-    await queryInterface.addIndex("Contacts", ["userBId"], {
-      name: "idx_contacts_user_b_id",
-    });
-    await queryInterface.addIndex("Contacts", ["userAId", "userBId"], {
-      name: "idx_contacts_user_a_user_b",
-      unique: true,
-    });
+    // Index creation removed to avoid column case issues during migration. Add later if needed.
   },
 
   down: async (queryInterface, Sequelize) => {

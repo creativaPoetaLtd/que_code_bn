@@ -83,16 +83,10 @@ module.exports = {
       },
     });
 
-    // Add indexes
-    await queryInterface.addIndex("Groups", ["ownerId"], {
-      name: "idx_groups_owner_id",
-    });
-    await queryInterface.addIndex("Groups", ["accessLink"], {
-      name: "idx_groups_access_link",
-    });
-    await queryInterface.addIndex("Groups", ["accessToken"], {
-      name: "idx_groups_access_token",
-    });
+    // Add indexes (guard with IF NOT EXISTS)
+    await queryInterface.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_groups_owner_id" ON "Groups" ("ownerId");');
+    await queryInterface.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_groups_access_link" ON "Groups" ("accessLink");');
+    await queryInterface.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_groups_access_token" ON "Groups" ("accessToken");');
   },
 
   down: async (queryInterface, Sequelize) => {
