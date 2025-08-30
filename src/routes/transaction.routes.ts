@@ -11,6 +11,9 @@ router.post("/transfer", transactionController.transferMoney);
 // Get wallet balance
 router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
 
+// Get user's wallet information
+router.get("/user/:userId/wallet", transactionController.getUserWallet);
+
 // Get transaction history for a wallet
 router.get("/wallet/:walletId/history", transactionController.getTransactionHistory);
 

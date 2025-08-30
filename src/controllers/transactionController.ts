@@ -20,8 +20,8 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
   
   try {
     const {
-      senderWalletId,
-      receiverWalletId,
+      senderUserId,
+      receiverUserId,
       amount,
       description = '',
       categoryId,
@@ -29,10 +29,10 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     } = req.body;
 
     // Validation
-    if (!senderWalletId || !receiverWalletId || !amount) {
+    if (!senderUserId || !receiverUserId || !amount) {
       res.status(400).json({
         success: false,
-        message: 'Sender wallet ID, receiver wallet ID, and amount are required'
+        message: 'Sender user ID, receiver user ID, and amount are required'
       });
       return;
     }
@@ -45,10 +45,10 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (senderWalletId === receiverWalletId) {
+    if (senderUserId === receiverUserId) {
       res.status(400).json({
         success: false,
-        message: 'Cannot transfer to the same wallet'
+        message: 'Cannot transfer to yourself'
       });
       return;
     }
@@ -60,13 +60,15 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     const fee = 0;
     const totalAmount = transferAmount + fee;
 
-    // Lock both wallets to prevent race conditions
+    // Find wallets for both users
     const [senderWallet, receiverWallet] = await Promise.all([
-      Wallet.findByPk(senderWalletId, {
+      Wallet.findOne({
+        where: { userId: senderUserId, isActive: true },
         lock: transaction?.LOCK.UPDATE,
         transaction
       }),
-      Wallet.findByPk(receiverWalletId, {
+      Wallet.findOne({
+        where: { userId: receiverUserId, isActive: true },
         lock: transaction?.LOCK.UPDATE,
         transaction
       })
@@ -77,7 +79,7 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       await transaction?.rollback();
       res.status(404).json({
         success: false,
-        message: 'Sender wallet not found'
+        message: 'Sender wallet not found or inactive'
       });
       return;
     }
@@ -86,26 +88,7 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       await transaction?.rollback();
       res.status(404).json({
         success: false,
-        message: 'Receiver wallet not found'
-      });
-      return;
-    }
-
-    // Check if wallets are active
-    if (!senderWallet.isActive) {
-      await transaction?.rollback();
-      res.status(400).json({
-        success: false,
-        message: 'Sender wallet is not active'
-      });
-      return;
-    }
-
-    if (!receiverWallet.isActive) {
-      await transaction?.rollback();
-      res.status(400).json({
-        success: false,
-        message: 'Receiver wallet is not active'
+        message: 'Receiver wallet not found or inactive'
       });
       return;
     }
@@ -136,20 +119,28 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     // Generate reference ID
     const referenceId = `TXN${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
+    // Store original balances before updates for response
+    const originalSenderBalance = parseFloat(senderWallet.balance.toString());
+    const originalReceiverBalance = parseFloat(receiverWallet.balance.toString());
+    
     // Update wallet balances
     await senderWallet.update({
-      balance: senderWallet.balance - totalAmount
+      balance: originalSenderBalance - totalAmount
     }, { transaction });
 
-    await receiverWallet.update({
-      balance: receiverWallet.balance + transferAmount
+    const hey = await receiverWallet.update({
+      balance: originalReceiverBalance + transferAmount
     }, { transaction });
+
+    // Refresh the wallet instances to get updated values
+    await senderWallet.reload({ transaction });
+    await receiverWallet.reload({ transaction });
 
     // Create transaction record
     const newTransaction = await TransactionModel.create({
       referenceId,
-      senderWalletId,
-      receiverWalletId,
+      senderWalletId: senderWallet.id,
+      receiverWalletId: receiverWallet.id,
       amount: transferAmount,
       fee,
       totalAmount,
@@ -174,9 +165,7 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
         referenceId: newTransaction.referenceId,
         amount: transferAmount,
         fee,
-        totalAmount,
-        senderBalance: senderWallet.balance - totalAmount,
-        receiverBalance: receiverWallet.balance + transferAmount,
+        senderBalance: senderWallet.balance,
         status: 'completed'
       }
     });
@@ -373,9 +362,47 @@ const getTransactionCategories = async (req: Request, res: Response): Promise<vo
   }
 };
 
+// Get user's wallet information
+const getUserWallet = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+
+    const wallet = await Wallet.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!wallet) {
+      res.status(404).json({
+        success: false,
+        message: 'Active wallet not found for this user'
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        walletId: wallet.id,
+        userId: wallet.userId,
+        balance: wallet.balance,
+        currency: wallet.currency,
+        isActive: wallet.isActive
+      }
+    });
+
+  } catch (error) {
+    console.error('Get user wallet error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 export default {
   transferMoney,
   getWalletBalance,
+  getUserWallet,
   getTransactionHistory,
   getTransactionDetails,
   getTransactionCategories
