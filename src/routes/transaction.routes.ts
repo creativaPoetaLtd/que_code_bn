@@ -1,24 +1,23 @@
 import express from "express";
 import transactionController from "../controllers/transactionController";
+import { authenticate } from "../middleware/auth.middleware";
 
 const router = express.Router();
+router.use(authenticate);
 
 // Transfer money between users
-router.post("/transfer", transactionController.transfer_money);
+router.post("/transfer", transactionController.transferMoney);
 
-// Get transaction history for a user
-router.get("/history/:userId", transactionController.get_transaction_history);
+// Get wallet balance
+router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
 
-// Get wallet balance for a user
-router.get("/wallet/:userId", transactionController.get_wallet_balance);
+// Get transaction history for a wallet
+router.get("/wallet/:walletId/history", transactionController.getTransactionHistory);
 
-// Create wallet for user (admin function)
-router.post("/wallet/create", transactionController.create_wallet);
+// Get transaction details by ID
+router.get("/:transactionId", transactionController.getTransactionDetails);
 
-// Add money to wallet (admin function or deposit)
-router.post("/wallet/deposit", transactionController.add_money_to_wallet);
-
-// Get transaction by ID
-router.get("/:transactionId", transactionController.get_transaction_by_id);
+// Get transaction categories
+router.get("/categories", transactionController.getTransactionCategories);
 
 export default router;

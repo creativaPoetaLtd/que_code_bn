@@ -3,7 +3,7 @@ import orgRouter from "./organization.routes";
 import userRouter from "./user.routes";
 import loginRouter from "./login.routes";
 import resetRouter from "./reset.routes";
-// import transactionRouter from "./transaction.routes"; // Temporarily disabled
+import transactionRouter from "./transaction.routes";
 import contactRouter from "./contact.routes";
 // import contactInvitationRouter from "./contactInvitation.routes"; // Temporarily disabled
 import organizationCategoryRouter from "./organizationCategory.routes";
@@ -18,7 +18,7 @@ router.use("/profiles", profileRouter);
 router.use("/users", userRouter);
 router.use("/auth", loginRouter);
 router.use("/auth", resetRouter);
-// router.use("/transactions", transactionRouter); // Temporarily disabled
+router.use("/transactions", transactionRouter);
 
 router.use("/contacts", contactRouter);
 // router.use("/contact-invitations", contactInvitationRouter); // Temporarily disabled
