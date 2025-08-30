@@ -27,26 +27,17 @@ const generateOTP = (): string => {
 // Register a new user
 const create_user = async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log("🚀 User registration started");
-    console.log("📥 Request body:", req.body);
 
     const { firstName, lastName, phone, email, password } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !phone || !email || !password) {
-      console.log("❌ Missing required fields");
       res.status(400).json({
         message: "Missing required fields",
         required: ["firstName", "lastName", "phone", "email", "password"],
       });
       return;
     }
-
-    console.log("✅ All required fields provided");
-    console.log(
-      "🔍 Checking if user already exists with email:",
-      email.toLowerCase()
-    );
 
     // Check if user already exists
     const existingUser = await read_function<UserModelAttributes>(
@@ -56,12 +47,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     );
 
     if (existingUser) {
-      console.log("❌ User already exists with email:", email.toLowerCase());
       res.status(400).json({ message: "User already exists" });
       return;
     }
-
-    console.log("✅ User does not exist, proceeding with registration");
 
     // Hash password
     const saltRounds = 10;
@@ -93,13 +81,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       "create",
       userData
     );
-
-    console.log("✅ User created successfully with ID:", newUser.id);
-
     // Generate QR Code for user profile
     const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
     const qrCodeData = await QRCode.toDataURL(userProfileLink);
-    console.log("✅ QR Code generated successfully");
 
     // Create profile
     const profileData: ProfileCreationAttributes = {
@@ -107,33 +91,18 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       userId: newUser.id,
       qrCode: qrCodeData,
     };
-
-    console.log("📝 Creating profile for user:", newUser.id);
-
     await insert_function<ProfileModelAttributes>(
       "Profile",
       "create",
       profileData
     );
 
-    console.log("✅ Profile created successfully");
-
     // Create wallet
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
       };
-
-      console.log(
-        "📝 Creating wallet for user:",
-        newUser.id,
-        "with initial balance of 65,000 RWF"
-      );
-
       await insert_function("Wallet", "create", walletData);
-      console.log(
-        "✅ Wallet created successfully with initial balance of 65,000 RWF"
-      );
     } catch (walletError) {
       console.error("❌ Error creating wallet for user:", walletError);
     }
@@ -144,16 +113,10 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       JWT_SECRET,
       { expiresIn: "2d", algorithm: "HS256" }
     );
-
-    console.log("✅ Verification token generated");
-
     // Verification URL
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/verify?token=${verificationToken}&otp=${otp}`; // Include OTP in URL
-
-    console.log("📧 Sending verification email to:", email.toLowerCase());
-
+    }/verify?token=${verificationToken}&otp=${otp}`; // In
     // Send verification email with OTP
     let emailSent = false;
     try {
@@ -167,14 +130,12 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
           otp,
         },
       });
-      console.log("✅ Verification email with OTP sent successfully");
       emailSent = true;
     } catch (emailError: any) {
       console.error(
         "❌ Failed to send verification email:",
         emailError.message
       );
-      console.log("⚠️ Registration completed but email delivery failed");
     }
 
     const plainUser = isSequelizeInstance(newUser)
@@ -186,9 +147,6 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       otpExpires: ___,
       ...userWithoutSensitive
     } = plainUser;
-
-    console.log("🎉 User registration completed successfully");
-    console.log("👤 Created user:", userWithoutSensitive);
 
     const message = emailSent
       ? "User registered successfully. Please check your email for verification instructions and OTP."
@@ -204,7 +162,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     console.error("❌ Full error:", error);
     res.status(500).json({
       message: "An error occurred while registering the user",
-      error: error.message,
+      error: error.megssage,
     });
   }
 };
@@ -223,10 +181,6 @@ const verify_user_email = async (
       : req.query.token;
     const otp = Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp;
 
-    console.log("🔍 User verification started");
-    console.log("📧 Token received:", token);
-    console.log("🔢 OTP received:", otp);
-
     // Validate inputs
     if (!token) {
       res.status(400).json({ message: "Verification token is required" });
@@ -241,16 +195,10 @@ const verify_user_email = async (
     let decoded: any;
     try {
       decoded = jwt.verify(String(token), JWT_SECRET);
-      console.log("✅ Token verified successfully", {
-        email: decoded.email,
-        id: decoded.id,
-      });
     } catch (err: any) {
       if (err.name === "TokenExpiredError") {
-        console.log("❌ Token expired");
         res.status(400).json({ message: "Verification token has expired" });
       } else {
-        console.log("❌ Invalid token");
         res.status(400).json({ message: "Invalid verification token" });
       }
       return;
@@ -262,7 +210,6 @@ const verify_user_email = async (
     });
 
     if (!user) {
-      console.log("❌ User not found for token");
       res.status(404).json({ message: "User not found" });
       return;
     }
@@ -271,11 +218,9 @@ const verify_user_email = async (
       ? user.get({ plain: true })
       : user;
 
-    console.log("✅ User found:", plainUser.email);
 
     // Already verified?
     if (plainUser.isVerified) {
-      console.log("ℹ️ User already verified");
       res.status(200).json({
         message: "User is already verified",
         verified: true,
@@ -285,14 +230,12 @@ const verify_user_email = async (
 
     // Check OTP expiry first
     if (plainUser.otpExpires && new Date() > new Date(plainUser.otpExpires)) {
-      console.log("❌ OTP has expired");
       res.status(400).json({ message: "OTP has expired" });
       return;
     }
 
     // Then check OTP match
     if (plainUser.otp !== otp) {
-      console.log("❌ Invalid OTP");
       res.status(400).json({ message: "Invalid OTP" });
       return;
     }
@@ -309,8 +252,6 @@ const verify_user_email = async (
       { where: { id: decoded.id } }
     );
 
-    console.log("✅ User verified successfully");
-
     res.status(200).json({
       message: "User verified successfully! You can now log in.",
       verified: true,
@@ -323,7 +264,6 @@ const verify_user_email = async (
     });
   }
 };
-
 
 // filepath: /Users/izanyibukayvette/Desktop/WORK/CREATIVA/que_code_bn/src/controllers/userController.ts
 const resend_verification = async (
@@ -368,10 +308,10 @@ const resend_verification = async (
       { expiresIn: "30d", algorithm: "HS256" }
     );
 
-    // ✅ Fix path: use /auth/verify instead of /verify
+    // ✅ Fix path: use /verify instead of /auth/verify
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/auth/verify?token=${verificationToken}&otp=${otp}`;
+    }/verify?token=${verificationToken}&otp=${otp}`;
 
     await sendEmail({
       to: user.email,
@@ -392,7 +332,6 @@ const resend_verification = async (
     });
   }
 };
-
 
 // Other endpoints (unchanged)
 const get_all_users = async (req: Request, res: Response): Promise<void> => {
