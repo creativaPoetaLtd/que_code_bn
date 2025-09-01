@@ -14,12 +14,15 @@ module.exports = {
       $$;
     `);
 
-    // Add the type column
-    await queryInterface.addColumn("Profiles", "type", {
-      type: Sequelize.ENUM("individual", "organization"),
-      allowNull: false,
-      defaultValue: "individual",
-    });
+    // Add the type column if it doesn't exist
+    const table = await queryInterface.describeTable("Profiles");
+    if (!table.type) {
+      await queryInterface.addColumn("Profiles", "type", {
+        type: Sequelize.ENUM("individual", "organization"),
+        allowNull: false,
+        defaultValue: "individual",
+      });
+    }
   },
 
   async down(queryInterface, Sequelize) {
