@@ -53,6 +53,40 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check for duplicate transactions in the last 30 seconds
+    const now = new Date();
+    const thirtySecondsAgo = new Date(now.getTime() - 30000);
+    
+    // First find the wallets to get their IDs
+    const [checkSenderWallet, checkReceiverWallet] = await Promise.all([
+      Wallet.findOne({ where: { userId: senderUserId, isActive: true } }),
+      Wallet.findOne({ where: { userId: receiverUserId, isActive: true } })
+    ]);
+
+    if (checkSenderWallet && checkReceiverWallet) {
+      const recentTransaction = await TransactionModel.findOne({
+        where: {
+          senderWalletId: checkSenderWallet.id,
+          receiverWalletId: checkReceiverWallet.id,
+          amount: parseFloat(amount),
+          createdAt: {
+            [Op.gte]: thirtySecondsAgo
+          },
+          status: 'completed'
+        },
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (recentTransaction) {
+        await transaction?.rollback();
+        res.status(400).json({
+          success: false,
+          message: 'Duplicate transaction detected. Please wait before making another similar transfer.'
+        });
+        return;
+      }
+    }
+
     // Calculate fee and total amount
     const transferAmount = parseFloat(amount);
     //const fee = calculateFee(transferAmount);
@@ -165,7 +199,11 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
         referenceId: newTransaction.referenceId,
         amount: transferAmount,
         fee,
+        totalAmount,
         senderBalance: senderWallet.balance,
+        receiverUserId,
+        description,
+        categoryId,
         status: 'completed'
       }
     });

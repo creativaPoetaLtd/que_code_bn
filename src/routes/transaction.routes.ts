@@ -17,10 +17,9 @@ router.get("/user/:userId/wallet", transactionController.getUserWallet);
 // Get transaction history for a wallet
 router.get("/wallet/:walletId/history", transactionController.getTransactionHistory);
 
+router.get("/categories", transactionController.getTransactionCategories);
+
 // Get transaction details by ID
 router.get("/:transactionId", transactionController.getTransactionDetails);
-
-// Get transaction categories
-router.get("/categories", transactionController.getTransactionCategories);
 
 export default router;
