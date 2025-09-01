@@ -203,7 +203,7 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
       success: true,
       data: {
         walletId: wallet.id,
-        balance: wallet.balance,
+        balance: parseFloat(wallet.balance.toString()),
         currency: wallet.currency,
         isActive: wallet.isActive
       }
@@ -265,6 +265,16 @@ const getTransactionHistory = async (req: Request, res: Response): Promise<void>
           model: TransactionCategory,
           as: 'category',
           required: false
+        },
+        {
+          model: Wallet,
+          as: 'senderWallet',
+          attributes: ['id', 'userId', 'currency']
+        },
+        {
+          model: Wallet,
+          as: 'receiverWallet',
+          attributes: ['id', 'userId', 'currency']
         }
       ]
     });
@@ -384,7 +394,7 @@ const getUserWallet = async (req: Request, res: Response): Promise<void> => {
       data: {
         walletId: wallet.id,
         userId: wallet.userId,
-        balance: wallet.balance,
+        balance: parseFloat(wallet.balance.toString()),
         currency: wallet.currency,
         isActive: wallet.isActive
       }

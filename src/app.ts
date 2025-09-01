@@ -1,6 +1,7 @@
 // app.ts
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import session from "express-session";
 import passport from "./auth/passport";
 import authRouter from "./routes/auth.routes";
@@ -27,6 +28,7 @@ app.use(
 // Middleware
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(cookieParser());
 app.use(express.json());
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
