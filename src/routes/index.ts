@@ -9,7 +9,7 @@ import resetRouter from "./reset.routes";
 import organizationCategoryRouter from "./organizationCategory.routes";
 import profileRouter from "./profile.routes";
 // import groupRouter from "./group.routes"; // Temporarily disabled due to compilation errors
-// import notificationRouter from "./notification.routes"; // Temporarily disabled
+import notificationRouter from "./notification.routes"; // Re-enabled
 
 const router = express.Router();
 router.use("/organizations", orgRouter);
@@ -23,5 +23,5 @@ router.use("/auth", resetRouter);
 // router.use("/contacts", contactRouter); // Temporarily disabled
 // router.use("/contact-invitations", contactInvitationRouter); // Temporarily disabled
 // router.use("/groups", groupRouter); // Temporarily disabled due to compilation errors
-// router.use("/notifications", notificationRouter); // Temporarily disabled
+router.use("/notifications", notificationRouter); // Re-enabled
 export default router;
