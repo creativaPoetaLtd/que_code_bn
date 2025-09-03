@@ -3,6 +3,8 @@ import { insert_function, read_function } from "../utils/db_methods";
 import {
   ProfileModelAttributes,
 } from "../types/model";
+import cloudinary from "../helpers/cloudinary";
+import { deleteCloudinaryFile } from "../helpers/upload";
 
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
   return obj && typeof obj.get === "function";
@@ -144,14 +146,118 @@ const update_profile = async (req: Request, res: Response): Promise<void> => {
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
+    // Handle profile image upload to Cloudinary
     if (files?.profileImage?.[0]) {
-      updateData.profileImage = files.profileImage[0].path;
+      try {
+        // Delete old profile image from Cloudinary if it exists
+        if (existingProfile.profileImage && existingProfile.profileImage.includes('cloudinary')) {
+          const publicId = existingProfile.profileImage.split('/').pop()?.split('.')[0];
+          if (publicId) {
+            await deleteCloudinaryFile(publicId);
+          }
+        }
+
+        // Upload new profile image to Cloudinary using file buffer
+        const uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'profiles',
+              transformation: [
+                { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+                { quality: 'auto' }
+              ]
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          stream.end(files.profileImage[0].buffer);
+        });
+        
+        updateData.profileImage = (uploadResult as any).secure_url;
+      } catch (uploadError: any) {
+        res.status(500).json({
+          message: "Failed to upload profile image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
     }
+
+    // Handle logo upload to Cloudinary
     if (files?.logo?.[0]) {
-      updateData.logo = files.logo[0].path;
+      try {
+        // Delete old logo from Cloudinary if it exists
+        if (existingProfile.logo && existingProfile.logo.includes('cloudinary')) {
+          const publicId = existingProfile.logo.split('/').pop()?.split('.')[0];
+          if (publicId) {
+            await deleteCloudinaryFile(publicId);
+          }
+        }
+
+        // Upload new logo to Cloudinary using file buffer
+        const uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'profiles/logos',
+              transformation: [
+                { width: 300, height: 300, crop: 'fill' },
+                { quality: 'auto' }
+              ]
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          stream.end(files.logo[0].buffer);
+        });
+        
+        updateData.logo = (uploadResult as any).secure_url;
+      } catch (uploadError: any) {
+        res.status(500).json({
+          message: "Failed to upload logo to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
     }
+
+    // Handle operational document upload to Cloudinary
     if (files?.operationalDocument?.[0]) {
-      updateData.operationalDocument = files.operationalDocument[0].path;
+      try {
+        // Delete old document from Cloudinary if it exists
+        if (existingProfile.operationalDocument && existingProfile.operationalDocument.includes('cloudinary')) {
+          const publicId = existingProfile.operationalDocument.split('/').pop()?.split('.')[0];
+          if (publicId) {
+            await deleteCloudinaryFile(publicId);
+          }
+        }
+
+        // Upload new document to Cloudinary using file buffer
+        const uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'profiles/documents',
+              resource_type: 'auto'
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          stream.end(files.operationalDocument[0].buffer);
+        });
+        
+        updateData.operationalDocument = (uploadResult as any).secure_url;
+      } catch (uploadError: any) {
+        res.status(500).json({
+          message: "Failed to upload operational document to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
     }
 
     if (Object.keys(updateData).length === 0) {
