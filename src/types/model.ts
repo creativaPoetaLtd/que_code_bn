@@ -74,6 +74,10 @@ export interface ProfileModelAttributes {
   showPhoneOnWelcome: boolean;
   showProfileImageOnWelcome: boolean;
   showStatusMessageOnWelcome: boolean;
+  showProfileTypeOnWelcome: boolean;
+  showLocationOnWelcome: boolean;
+  showTinOnWelcome: boolean;
+  showLogoOnWelcome: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -86,6 +90,10 @@ export type ProfileCreationAttributes = Optional<
   | "showPhoneOnWelcome"
   | "showProfileImageOnWelcome"
   | "showStatusMessageOnWelcome"
+  | "showProfileTypeOnWelcome"
+  | "showLocationOnWelcome"
+  | "showTinOnWelcome"
+  | "showLogoOnWelcome"
 > & {
   type: "individual" | "organization";
   qrCode: string;

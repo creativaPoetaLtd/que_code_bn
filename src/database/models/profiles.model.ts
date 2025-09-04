@@ -22,6 +22,10 @@ class Profile extends Model<ProfileModelAttributes, ProfileCreationAttributes> {
   public showPhoneOnWelcome!: boolean;
   public showProfileImageOnWelcome!: boolean;
   public showStatusMessageOnWelcome!: boolean;
+  public showProfileTypeOnWelcome!: boolean;
+  public showLocationOnWelcome!: boolean;
+  public showTinOnWelcome!: boolean;
+  public showLogoOnWelcome!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -53,6 +57,22 @@ const Profile_model = (sequelize: Sequelize) => {
         defaultValue: true,
       },
       showStatusMessageOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showProfileTypeOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showLocationOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showTinOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showLogoOnWelcome: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
