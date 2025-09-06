@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>API Test</title>
+  </head>
+  <body>
+    <h1>API Testing</h1>
+
+    <h2>Test Messages API</h2>
+    <button onclick="testMessagesAPI()">Test Get Messages</button>
+    <div id="messages-result"></div>
+
+    <script>
+      const API_URL = "http://localhost:3000/api";
+      const CHAT_ID = "9b96e7be-13d3-4247-a9d9-df448c5858f7"; // Known chat ID from logs
+      const AUTH_TOKEN =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU5YmRlZGY0LTYxMWYtNGQyOS04OGQ1LTU0Mzc5ODE1Mjg1ZiIsImlhdCI6MTcyNTU0NTAyOSwiZXhwIjoxNzI1NjMxNDI5fQ.7YHLMioyBr8RKP7jjWGcHJOk5H2vrmYbHI0vhlU1LrE"; // You'll need to get this from the browser
+
+      async function testMessagesAPI() {
+        try {
+          console.log("Testing messages API...");
+          const response = await fetch(
+            `${API_URL}/chats/${CHAT_ID}/messages?page=1&limit=50`,
+            {
+              headers: {
+                Authorization: `Bearer ${AUTH_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          console.log("Response status:", response.status);
+          const data = await response.json();
+          console.log("Response data:", data);
+
+          document.getElementById(
+            "messages-result"
+          ).innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } catch (error) {
+          console.error("Error:", error);
+          document.getElementById(
+            "messages-result"
+          ).innerHTML = `<pre>Error: ${error.message}</pre>`;
+        }
+      }
+    </script>
+  </body>
+</html>

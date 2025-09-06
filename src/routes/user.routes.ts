@@ -1,6 +1,7 @@
 import fileUpload from "../middleware/multer";
 import userController from "../controllers/userController";
 import express from "express";
+import { authenticate } from "../middleware/auth.middleware";
 
 const userRouter = express.Router();
 userRouter.post(
@@ -8,6 +9,9 @@ userRouter.post(
   fileUpload.fields([{ name: "national_id", maxCount: 1 }]),
   userController.create_user
 );
+
+// Get current authenticated user details
+userRouter.get("/me", authenticate, userController.get_current_user);
 
 userRouter.get("/", userController.get_all_users);
 userRouter.get("/approved", userController.get_approved_users);

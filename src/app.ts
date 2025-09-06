@@ -28,7 +28,19 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.json());
-app.use(cors());
+// Configure CORS to allow requests from frontend origins
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:5500",
+      "http://localhost:5500",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Setup Swagger documentation

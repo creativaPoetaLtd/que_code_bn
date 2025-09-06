@@ -6,10 +6,10 @@ const swaggerOptions = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "QueCode Payment API",
+      title: "QueCode Chat & Contact API",
       version: "1.0.0",
       description:
-        "A comprehensive payment platform API for users and organizations",
+        "A comprehensive chat and contact management API with real-time messaging, contact invitations, and email notifications",
       contact: {
         name: "QueCode Team",
         email: "support@quecode.com",
@@ -17,7 +17,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.BASE_URL || "http://localhost:3011/api/v1",
+        url: process.env.BASE_URL || "http://localhost:3000/api",
         description: "Development Server",
       },
       {
@@ -142,6 +142,25 @@ const swaggerOptions = {
             error: { type: "string", nullable: true },
           },
         },
+        Contact: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            userAId: { type: "string", format: "uuid" },
+            userBId: { type: "string", format: "uuid" },
+            status: { type: "string", enum: ["active", "blocked"] },
+            createdAt: { type: "string", format: "date-time" },
+          },
+        },
+        UserProfile: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            firstName: { type: "string" },
+            lastName: { type: "string" },
+            email: { type: "string", format: "email" },
+          },
+        },
       },
     },
     security: [
@@ -155,6 +174,9 @@ const swaggerOptions = {
     "./src/swagger/users.swagger.ts",
     "./src/swagger/organizations.swagger.ts",
     "./src/swagger/organizationCategories.swagger.ts",
+    "./src/swagger/contacts.swagger.ts",
+    "./src/swagger/contactInvitations.swagger.ts",
+    "./src/swagger/chats.swagger.ts",
   ],
 };
 
