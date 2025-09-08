@@ -2,16 +2,19 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    // Create enum type
-    await queryInterface.sequelize.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_Contacts_status') THEN
-          CREATE TYPE "enum_Contacts_status" AS ENUM ('active', 'blocked');
-        END IF;
-      END
-      $$;
-    `);
+    // First check if the enum type already exists
+    const enumExists = await queryInterface.sequelize.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'enum_Contacts_status'
+      );
+    `, { type: queryInterface.sequelize.QueryTypes.SELECT });
+
+    // Only create the enum if it doesn't exist
+    if (!enumExists[0].exists) {
+      await queryInterface.sequelize.query(
+        'CREATE TYPE "enum_Contacts_status" AS ENUM(\'active\', \'blocked\');'
+      );
+    }
 
     await queryInterface.createTable("Contacts", {
       id: {
@@ -57,10 +60,21 @@ module.exports = {
       },
     });
 
-    // Index creation removed to avoid column case issues during migration. Add later if needed.
+    // Add indexes for better query performance
+    await queryInterface.addIndex("Contacts", ["userAId"], {
+      name: "idx_contacts_user_a_id",
+    });
+
+    await queryInterface.addIndex("Contacts", ["userBId"], {
+      name: "idx_contacts_user_b_id",
+    });
+
+    await queryInterface.addIndex("Contacts", ["status"], {
+      name: "idx_contacts_status",
+    });
   },
 
-  down: async (queryInterface, Sequelize) => {
+  down: async (queryInterface) => {
     await queryInterface.dropTable("Contacts");
     await queryInterface.sequelize.query(
       'DROP TYPE IF EXISTS "enum_Contacts_status";'

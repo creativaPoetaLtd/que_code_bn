@@ -11,6 +11,12 @@ class ContactInvitation extends Model<
   public inviterId!: string;
   public inviteeId!: string;
   public status!: "pending" | "accepted" | "declined" | "expired";
+  public invitationToken!: string;
+  public invitedAt?: Date;
+  public respondedAt?: Date;
+  public expiresAt?: Date;
+  public createdAt?: Date;
+  public updatedAt?: Date;
 }
 
 const ContactInvitation_model = (sequelize: Sequelize) => {

@@ -5,8 +5,19 @@ import { GroupAttributes, GroupCreationAttributes } from "../../types/model";
 class Group extends Model<GroupAttributes, GroupCreationAttributes> {
   public id!: string;
   public name!: string;
+  public description?: string;
+  public picture?: string;
   public ownerId!: string;
+  public qrCode?: string;
+  public accessLink?: string;
+  public accessToken?: string;
   public isPrivate!: boolean;
+  public maxMembers?: number;
+  public memberCount?: number;
+  public walletId?: string;
+  public lifeTime?: number;
+  public createdAt?: Date;
+  public updatedAt?: Date;
 }
 
 const Group_model = (sequelize: Sequelize) => {

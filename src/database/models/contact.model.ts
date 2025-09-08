@@ -7,6 +7,12 @@ class Contact extends Model<ContactAttributes, ContactCreationAttributes> {
   public userAId!: string;
   public userBId!: string;
   public status!: "active" | "blocked";
+  public createdAt?: Date;
+  public updatedAt?: Date;
+
+  // Association methods will be added by Sequelize
+  public userA?: any;
+  public userB?: any;
 }
 
 const Contact_model = (sequelize: Sequelize) => {
@@ -18,11 +24,27 @@ const Contact_model = (sequelize: Sequelize) => {
       status: {
         type: DataTypes.ENUM("active", "blocked"),
         defaultValue: "active",
+        allowNull: false,
       },
     },
-    { sequelize, tableName: "Contacts" }
+    { 
+      sequelize, 
+      tableName: "Contacts",
+      indexes: [
+        {
+          fields: ["userAId"]
+        },
+        {
+          fields: ["userBId"]
+        },
+        {
+          fields: ["status"]
+        }
+      ]
+    }
   );
 
   return Contact;
 };
+
 export default Contact_model;

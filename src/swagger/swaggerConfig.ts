@@ -155,6 +155,7 @@ const swaggerOptions = {
     "./src/swagger/users.swagger.ts",
     "./src/swagger/organizations.swagger.ts",
     "./src/swagger/organizationCategories.swagger.ts",
+    "./src/swagger/notifications.swagger.ts",
   ],
 };
 
