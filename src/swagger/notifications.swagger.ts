@@ -129,7 +129,7 @@
 
 /**
  * @swagger
- * /api/notifications:
+ * /notifications:
  *   get:
  *     summary: Get user notifications
  *     description: Retrieve paginated notifications for the authenticated user
@@ -175,7 +175,7 @@
 
 /**
  * @swagger
- * /api/notifications/unread-count:
+ * /notifications/unread-count:
  *   get:
  *     summary: Get unread notifications count
  *     description: Get the count of unread notifications for the authenticated user
@@ -205,7 +205,7 @@
 
 /**
  * @swagger
- * /api/notifications/{notificationId}/read:
+ * /notifications/{notificationId}/read:
  *   patch:
  *     summary: Mark notification as read
  *     description: Mark a specific notification as read for the authenticated user
@@ -253,7 +253,7 @@
 
 /**
  * @swagger
- * /api/notifications/mark-all-read:
+ * /notifications/mark-all-read:
  *   patch:
  *     summary: Mark all notifications as read
  *     description: Mark all unread notifications as read for the authenticated user
@@ -283,7 +283,7 @@
 
 /**
  * @swagger
- * /api/notifications/{notificationId}:
+ * /notifications/{notificationId}:
  *   delete:
  *     summary: Delete notification
  *     description: Delete a specific notification for the authenticated user
