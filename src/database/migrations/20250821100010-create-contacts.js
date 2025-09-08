@@ -59,6 +59,19 @@ module.exports = {
         defaultValue: Sequelize.NOW,
       },
     });
+
+    // Add indexes for better query performance
+    await queryInterface.addIndex("Contacts", ["userAId"], {
+      name: "idx_contacts_user_a_id",
+    });
+
+    await queryInterface.addIndex("Contacts", ["userBId"], {
+      name: "idx_contacts_user_b_id",
+    });
+
+    await queryInterface.addIndex("Contacts", ["status"], {
+      name: "idx_contacts_status",
+    });
   },
 
   down: async (queryInterface) => {

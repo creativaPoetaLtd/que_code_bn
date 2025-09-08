@@ -12,10 +12,11 @@ import {
     RespondToGroupInvitationRequest,
     JoinGroupByLinkRequest,
     UpdateGroupRequest,
-    RequestToJoinGroupRequest
+    RequestToJoinGroupRequest,
+    GroupMemberRole,
+    GroupMemberStatus
 } from "../types/group";
 import sendEmail from "../helpers/email";
-import { GroupMemberRole, GroupMemberStatus } from "../database/models/groupMember.model";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification, markNotificationAsRead, getUserNotifications } from "../utils/notificationService";
 
@@ -35,7 +36,6 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
 
         const group = await models.Group.create({
-            id: uuidv4(),
             name: name.trim(),
             description: description?.trim(),
             picture,
@@ -43,8 +43,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             accessToken,
             accessLink,
             isPrivate,
-            maxMembers,
-            memberCount: 1
+            maxMembers
         });
 
         try {
@@ -55,11 +54,10 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         }
 
         await models.GroupMember.create({
-            id: uuidv4(),
             groupId: group.id,
             userId: ownerId,
             role: GroupMemberRole.OWNER,
-            status: GroupMemberStatus.ACCEPTED,
+            status: GroupMemberStatus.ACTIVE,
             invitedBy: ownerId,
             joinedAt: new Date(),
             invitedAt: new Date()
@@ -100,7 +98,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: GroupMemberRole.OWNER,
-                userStatus: GroupMemberStatus.ACCEPTED
+                userStatus: GroupMemberStatus.ACTIVE
             }
         });
     } catch (error) {
@@ -134,7 +132,7 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
             where: {
                 groupId,
                 userId: inviterId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
                 role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
             }
         });
@@ -146,9 +144,9 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
 
         const users = await models.User.findAll({
             where: {
-                publicId: { [Op.in]: memberIds }
+                id: { [Op.in]: memberIds }
             },
-            attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+            attributes: ['id', 'firstName', 'lastName', 'email']
         });
 
         if (users.length === 0) {
@@ -156,7 +154,7 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
             return;
         }
 
-        const foundMemberIds = users.map(user => user.publicId).filter((id): id is string => id !== undefined);
+        const foundMemberIds = users.map(user => user.id).filter((id): id is string => id !== undefined);
         const notFoundMemberIds = memberIds.filter(id => !foundMemberIds.includes(id));
         const inviter = await models.User.findByPk(inviterId);
         const inviterName = inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone';
@@ -249,7 +247,7 @@ const respondToGroupInvitation = async (req: AuthenticatedRequest, res: Response
         }
 
         // Update membership status
-        const newStatus = action === 'accept' ? GroupMemberStatus.ACCEPTED : GroupMemberStatus.REJECTED;
+        const newStatus = action === 'accept' ? GroupMemberStatus.ACTIVE : GroupMemberStatus.REMOVED;
         await membership.update({
             status: newStatus,
             joinedAt: action === 'accept' ? new Date() : null,
@@ -348,10 +346,10 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
 
             if (existingMembership.status === GroupMemberStatus.PENDING) {
                 message = "You already have a pending request to join this group";
-            } else if (existingMembership.status === GroupMemberStatus.ACCEPTED) {
+            } else if (existingMembership.status === GroupMemberStatus.ACTIVE) {
                 message = "You are already a member of this group";
-            } else if (existingMembership.status === GroupMemberStatus.REJECTED) {
-                message = "Your previous request to join was rejected";
+            } else if (existingMembership.status === GroupMemberStatus.REMOVED) {
+                message = "Your previous request to join was declined";
             }
 
             res.status(400).json({ message });
@@ -359,14 +357,13 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
         }
 
         // Check if group is full
-        if (group.maxMembers && group.memberCount >= group.maxMembers) {
+        if (group.maxMembers && (group.memberCount || 0) >= group.maxMembers) {
             res.status(400).json({ message: "Group is full" });
             return;
         }
 
         // Create join request (always requires approval)
         const membership = await models.GroupMember.create({
-            id: uuidv4(),
             groupId: group.id,
             userId,
             role: GroupMemberRole.MEMBER,
@@ -457,7 +454,7 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
         } else if (Array.isArray(status)) {
             statusValue = String(status[0]);
         } else {
-            statusValue = GroupMemberStatus.ACCEPTED;
+            statusValue = GroupMemberStatus.ACTIVE;
         }
 
         const { count, rows: memberships } = await models.GroupMember.findAndCountAll({
@@ -539,34 +536,34 @@ const inviteUsersToGroup = async (
     const inviterContacts = await models.Contact.findAll({
         where: {
             [Op.or]: [
-                { inviterId, status: ContactStatus.ACCEPTED },
-                { inviteeId: inviterId, status: ContactStatus.ACCEPTED }
+                { userAId: inviterId, status: 'active' },
+                { userBId: inviterId, status: 'active' }
             ]
         }
     });
     const contactUserIds = inviterContacts.map(contact =>
-        contact.inviterId === inviterId ? contact.inviteeId : contact.inviterId
+        contact.userAId === inviterId ? contact.userBId : contact.userAId
     );
 
     // Get group details for email
     const group = await models.Group.findByPk(groupId);
     const inviter = await models.User.findByPk(inviterId);
 
-    for (const publicId of memberIds) {
+    for (const userId of memberIds) {
         try {
-            // Find user by public ID
+            // Find user by ID
             const user = await models.User.findOne({
-                where: { publicId }
+                where: { id: userId }
             });
 
             if (!user) {
-                failed.push({ publicId, reason: "User not found" });
+                failed.push({ userId, reason: "User not found" });
                 continue;
             }
 
             // Check if user is in inviter's contacts
             if (!contactUserIds.includes(user.id)) {
-                failed.push({ publicId, reason: "User not in your contacts" });
+                failed.push({ userId, reason: "User not in your contacts" });
                 continue;
             }
 
@@ -575,7 +572,7 @@ const inviteUsersToGroup = async (
                 where: {
                     groupId,
                     userId: user.id,
-                    status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACCEPTED] }
+                    status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACTIVE] }
                 }
             });
 
@@ -583,21 +580,19 @@ const inviteUsersToGroup = async (
                 const reason = existingMembership.status === GroupMemberStatus.PENDING
                     ? "Already has pending invitation"
                     : "Already a member";
-                failed.push({ publicId, reason });
+                failed.push({ userId, reason });
                 continue;
             }
 
             // Create group membership invitation
             const invitationToken = uuidv4();
             const membership = await models.GroupMember.create({
-                id: uuidv4(),
                 groupId,
                 userId: user.id,
                 role: GroupMemberRole.MEMBER,
                 status: GroupMemberStatus.PENDING,
                 invitedBy: inviterId,
-                invitedAt: new Date(),
-                invitationToken
+                invitedAt: new Date()
             });
 
             // Create URLs for accept/reject actions
@@ -654,15 +649,14 @@ const inviteUsersToGroup = async (
             }
 
             successful.push({
-                publicId,
                 userId: user.id,
                 userName: `${user.firstName} ${user.lastName}`,
                 membershipId: membership.id
             });
 
         } catch (error) {
-            console.error(`Error inviting user ${publicId}:`, error);
-            failed.push({ publicId, reason: "Server error" });
+            console.error(`Error inviting user ${userId}:`, error);
+            failed.push({ userId, reason: "Server error" });
         }
     }
 
@@ -697,7 +691,7 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
         });
 
         // Only show sensitive info (QR code, access link) to members
-        const canViewSensitiveInfo = userMembership && userMembership.status === GroupMemberStatus.ACCEPTED;
+        const canViewSensitiveInfo = userMembership && userMembership.status === GroupMemberStatus.ACTIVE;
 
         res.status(200).json({
             message: "Group details retrieved successfully",
@@ -738,7 +732,7 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
             }
         });
 
@@ -758,7 +752,7 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
         } else if (Array.isArray(status)) {
             statusValue = String(status[0]);
         } else {
-            statusValue = GroupMemberStatus.ACCEPTED;
+            statusValue = GroupMemberStatus.ACTIVE;
         }
 
         const { count, rows: members } = await models.GroupMember.findAndCountAll({
@@ -770,7 +764,7 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
                 },
                 {
                     model: models.User,
@@ -793,7 +787,7 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
                 userId: m.userId,
                 userName: `${m.user.firstName} ${m.user.lastName}`,
                 userEmail: m.user.email,
-                userPublicId: m.user.publicId,
+                useruserId: m.user.userId,
                 role: m.role,
                 status: m.status,
                 joinedAt: m.joinedAt,
@@ -831,7 +825,7 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
                 role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
             }
         });
@@ -853,7 +847,7 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         if (description !== undefined) updateData.description = description?.trim();
         if (picture !== undefined) updateData.picture = picture;
         if (isPrivate !== undefined) updateData.isPrivate = isPrivate;
-        if (maxMembers !== undefined && maxMembers >= group.memberCount) updateData.maxMembers = maxMembers;
+        if (maxMembers !== undefined && maxMembers >= (group.memberCount || 0)) updateData.maxMembers = maxMembers;
 
         // Update the group
         await group.update(updateData);
@@ -886,7 +880,7 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED
+                status: GroupMemberStatus.ACTIVE
             }
         });
 
@@ -915,7 +909,7 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
             where: {
                 groupId,
                 userId: { [Op.ne]: userId },
-                status: GroupMemberStatus.ACCEPTED
+                status: GroupMemberStatus.ACTIVE
             }
         })
         const notificationPromises = members.map(member =>
@@ -954,7 +948,7 @@ const removeMember = async (req: AuthenticatedRequest, res: Response, next: Next
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
                 role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
             }
         });
@@ -969,7 +963,7 @@ const removeMember = async (req: AuthenticatedRequest, res: Response, next: Next
             where: {
                 id: memberId,
                 groupId,
-                status: GroupMemberStatus.ACCEPTED
+                status: GroupMemberStatus.ACTIVE
             },
             include: [
                 {
@@ -1024,7 +1018,7 @@ const removeMember = async (req: AuthenticatedRequest, res: Response, next: Next
             where: {
                 groupId,
                 userId: { [Op.ne]: userId },
-                status: GroupMemberStatus.ACCEPTED
+                status: GroupMemberStatus.ACTIVE
             }
         });
         const notificationPromises = otherMembers.map(member =>
@@ -1137,7 +1131,7 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
             where: {
                 groupId,
                 userId,
-                status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACCEPTED] }
+                status: { [Op.in]: [GroupMemberStatus.PENDING, GroupMemberStatus.ACTIVE] }
             }
         });
 
@@ -1150,14 +1144,13 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
         }
 
         // Check if group is full
-        if (group.maxMembers && group.memberCount >= group.maxMembers) {
+        if (group.maxMembers && (group.memberCount || 0) >= group.maxMembers) {
             res.status(400).json({ message: "Group is full" });
             return;
         }
 
         // Create join request (without requestMessage)
         const membership = await models.GroupMember.create({
-            id: uuidv4(),
             groupId,
             userId,
             role: GroupMemberRole.MEMBER,
@@ -1233,7 +1226,7 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
                 role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
             }
         });
@@ -1254,7 +1247,7 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'publicId']
+                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
                 }
             ],
             limit: Number(limit),
@@ -1269,7 +1262,7 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
                 userId: r.userId,
                 userName: `${r.user.firstName} ${r.user.lastName}`,
                 userEmail: r.user.email,
-                userPublicId: r.user.publicId,
+                useruserId: r.user.userId,
                 userPicture: r.user.picture,
                 requestedAt: r.invitedAt
             };
@@ -1308,7 +1301,7 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
             where: {
                 groupId,
                 userId,
-                status: GroupMemberStatus.ACCEPTED,
+                status: GroupMemberStatus.ACTIVE,
                 role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] }
             }
         });
@@ -1338,7 +1331,7 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
         }
 
         // Update the request status
-        const newStatus = action === 'approve' ? GroupMemberStatus.ACCEPTED : GroupMemberStatus.REJECTED;
+        const newStatus = action === 'approve' ? GroupMemberStatus.ACTIVE : GroupMemberStatus.REMOVED;
         const updateData: any = {
             status: newStatus,
             respondedAt: new Date(),

@@ -11,6 +11,10 @@ class GroupMember extends Model<
   public userId!: string;
   public role!: "owner" | "admin" | "member";
   public status!: "pending" | "active" | "left" | "removed";
+  public invitedBy?: string;
+  public joinedAt?: Date;
+  public invitedAt?: Date;
+  public respondedAt?: Date;
 }
 
 const GroupMember_model = (sequelize: Sequelize) => {

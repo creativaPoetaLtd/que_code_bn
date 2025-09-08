@@ -1,5 +1,18 @@
 import { CreationOptional } from "sequelize";
-import { GroupMemberRole, GroupMemberStatus } from "../database/models/groupMember.model";
+
+// Group Member Role and Status enums
+export enum GroupMemberRole {
+    OWNER = "owner",
+    ADMIN = "admin",
+    MEMBER = "member"
+}
+
+export enum GroupMemberStatus {
+    PENDING = "pending",
+    ACTIVE = "active",
+    LEFT = "left",
+    REMOVED = "removed"
+}
 
 
 // Group Model Types
@@ -69,12 +82,12 @@ export interface CreateGroupRequest {
     picture?: string;
     isPrivate?: boolean;
     maxMembers?: number;
-    memberIds?: string[]; // publicIds of users to invite
+    memberIds?: string[]; // userIds of users to invite
 }
 
 export interface InviteToGroupRequest {
     groupId: string;
-    memberIds: string[]; // publicIds of users to invite
+    memberIds: string[]; // userIds of users to invite
 }
 
 export interface RespondToGroupInvitationRequest {

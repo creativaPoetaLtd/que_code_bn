@@ -126,6 +126,86 @@ export const notifyContactRequest = async (
   });
 };
 
+export const notifyContactAdded = async (
+  app: Application,
+  recipientId: string,
+  userId: string,
+  userName: string,
+  contactId: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.CONTACT_ADDED,
+    recipientId,
+    data: {
+      userId,
+      userName,
+      contactId,
+      title: "New Contact Added",
+      message: `${userName} is now in your contacts`,
+      url: `/contacts/${contactId}`,
+    },
+  });
+};
+
+export const notifyContactBlocked = async (
+  app: Application,
+  recipientId: string,
+  userId: string,
+  userName: string,
+  contactId: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.CONTACT_BLOCKED,
+    recipientId,
+    data: {
+      userId,
+      userName,
+      contactId,
+      title: "Contact Blocked",
+      message: `${userName} has blocked you`,
+    },
+  });
+};
+
+export const notifyContactUnblocked = async (
+  app: Application,
+  recipientId: string,
+  userId: string,
+  userName: string,
+  contactId: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.CONTACT_UNBLOCKED,
+    recipientId,
+    data: {
+      userId,
+      userName,
+      contactId,
+      title: "Contact Unblocked",
+      message: `${userName} has unblocked you`,
+      url: `/contacts/${contactId}`,
+    },
+  });
+};
+
+export const notifyContactRemoved = async (
+  app: Application,
+  recipientId: string,
+  userId: string,
+  userName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.CONTACT_REMOVED,
+    recipientId,
+    data: {
+      userId,
+      userName,
+      title: "Contact Removed",
+      message: `${userName} has removed you from their contacts`,
+    },
+  });
+};
+
 // Transaction-related notification helpers
 export const notifyPaymentReceived = async (
   app: Application,
