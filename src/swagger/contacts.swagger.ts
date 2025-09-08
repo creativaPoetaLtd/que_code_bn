@@ -75,7 +75,7 @@
  *           enum: [active, blocked]
  *           description: New status for the contact
  *
- * /api/contacts:
+ * /contacts:
  *   get:
  *     summary: Get user's contacts
  *     tags: [Contacts]
@@ -162,7 +162,7 @@
  *       500:
  *         description: Internal server error
  *
- * /api/contacts/search:
+ * /contacts/search:
  *   get:
  *     summary: Search for users to add as contacts
  *     tags: [Contacts]
@@ -199,7 +199,7 @@
  *       500:
  *         description: Internal server error
  *
- * /api/contacts/stats:
+ * /contacts/stats:
  *   get:
  *     summary: Get contact statistics
  *     tags: [Contacts]
@@ -217,7 +217,7 @@
  *       500:
  *         description: Internal server error
  *
- * /api/contacts/{id}:
+ * /contacts/{id}:
  *   get:
  *     summary: Get a specific contact by ID
  *     tags: [Contacts]
