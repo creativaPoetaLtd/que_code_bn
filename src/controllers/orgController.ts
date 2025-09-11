@@ -12,6 +12,8 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
+import cloudinary from "../helpers/cloudinary";
+import fs from "fs";
 
 // Helper type guard
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
@@ -25,33 +27,58 @@ const create_organization = async (
   res: Response
 ): Promise<void> => {
   try {
+    // Check for multer errors
+    if ((req as any).fileValidationError) {
+      res.status(400).json({
+        message: "File validation error",
+        error: (req as any).fileValidationError
+      });
+      return;
+    }
+    // Handle multipart form data
     const {
       name,
-      ownerName,
-      ownerEmail,
-      ownerPhone,
+      type,
       email,
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      contactPhone,
+      tinNumber,
+      
       password,
       categoryId,
     } = req.body;
 
+    // Note: File uploads (logo, operationalDocument) are no longer handled in organization creation
+
+    // Map the type field to categoryId since frontend sends category ID as type
+    const actualCategoryId = type || categoryId;
+
     // Validate required fields
     if (
       !name ||
-      !ownerName ||
-      !ownerEmail ||
-      !ownerPhone ||
+      !type ||
       !email ||
+      !ownerName ||
+      !ownerPhone ||
+      !ownerEmail ||
+      !contactPhone ||
+      !tinNumber ||
+      
       !password
     ) {
       res.status(400).json({
         message: "Missing required fields",
         required: [
           "name",
-          "ownerName",
-          "ownerEmail",
-          "ownerPhone",
+          "type",
           "email",
+          "ownerName",
+          "ownerPhone",
+          "ownerEmail",
+          "contactPhone",
+          "tinNumber",
           "password",
         ],
       });
@@ -59,11 +86,11 @@ const create_organization = async (
     }
 
     // Validate categoryId if provided
-    if (categoryId) {
+    if (actualCategoryId) {
       const category = await read_function<any>(
         "OrganizationCategory",
         "findOne",
-        { where: { id: categoryId } }
+        { where: { id: actualCategoryId } }
       );
 
       if (!category) {
@@ -71,6 +98,7 @@ const create_organization = async (
         return;
       }
     }
+
 
     // Check if organization already exists
     const existingOrg = await read_function<OrganizationModelAttributes>(
@@ -88,16 +116,20 @@ const create_organization = async (
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Note: File uploads are no longer handled in organization creation
+
     // Create organization
     const orgData: OrganizationCreationAttributes = {
       name,
-      ownerName,
-      ownerEmail,
-      ownerPhone,
+      type: "organization", // Set a default type since frontend sends category ID as type
       email: email.toLowerCase(),
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      contactPhone,
+      tinNumber,
       password: hashedPassword,
-      approvalStatus: false,
-      categoryId: categoryId || undefined,
+      categoryId: actualCategoryId || undefined,
     };
 
     const newOrg: any = await insert_function<OrganizationModelAttributes>(
@@ -146,20 +178,20 @@ const create_organization = async (
       process.env.FRONTEND_URL || "http://localhost:3000"
     }/verify?token=${verificationToken}`;
 
-    // Send verification email to owner's email
+    // Send verification email to organization's email
     try {
       await sendEmail({
-        to: ownerEmail.toLowerCase(),
+        to: email.toLowerCase(),
         subject: "Verify Your Organization Registration",
         type: "notification",
         data: {
-          title: `Welcome ${ownerName}!`,
+          title: `Welcome ${name}!`,
           body: `Thank you for registering your organization "${name}". Please click the link below to verify your email address and activate your organization account: <br><br><a href="${verificationUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Verify Email Address</a><br><br>This verification link will expire in 2 days.`,
         },
       });
 
       console.log(
-        `Verification email sent successfully to owner: ${ownerEmail}`
+        `Verification email sent successfully to organization: ${email}`
       );
     } catch (emailError) {
       console.error("Failed to send verification email:", emailError);
@@ -270,6 +302,7 @@ const update_organization = async (
     const updateData: Partial<OrganizationModelAttributes> = {
       ...req.body,
     };
+
 
     // Hash password if provided
     if (updateData.password) {

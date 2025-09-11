@@ -4,11 +4,15 @@ import { Optional } from "sequelize";
 export interface OrganizationModelAttributes {
   id: string;
   name: string;
+  type: string;
   email: string;
-  password: string;
   ownerName: string;
-  ownerEmail: string;
   ownerPhone: string;
+  ownerEmail: string;
+  contactPhone: string;
+  tinNumber: string;
+  
+  password: string;
   approvalStatus: boolean;
   categoryId?: string;
   createdAt?: Date;
@@ -17,15 +21,17 @@ export interface OrganizationModelAttributes {
 
 export type OrganizationCreationAttributes = Optional<
   OrganizationModelAttributes,
-  "id" | "createdAt" | "updatedAt"
+  "id" | "createdAt" | "updatedAt" | "approvalStatus"
 > & {
   name: string;
+  type: string;
   email: string;
-  password: string;
   ownerName: string;
-  ownerEmail: string;
   ownerPhone: string;
-  approvalStatus?: boolean;
+  ownerEmail: string;
+  contactPhone: string;
+  tinNumber: string;
+  password: string;
 };
 
 export interface UserModelAttributes {

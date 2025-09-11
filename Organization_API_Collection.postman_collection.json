@@ -1,0 +1,449 @@
+{
+  "info": {
+    "name": "Organization Management API",
+    "description": "Complete collection of organization and organization category endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "categoryId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Organization Categories",
+      "item": [
+        {
+          "name": "Create Organization Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Technology\",\n  \"description\": \"Technology companies and startups\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories"]
+            },
+            "description": "Create a new organization category"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Organization Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories"]
+            },
+            "description": "Get all organization categories"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Organization Category by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories", "{{categoryId}}"]
+            },
+            "description": "Get a specific organization category by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "description": "Requires authentication"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Technology\",\n  \"description\": \"Updated description for technology companies\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories", "{{categoryId}}"]
+            },
+            "description": "Update an organization category (requires authentication)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Organization Category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "description": "Requires authentication"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories", "{{categoryId}}"]
+            },
+            "description": "Delete an organization category (requires authentication)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing organization categories"
+    },
+    {
+      "name": "Organizations",
+      "item": [
+        {
+          "name": "Create Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Solutions Ltd\",\n  \"ownerName\": \"John Doe\",\n  \"ownerEmail\": \"john.doe@example.com\",\n  \"ownerPhone\": \"+1234567890\",\n  \"email\": \"info@techsolutions.com\",\n  \"password\": \"SecurePassword123!\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"description\": \"Leading technology solutions provider\",\n  \"address\": \"123 Tech Street, Silicon Valley, CA 94000\",\n  \"services\": [\"Web Development\", \"Mobile Apps\", \"Cloud Solutions\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            },
+            "description": "Create a new organization with all fields including the new description, address, and services"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Organization (Legacy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Solutions Ltd\",\n  \"ownerName\": \"John Doe\",\n  \"ownerEmail\": \"john.doe@example.com\",\n  \"ownerPhone\": \"+1234567890\",\n  \"email\": \"info@techsolutions.com\",\n  \"password\": \"SecurePassword123!\",\n  \"categoryId\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "register"]
+            },
+            "description": "Legacy endpoint for creating organizations (same as POST /organizations)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Organizations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            },
+            "description": "Get all organizations with their categories"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Organization by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}"]
+            },
+            "description": "Get a specific organization by ID with its category"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Tech Solutions Ltd\",\n  \"description\": \"Updated description for the organization\",\n  \"address\": \"456 New Tech Avenue, Silicon Valley, CA 94001\",\n  \"services\": [\"Updated Service 1\", \"Updated Service 2\", \"New Service 3\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}"]
+            },
+            "description": "Update an organization (can update any field including new ones)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Organization",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}"]
+            },
+            "description": "Delete an organization"
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Organization",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "approve"]
+            },
+            "description": "Approve an organization (set approvalStatus to true)"
+          },
+          "response": []
+        },
+        {
+          "name": "Disapprove Organization",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/disapprove",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "disapprove"]
+            },
+            "description": "Disapprove an organization (set approvalStatus to false)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Approved Organizations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/approved",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "approved"]
+            },
+            "description": "Get all approved organizations"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unapproved Organizations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/unapproved",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "unapproved"]
+            },
+            "description": "Get all unapproved organizations"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Organization Email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/verify?token={{verificationToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "verify"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{verificationToken}}",
+                  "description": "Email verification token"
+                }
+              ]
+            },
+            "description": "Verify organization email using the token sent via email"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing organizations"
+    },
+    {
+      "name": "Test Data Examples",
+      "item": [
+        {
+          "name": "Create Technology Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Technology\",\n  \"description\": \"Technology companies and startups\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories"]
+            },
+            "description": "Example: Create a Technology category"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Healthcare Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Healthcare\",\n  \"description\": \"Healthcare and medical services\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization-categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization-categories"]
+            },
+            "description": "Example: Create a Healthcare category"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Tech Organization (Full Example)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"InnovateTech Solutions\",\n  \"ownerName\": \"Jane Smith\",\n  \"ownerEmail\": \"jane.smith@innovatetech.com\",\n  \"ownerPhone\": \"+1-555-0123\",\n  \"email\": \"contact@innovatetech.com\",\n  \"password\": \"SecurePass123!\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"description\": \"We provide cutting-edge technology solutions for modern businesses, specializing in AI, cloud computing, and digital transformation.\",\n  \"address\": \"789 Innovation Drive, Tech City, CA 90210\",\n  \"services\": [\n    \"Artificial Intelligence Solutions\",\n    \"Cloud Infrastructure\",\n    \"Mobile App Development\",\n    \"Web Development\",\n    \"Data Analytics\",\n    \"Digital Transformation Consulting\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            },
+            "description": "Example: Create a comprehensive tech organization with all new fields"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Healthcare Organization (Full Example)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Wellness Medical Center\",\n  \"ownerName\": \"Dr. Michael Johnson\",\n  \"ownerEmail\": \"michael.johnson@wellnessmed.com\",\n  \"ownerPhone\": \"+1-555-0456\",\n  \"email\": \"info@wellnessmed.com\",\n  \"password\": \"MedicalPass456!\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"description\": \"Comprehensive healthcare services providing primary care, specialty treatments, and emergency services to our community.\",\n  \"address\": \"456 Health Street, Medical District, NY 10001\",\n  \"services\": [\n    \"Primary Care\",\n    \"Emergency Services\",\n    \"Cardiology\",\n    \"Pediatrics\",\n    \"Mental Health Services\",\n    \"Physical Therapy\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            },
+            "description": "Example: Create a healthcare organization with all new fields"
+          },
+          "response": []
+        }
+      ],
+      "description": "Pre-configured examples with realistic test data"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-set variables from responses",
+          "if (pm.response && pm.response.json()) {",
+          "    const response = pm.response.json();",
+          "    ",
+          "    // Set organization ID from create organization response",
+          "    if (response.data && response.data.id && pm.info.requestName.includes('Create Organization')) {",
+          "        pm.collectionVariables.set('organizationId', response.data.id);",
+          "    }",
+          "    ",
+          "    // Set category ID from create category response",
+          "    if (response.data && response.data.id && pm.info.requestName.includes('Create') && pm.info.requestName.includes('Category')) {",
+          "        pm.collectionVariables.set('categoryId', response.data.id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ]
+}
+
