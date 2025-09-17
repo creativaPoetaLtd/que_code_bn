@@ -12,7 +12,8 @@ userRouter.post(
 userRouter.get("/", userController.get_all_users);
 userRouter.get("/approved", userController.get_approved_users);
 userRouter.get("/unapproved", userController.get_unapproved_users);
-userRouter.get("/verify", userController.verify_user_email);
+userRouter.get("/verify", userController.verify_user_email); // GET for direct links
+userRouter.post("/verify", userController.verify_user_email); // POST for manual OTP entry
 userRouter.post("/resend-verification", userController.resend_verification);
 userRouter.get("/:id", userController.get_user_by_id);
 userRouter.put(
