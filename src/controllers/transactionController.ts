@@ -2,7 +2,13 @@ import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import database_models from '../database/config/db.config';
 
-const { Wallet, Transaction: TransactionModel, TransactionCategory } = database_models;
+const { 
+  Wallet, 
+  Transaction: TransactionModel, 
+  TransactionCategory, 
+  WalletRestriction,
+  Organization 
+} = database_models;
 
 // Helper function to calculate fee
 const calculateFee = (amount: number): number => {
@@ -25,7 +31,8 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       amount,
       description = '',
       categoryId,
-      type = 'transfer'
+      type = 'transfer',
+      applyConstraints = false // New parameter to control constraint application
     } = req.body;
 
     // Validation
@@ -137,6 +144,53 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check wallet restrictions if spending constrained money
+    if (categoryId) {
+      const restrictions = await WalletRestriction.findAll({
+        where: { walletId: senderWallet.id },
+        include: [{
+          model: TransactionCategory,
+          as: 'category',
+          required: true
+        }],
+        transaction
+      });
+
+      if (restrictions.length > 0) {
+        // Check if the spending category matches any restriction
+        const matchingRestriction = restrictions.find(restriction => 
+          restriction.categoryId === categoryId
+        );
+
+        if (!matchingRestriction) {
+          await transaction?.rollback();
+          const allowedCategories = restrictions.map(r => (r as any).category?.name).join(', ');
+          res.status(400).json({
+            success: false,
+            message: `Cannot spend on this category. You can only spend on: ${allowedCategories}`,
+            allowedCategories: restrictions.map(r => ({
+              categoryId: r.categoryId,
+              categoryName: (r as any).category?.name,
+              availableAmount: parseFloat(r.amount.toString())
+            }))
+          });
+          return;
+        }
+
+        // Check if there's enough restricted amount available
+        if (matchingRestriction.amount < transferAmount) {
+          await transaction?.rollback();
+          res.status(400).json({
+            success: false,
+            message: `Insufficient restricted balance. Available: ${matchingRestriction.amount}, Required: ${transferAmount}`,
+            availableAmount: parseFloat(matchingRestriction.amount.toString()),
+            requiredAmount: transferAmount
+          });
+          return;
+        }
+      }
+    }
+
     // Verify category if provided
     if (categoryId) {
       const category = await TransactionCategory.findByPk(categoryId);
@@ -170,6 +224,10 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     await senderWallet.reload({ transaction });
     await receiverWallet.reload({ transaction });
 
+    // Determine constraint type
+    const spendConstraintType = applyConstraints && categoryId ? 'category' : 'none';
+    const constraintCategoryId = applyConstraints && categoryId ? categoryId : null;
+
     // Create transaction record
     const newTransaction = await TransactionModel.create({
       referenceId,
@@ -183,9 +241,58 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       type,
       description,
       categoryId,
-      spendConstraintType: 'none',
+      spendConstraintType,
+      constraintCategoryId,
       hasAccount: true
     } as any, { transaction });
+
+    // Create wallet restriction if constraints are applied
+    if (applyConstraints && categoryId) {
+      // Check if restriction already exists for this wallet and category
+      const existingRestriction = await WalletRestriction.findOne({
+        where: {
+          walletId: receiverWallet.id,
+          categoryId: categoryId
+        },
+        transaction
+      });
+
+      if (existingRestriction) {
+        // Update existing restriction amount
+        await existingRestriction.update({
+          amount: parseFloat(existingRestriction.amount.toString()) + transferAmount
+        }, { transaction });
+      } else {
+        // Create new restriction
+        await WalletRestriction.create({
+          walletId: receiverWallet.id,
+          categoryId: categoryId,
+          amount: transferAmount
+        }, { transaction });
+      }
+    }
+
+    // Update wallet restrictions for sender if they spent from restricted funds
+    if (categoryId) {
+      const restrictions = await WalletRestriction.findAll({
+        where: { walletId: senderWallet.id },
+        transaction
+      });
+
+      for (const restriction of restrictions) {
+        if (restriction.categoryId === categoryId) {
+          const newAmount = parseFloat(restriction.amount.toString()) - transferAmount;
+          if (newAmount <= 0) {
+            // Remove restriction if amount is zero or negative
+            await restriction.destroy({ transaction });
+          } else {
+            // Update restriction amount
+            await restriction.update({ amount: newAmount }, { transaction });
+          }
+          break;
+        }
+      }
+    }
 
     // Commit the transaction
     await transaction?.commit();
@@ -204,6 +311,9 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
         receiverUserId,
         description,
         categoryId,
+        spendConstraintType,
+        constraintCategoryId,
+        constraintsApplied: applyConstraints,
         status: 'completed'
       }
     });
@@ -447,11 +557,50 @@ const getUserWallet = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Get wallet restrictions
+const getWalletRestrictions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { walletId } = req.params;
+
+    const restrictions = await WalletRestriction.findAll({
+      where: { walletId },
+      include: [{
+        model: TransactionCategory,
+        as: 'category',
+        required: true
+      }],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: restrictions.map(restriction => ({
+        id: restriction.id,
+        walletId: restriction.walletId,
+        categoryId: restriction.categoryId,
+        categoryName: (restriction as any).category?.name,
+        categoryDescription: (restriction as any).category?.description,
+        amount: parseFloat(restriction.amount.toString()),
+        createdAt: (restriction as any).createdAt,
+        updatedAt: (restriction as any).updatedAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('Get wallet restrictions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 export default {
   transferMoney,
   getWalletBalance,
   getUserWallet,
   getTransactionHistory,
   getTransactionDetails,
-  getTransactionCategories
+  getTransactionCategories,
+  getWalletRestrictions
 };

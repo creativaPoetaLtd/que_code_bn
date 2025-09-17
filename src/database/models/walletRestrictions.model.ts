@@ -10,6 +10,11 @@ class WalletRestriction extends Model<
   public walletId!: string;
   public categoryId!: string;
   public amount!: number;
+  public createdAt!: Date;
+  public updatedAt!: Date;
+  
+  // Association properties
+  public category?: any;
 }
 
 const WalletRestriction_model = (sequelize: Sequelize) => {
@@ -19,6 +24,8 @@ const WalletRestriction_model = (sequelize: Sequelize) => {
       walletId: { type: DataTypes.UUID, allowNull: false },
       categoryId: { type: DataTypes.UUID, allowNull: false },
       amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+      updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     },
     { sequelize, tableName: "WalletRestrictions" }
   );
