@@ -39,7 +39,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user already exists
+    // Check if user already exists by email
     const existingUser = await read_function<UserModelAttributes>(
       "User",
       "findOne",
@@ -47,7 +47,19 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     );
 
     if (existingUser) {
-      res.status(400).json({ message: "User already exists" });
+      res.status(400).json({ message: "User with this email already exists" });
+      return;
+    }
+
+    // Check if phone number already exists
+    const existingPhone = await read_function<UserModelAttributes>(
+      "User",
+      "findOne",
+      { where: { phone: phone } }
+    );
+
+    if (existingPhone) {
+      res.status(400).json({ message: "User with this phone number already exists" });
       return;
     }
 
@@ -113,10 +125,10 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       JWT_SECRET,
       { expiresIn: "2d", algorithm: "HS256" }
     );
-    // Verification URL
+    // Verification URL - point to frontend verification page
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/verify?token=${verificationToken}&otp=${otp}`; // In
+    }/auth/verify?token=${verificationToken}&otp=${otp}`;
     // Send verification email with OTP
     let emailSent = false;
     try {
@@ -314,10 +326,10 @@ const resend_verification = async (
       { expiresIn: "30d", algorithm: "HS256" }
     );
 
-    // ✅ Fix path: use /verify instead of /auth/verify
+    // Frontend verification page URL  
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/verify?token=${verificationToken}&otp=${otp}`;
+    }/auth/verify?token=${verificationToken}&otp=${otp}`;
 
     await sendEmail({
       to: user.email,

@@ -58,6 +58,13 @@ const startServer = async () => {
       console.log(`🚀 Server is running at http://localhost:${PORT}`);
     });
 
+    process.on("SIGINT", () => {
+      server.close(() => {
+        console.log("Server stopped");
+        process.exit(0);
+      });
+    });
+
     server.on("error", (error) => {
       console.error("❌ Server error:", error);
       process.exit(1);
