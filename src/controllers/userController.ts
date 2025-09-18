@@ -176,14 +176,14 @@ const verify_user_email = async (
       throw new Error("JWT_SECRET is not defined in environment variables");
     }
 
-    const token = Array.isArray(req.query.token)
-      ? req.query.token[0]
-      : req.query.token;
-    const otp = Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp;
+    const token = req.body.token || 
+      (Array.isArray(req.query.token) ? req.query.token[0] : req.query.token);
+    const otp = req.body.otp || 
+      (Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp);
+    const email = req.body.email;
 
-    // Validate inputs
-    if (!token) {
-      res.status(400).json({ message: "Verification token is required" });
+    if (!token && !email) {
+      res.status(400).json({ message: "Verification token or email is required" });
       return;
     }
     if (!otp) {
@@ -191,23 +191,29 @@ const verify_user_email = async (
       return;
     }
 
-    // Verify and decode the token
-    let decoded: any;
-    try {
-      decoded = jwt.verify(String(token), JWT_SECRET);
-    } catch (err: any) {
-      if (err.name === "TokenExpiredError") {
-        res.status(400).json({ message: "Verification token has expired" });
-      } else {
-        res.status(400).json({ message: "Invalid verification token" });
-      }
-      return;
-    }
+    let decoded: any = null;
+    let user: UserModelAttributes | null = null;
 
-    // Find the user
-    const user = await read_function<UserModelAttributes>("User", "findOne", {
-      where: { id: decoded.id, email: decoded.email },
-    });
+    if (token) {
+      try {
+        decoded = jwt.verify(String(token), JWT_SECRET);
+      } catch (err: any) {
+        if (err.name === "TokenExpiredError") {
+          res.status(400).json({ message: "Verification token has expired" });
+        } else {
+          res.status(400).json({ message: "Invalid verification token" });
+        }
+        return;
+      }
+
+      user = await read_function<UserModelAttributes>("User", "findOne", {
+        where: { id: decoded.id, email: decoded.email },
+      });
+    } else if (email) {
+      user = await read_function<UserModelAttributes>("User", "findOne", {
+        where: { email: email.toLowerCase() },
+      });
+    }
 
     if (!user) {
       res.status(404).json({ message: "User not found" });
@@ -249,7 +255,7 @@ const verify_user_email = async (
         otp: null,
         otpExpires: null,
       },
-      { where: { id: decoded.id } }
+      { where: { id: plainUser.id } }
     );
 
     res.status(200).json({
@@ -369,9 +375,10 @@ const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
       : user;
     res.status(200).json(plainUser);
   } catch (error) {
+    console.log(error);
     res
       .status(500)
-      .json({ message: "An error occurred while fetching the user" });
+      .json({ message: "An error occurred while fetching the user", error });
   }
 };
 
