@@ -9,7 +9,7 @@
  * @swagger
  * components:
  *   schemas:
- *     OrganizationCategory:
+ *     Category:
  *       type: object
  *       properties:
  *         id:
@@ -89,7 +89,7 @@
  *           type: string
  *           format: date-time
  *         Category:
- *           $ref: '#/components/schemas/OrganizationCategory'
+ *           $ref: '#/components/schemas/Category'
  *
  *     OrganizationResponse:
  *       type: object

@@ -58,21 +58,18 @@ const create_organization = async (
     // Validate required fields
     if (
       !name ||
-      !type ||
       !email ||
       !ownerName ||
       !ownerPhone ||
       !ownerEmail ||
       !contactPhone ||
       !tinNumber ||
-      
       !password
     ) {
       res.status(400).json({
         message: "Missing required fields",
         required: [
           "name",
-          "type",
           "email",
           "ownerName",
           "ownerPhone",
@@ -87,16 +84,36 @@ const create_organization = async (
 
     // Validate categoryId if provided
     if (actualCategoryId) {
-      const category = await read_function<any>(
-        "OrganizationCategory",
-        "findOne",
-        { where: { id: actualCategoryId } }
-      );
+      try {
+        const category = await read_function<any>(
+          "Category",
+          "findOne",
+          { where: { id: actualCategoryId } }
+        );
 
-      if (!category) {
-        res.status(400).json({ message: "Invalid organization category" });
+        if (!category) {
+          res.status(400).json({ 
+            message: "Invalid organization category",
+            providedCategoryId: actualCategoryId,
+            availableCategories: "Use one of the valid category IDs from /api/organization-categories/"
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Category validation error:', error);
+        res.status(400).json({ 
+          message: "Invalid category ID format",
+          providedCategoryId: actualCategoryId,
+          error: "Category ID must be a valid UUID"
+        });
         return;
       }
+    } else {
+      res.status(400).json({ 
+        message: "Organization category is required",
+        availableCategories: "Use one of the valid category IDs from /api/organization-categories/"
+      });
+      return;
     }
 
 
@@ -121,7 +138,6 @@ const create_organization = async (
     // Create organization
     const orgData: OrganizationCreationAttributes = {
       name,
-      type: "organization", // Set a default type since frontend sends category ID as type
       email: email.toLowerCase(),
       ownerName,
       ownerPhone,
@@ -227,8 +243,8 @@ const get_all_organizations = async (
       {
         include: [
           {
-            model: database_models.OrganizationCategory,
-            as: "Category",
+            model: database_models.Category,
+            as: "category",
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
           },
         ],
@@ -260,8 +276,8 @@ const get_organization_by_id = async (
         where: { id: req.params.id },
         include: [
           {
-            model: database_models.OrganizationCategory,
-            as: "Category",
+            model: database_models.Category,
+            as: "category",
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
           },
         ],
@@ -520,6 +536,47 @@ const verify_organization_email_token = async (
   }
 };
 
+const get_organization_category = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      {
+        where: { id: req.params.id },
+        include: [
+          {
+            model: database_models.Category,
+            as: "category",
+            attributes: ["id", "name", "description", "createdAt", "updatedAt"],
+          },
+        ],
+      }
+    );
+
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    const plainOrg = isSequelizeInstance(org) ? org.get({ plain: true }) : org;
+    
+    if (!plainOrg.category) {
+      res.status(404).json({ message: "Organization has no category assigned" });
+      return;
+    }
+
+    res.status(200).json(plainOrg.category);
+  } catch (error) {
+    console.error("Error fetching organization category:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the organization category" });
+  }
+};
+
 export default {
   create_organization,
   get_all_organizations,
@@ -531,4 +588,5 @@ export default {
   get_approved_organizations,
   get_unapproved_organizations,
   verify_organization_email_token,
+  get_organization_category,
 };

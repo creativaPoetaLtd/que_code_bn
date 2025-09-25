@@ -45,6 +45,7 @@ orgRouter.get("/verify", orgController.verify_organization_email_token);
 
 // Parameterized routes (should come last)
 orgRouter.get("/:id", orgController.get_organization_by_id);
+orgRouter.get("/:id/category", orgController.get_organization_category);
 orgRouter.put("/:id", orgController.update_organization);
 orgRouter.delete("/:id", orgController.delete_organization);
 orgRouter.put("/:id/approve", orgController.approve_organization);

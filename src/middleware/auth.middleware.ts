@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import database_models from '../database/config/db.config';
 
-const { User } = database_models;
+const { User, Organization } = database_models;
 
 declare module 'express-serve-static-core' {
     interface Request {
@@ -31,17 +31,30 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
                 return res.status(401).json({ message: 'No token provided' });
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
+            const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { 
+                id: string; 
+                accountType?: string; 
+            };
 
-            const user = await User.findByPk(decoded.id, {
-                attributes: { exclude: ['password'] }
-            });
+            let entity = null;
 
-            if (!user) {
-                return res.status(401).json({ message: 'User not found' });
+            // Check if it's an organization token
+            if (decoded.accountType === 'organization') {
+                entity = await Organization.findByPk(decoded.id);
+            } else {
+                // Default to user lookup
+                entity = await User.findByPk(decoded.id, {
+                    attributes: { exclude: ['password'] }
+                });
             }
 
-            req.user = user.get({ plain: true });
+            if (!entity) {
+                return res.status(401).json({ 
+                    message: decoded.accountType === 'organization' ? 'Organization not found' : 'User not found' 
+                });
+            }
+
+            req.user = entity.get({ plain: true });
             next();
         } catch (error) {
             next(error);

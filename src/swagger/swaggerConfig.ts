@@ -154,7 +154,7 @@ const swaggerOptions = {
     "./src/swagger/auth.swagger.ts",
     "./src/swagger/users.swagger.ts",
     "./src/swagger/organizations.swagger.ts",
-    "./src/swagger/organizationCategories.swagger.ts",
+    "./src/swagger/organizationCategories.swagger.ts", // Now unified categories
     "./src/swagger/notifications.swagger.ts",
     "./src/swagger/contacts.swagger.ts",
     "./src/swagger/groups.swagger.ts",

@@ -135,7 +135,7 @@ module.exports = {
         type: Sequelize.UUID,
         allowNull: true,
         references: {
-          model: "TransactionCategories",
+          model: "Categories",
           key: "id",
         },
         onUpdate: "CASCADE",
@@ -149,7 +149,7 @@ module.exports = {
         type: Sequelize.UUID,
         allowNull: true,
         references: {
-          model: "TransactionCategories",
+          model: "Categories",
           key: "id",
         },
         onUpdate: "CASCADE",

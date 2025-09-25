@@ -4,7 +4,6 @@ import { Optional } from "sequelize";
 export interface OrganizationModelAttributes {
   id: string;
   name: string;
-  type: string;
   email: string;
   ownerName: string;
   ownerPhone: string;
@@ -22,17 +21,7 @@ export interface OrganizationModelAttributes {
 export type OrganizationCreationAttributes = Optional<
   OrganizationModelAttributes,
   "id" | "createdAt" | "updatedAt" | "approvalStatus"
-> & {
-  name: string;
-  type: string;
-  email: string;
-  ownerName: string;
-  ownerPhone: string;
-  ownerEmail: string;
-  contactPhone: string;
-  tinNumber: string;
-  password: string;
-};
+>;
 
 export interface UserModelAttributes {
   id: string;
@@ -368,6 +357,20 @@ export type TransactionCreationAttributes = Omit<
   "id" | "createdAt" | "updatedAt" | "totalAmount" | "fee"
 >;
 
+export interface CategoryAttributes {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type CategoryCreationAttributes = Omit<
+  CategoryAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+// Keep old interfaces for backward compatibility during migration
 export interface TransactionCategoryAttributes {
   id: string;
   name: string;

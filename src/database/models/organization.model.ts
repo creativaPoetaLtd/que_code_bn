@@ -10,7 +10,6 @@ class Organization extends Model<
 > {
   public id!: string;
   public name!: string;
-  public type!: string;
   public email!: string;
   public ownerName!: string;
   public ownerPhone!: string;
@@ -30,7 +29,6 @@ const Organization_model = (sequelize: Sequelize) => {
     {
       id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
       name: { type: DataTypes.STRING, allowNull: false },
-      type: { type: DataTypes.STRING, allowNull: false },
       email: { type: DataTypes.STRING, unique: true, allowNull: false },
       ownerName: { type: DataTypes.STRING, allowNull: false },
       ownerPhone: { type: DataTypes.STRING, allowNull: false },
@@ -44,7 +42,7 @@ const Organization_model = (sequelize: Sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
         references: {
-          model: "OrganizationCategories",
+          model: "Categories",
           key: "id",
         },
       },
