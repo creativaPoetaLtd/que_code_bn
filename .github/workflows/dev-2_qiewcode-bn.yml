@@ -1,6 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
+# .github/workflows/azure-node-deploy.yml
 name: Build and deploy Node.js app to Azure Web App - qiewcode-bn
 
 on:
@@ -13,43 +11,57 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js version
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '22.x'
 
-      - name: npm install
-        run: |
-          npm install
+      - name: Install dependencies
+        run: npm install
 
-      - name: Upload artifact for deployment job
+      - name: Install cross-env (needed in your scripts)
+        run: npm install --save-dev cross-env
+
+      - name: Build project
+        run: npm run build
+
+      # package only necessary files for deployment
+      - name: Prepare artifact for deployment
+        run: |
+          mkdir deploy
+          cp -r dist deploy/dist
+          cp package.json package-lock.json deploy/
+          cp -r node_modules deploy/node_modules
+          cp -r prisma deploy/ || true   # keep if you use Prisma
+          cp -r migrations deploy/ || true # if you use sequelize migrations
+        shell: bash
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    
+
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
+
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'qiewcode-bn'
           slot-name: 'Production'
-          package: .
-
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_10341D8B71014879A19394805AB46A39 }}
-
+          package: .
