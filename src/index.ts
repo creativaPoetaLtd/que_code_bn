@@ -35,10 +35,11 @@ const startServer = async () => {
     // 6. Set up Socket.IO
     const io = new SocketIOServer(server, {
       cors: {
-        origin: "*", // Adjust as needed
+        origin: "*", // ✅ allow any origin for sockets
         methods: ["GET", "POST"],
       },
     });
+
     app.set("io", io);
 
     io.on("connection", (socket) => {

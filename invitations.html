@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact Invitation</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        padding: 40px;
+        max-width: 500px;
+        width: 100%;
+        text-align: center;
+      }
+
+      .icon {
+        font-size: 4rem;
+        margin-bottom: 20px;
+      }
+
+      .success {
+        color: #28a745;
+      }
+      .warning {
+        color: #ffc107;
+      }
+      .error {
+        color: #dc3545;
+      }
+      .info {
+        color: #17a2b8;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 2rem;
+      }
+
+      .message {
+        color: #666;
+        font-size: 1.1rem;
+        line-height: 1.6;
+        margin-bottom: 30px;
+      }
+
+      .invitation-details {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 30px;
+      }
+
+      .invitation-details h3 {
+        color: #333;
+        margin-bottom: 10px;
+      }
+
+      .user-info {
+        font-size: 1.1rem;
+        color: #555;
+      }
+
+      .buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 12px 30px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+      }
+
+      .btn-accept {
+        background: #28a745;
+        color: white;
+      }
+
+      .btn-accept:hover {
+        background: #218838;
+        transform: translateY(-2px);
+      }
+
+      .btn-decline {
+        background: #dc3545;
+        color: white;
+      }
+
+      .btn-decline:hover {
+        background: #c82333;
+        transform: translateY(-2px);
+      }
+
+      .btn-login {
+        background: #007bff;
+        color: white;
+      }
+
+      .btn-login:hover {
+        background: #0056b3;
+        transform: translateY(-2px);
+      }
+
+      .loading {
+        display: none;
+        color: #666;
+        font-size: 1rem;
+        margin-top: 20px;
+      }
+
+      .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #007bff;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .expired {
+        opacity: 0.7;
+      }
+
+      @media (max-width: 480px) {
+        .container {
+          padding: 20px;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .buttons {
+          flex-direction: column;
+        }
+
+        .btn {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div id="loading-state" class="loading">
+        <div class="spinner"></div>
+        Processing invitation...
+      </div>
+
+      <div id="invitation-content" style="display: none">
+        <div class="icon" id="status-icon">🤝</div>
+        <h1 id="page-title">Contact Invitation</h1>
+        <div class="message" id="page-message">
+          Loading invitation details...
+        </div>
+
+        <div
+          id="invitation-details"
+          class="invitation-details"
+          style="display: none"
+        >
+          <h3>Invitation from:</h3>
+          <div class="user-info" id="inviter-info"></div>
+        </div>
+
+        <div id="action-buttons" class="buttons" style="display: none">
+          <button
+            class="btn btn-accept"
+            onclick="respondToInvitation('accept')"
+          >
+            ✓ Accept Invitation
+          </button>
+          <button
+            class="btn btn-decline"
+            onclick="respondToInvitation('decline')"
+          >
+            ✗ Decline Invitation
+          </button>
+        </div>
+
+        <div id="login-prompt" class="buttons" style="display: none">
+          <a href="chat-demo.html" class="btn btn-login">
+            🔐 Login to Chat App
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "http://localhost:3000/api";
+      let invitationToken = "";
+      let currentInvitation = null;
+
+      // Get token from URL parameters
+      function getUrlParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+      }
+
+      // Show different states
+      function showState(state, data = {}) {
+        const iconEl = document.getElementById("status-icon");
+        const titleEl = document.getElementById("page-title");
+        const messageEl = document.getElementById("page-message");
+        const detailsEl = document.getElementById("invitation-details");
+        const buttonsEl = document.getElementById("action-buttons");
+        const loginEl = document.getElementById("login-prompt");
+
+        // Hide all dynamic elements first
+        detailsEl.style.display = "none";
+        buttonsEl.style.display = "none";
+        loginEl.style.display = "none";
+
+        switch (state) {
+          case "loading":
+            iconEl.textContent = "⏳";
+            iconEl.className = "icon info";
+            titleEl.textContent = "Loading...";
+            messageEl.textContent =
+              "Please wait while we process your invitation.";
+            break;
+
+          case "valid_invitation":
+            iconEl.textContent = "🤝";
+            iconEl.className = "icon info";
+            titleEl.textContent = "Contact Invitation";
+            messageEl.textContent = "You have received a contact invitation!";
+
+            // Show invitation details
+            detailsEl.style.display = "block";
+            document.getElementById(
+              "inviter-info"
+            ).textContent = `${data.inviter.firstName} ${data.inviter.lastName} (${data.inviter.email})`;
+
+            // Show action buttons
+            buttonsEl.style.display = "flex";
+            break;
+
+          case "already_responded":
+            iconEl.textContent = "✅";
+            iconEl.className = "icon success";
+            titleEl.textContent = "Already Responded";
+            messageEl.textContent = `You have already ${data.status} this invitation.`;
+            loginEl.style.display = "flex";
+            break;
+
+          case "expired":
+            iconEl.textContent = "⏰";
+            iconEl.className = "icon warning";
+            titleEl.textContent = "Invitation Expired";
+            messageEl.textContent =
+              "This invitation has expired. Please ask for a new invitation.";
+            loginEl.style.display = "flex";
+            break;
+
+          case "not_found":
+            iconEl.textContent = "❌";
+            iconEl.className = "icon error";
+            titleEl.textContent = "Invalid Invitation";
+            messageEl.textContent =
+              "This invitation link is invalid or has been removed.";
+            loginEl.style.display = "flex";
+            break;
+
+          case "success":
+            iconEl.textContent = "🎉";
+            iconEl.className = "icon success";
+            titleEl.textContent = `Invitation ${data.action}ed!`;
+            messageEl.textContent = `You have successfully ${data.action}ed the contact invitation.`;
+            loginEl.style.display = "flex";
+            break;
+
+          case "error":
+            iconEl.textContent = "⚠️";
+            iconEl.className = "icon error";
+            titleEl.textContent = "Error";
+            messageEl.textContent =
+              data.message ||
+              "An error occurred while processing your request.";
+            loginEl.style.display = "flex";
+            break;
+        }
+      }
+
+      // Load invitation details
+      async function loadInvitation() {
+        invitationToken = getUrlParameter("token");
+
+        if (!invitationToken) {
+          showState("not_found");
+          return;
+        }
+
+        showState("loading");
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/contact-invitations/verify/${invitationToken}`
+          );
+          const result = await response.json();
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              showState("not_found");
+            } else if (response.status === 410) {
+              showState("expired");
+            } else {
+              showState("error", { message: result.message });
+            }
+            return;
+          }
+
+          currentInvitation = result.data;
+
+          // Check invitation status
+          if (currentInvitation.status !== "pending") {
+            showState("already_responded", {
+              status: currentInvitation.status,
+            });
+            return;
+          }
+
+          // Check if expired
+          if (new Date(currentInvitation.expiresAt) < new Date()) {
+            showState("expired");
+            return;
+          }
+
+          // Show valid invitation
+          showState("valid_invitation", {
+            inviter: currentInvitation.inviter,
+          });
+        } catch (error) {
+          console.error("Error loading invitation:", error);
+          showState("error", { message: "Failed to load invitation details." });
+        }
+      }
+
+      // Respond to invitation
+      async function respondToInvitation(action) {
+        if (!currentInvitation || !invitationToken) {
+          showState("error", { message: "Invalid invitation state." });
+          return;
+        }
+
+        showState("loading");
+
+        try {
+          const endpoint = action === "accept" ? "accept" : "decline";
+          const response = await fetch(
+            `${API_BASE}/contact-invitations/${endpoint}/${invitationToken}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            showState("error", { message: result.message });
+            return;
+          }
+
+          showState("success", { action });
+        } catch (error) {
+          console.error("Error responding to invitation:", error);
+          showState("error", { message: "Failed to process your response." });
+        }
+      }
+
+      // Initialize page
+      document.addEventListener("DOMContentLoaded", function () {
+        document.getElementById("loading-state").style.display = "block";
+        document.getElementById("invitation-content").style.display = "block";
+
+        setTimeout(() => {
+          document.getElementById("loading-state").style.display = "none";
+          loadInvitation();
+        }, 500);
+      });
+    </script>
+  </body>
+</html>

@@ -11,6 +11,7 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
+import { Op } from "sequelize";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -27,7 +28,6 @@ const generateOTP = (): string => {
 // Register a new user
 const create_user = async (req: Request, res: Response): Promise<void> => {
   try {
-
     const { firstName, lastName, phone, email, password } = req.body;
 
     // Validate required fields
@@ -39,7 +39,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user already exists by email
+    // Check if user already exists
     const existingUser = await read_function<UserModelAttributes>(
       "User",
       "findOne",
@@ -47,19 +47,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     );
 
     if (existingUser) {
-      res.status(400).json({ message: "User with this email already exists" });
-      return;
-    }
-
-    // Check if phone number already exists
-    const existingPhone = await read_function<UserModelAttributes>(
-      "User",
-      "findOne",
-      { where: { phone: phone } }
-    );
-
-    if (existingPhone) {
-      res.status(400).json({ message: "User with this phone number already exists" });
+      res.status(400).json({ message: "User already exists" });
       return;
     }
 
@@ -125,10 +113,10 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       JWT_SECRET,
       { expiresIn: "2d", algorithm: "HS256" }
     );
-    // Verification URL - point to frontend verification page
+    // Verification URL
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/auth/verify?token=${verificationToken}&otp=${otp}`;
+    }/verify?token=${verificationToken}&otp=${otp}`; // In
     // Send verification email with OTP
     let emailSent = false;
     try {
@@ -188,14 +176,14 @@ const verify_user_email = async (
       throw new Error("JWT_SECRET is not defined in environment variables");
     }
 
-    const token = req.body.token || 
-      (Array.isArray(req.query.token) ? req.query.token[0] : req.query.token);
-    const otp = req.body.otp || 
-      (Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp);
-    const email = req.body.email;
+    const token = Array.isArray(req.query.token)
+      ? req.query.token[0]
+      : req.query.token;
+    const otp = Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp;
 
-    if (!token && !email) {
-      res.status(400).json({ message: "Verification token or email is required" });
+    // Validate inputs
+    if (!token) {
+      res.status(400).json({ message: "Verification token is required" });
       return;
     }
     if (!otp) {
@@ -203,29 +191,23 @@ const verify_user_email = async (
       return;
     }
 
-    let decoded: any = null;
-    let user: UserModelAttributes | null = null;
-
-    if (token) {
-      try {
-        decoded = jwt.verify(String(token), JWT_SECRET);
-      } catch (err: any) {
-        if (err.name === "TokenExpiredError") {
-          res.status(400).json({ message: "Verification token has expired" });
-        } else {
-          res.status(400).json({ message: "Invalid verification token" });
-        }
-        return;
+    // Verify and decode the token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(String(token), JWT_SECRET);
+    } catch (err: any) {
+      if (err.name === "TokenExpiredError") {
+        res.status(400).json({ message: "Verification token has expired" });
+      } else {
+        res.status(400).json({ message: "Invalid verification token" });
       }
-
-      user = await read_function<UserModelAttributes>("User", "findOne", {
-        where: { id: decoded.id, email: decoded.email },
-      });
-    } else if (email) {
-      user = await read_function<UserModelAttributes>("User", "findOne", {
-        where: { email: email.toLowerCase() },
-      });
+      return;
     }
+
+    // Find the user
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: decoded.id, email: decoded.email },
+    });
 
     if (!user) {
       res.status(404).json({ message: "User not found" });
@@ -235,7 +217,6 @@ const verify_user_email = async (
     const plainUser = isSequelizeInstance(user)
       ? user.get({ plain: true })
       : user;
-
 
     // Already verified?
     if (plainUser.isVerified) {
@@ -267,7 +248,7 @@ const verify_user_email = async (
         otp: null,
         otpExpires: null,
       },
-      { where: { id: plainUser.id } }
+      { where: { id: decoded.id } }
     );
 
     res.status(200).json({
@@ -326,10 +307,10 @@ const resend_verification = async (
       { expiresIn: "30d", algorithm: "HS256" }
     );
 
-    // Frontend verification page URL  
+    // ✅ Fix path: use /verify instead of /auth/verify
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/auth/verify?token=${verificationToken}&otp=${otp}`;
+    }/verify?token=${verificationToken}&otp=${otp}`;
 
     await sendEmail({
       to: user.email,
@@ -387,10 +368,9 @@ const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
       : user;
     res.status(200).json(plainUser);
   } catch (error) {
-    console.log(error);
     res
       .status(500)
-      .json({ message: "An error occurred while fetching the user", error });
+      .json({ message: "An error occurred while fetching the user" });
   }
 };
 
@@ -559,7 +539,37 @@ const get_unapproved_users = async (
     });
   }
 };
+const search_users = async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
 
+    if (!q || typeof q !== "string" || q.length < 2) {
+      return res.status(400).json({ message: "Query too short" });
+    }
+
+    const users = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: {
+          [Op.or]: [
+            { firstName: { [Op.iLike]: `%${q}%` } },
+            { lastName: { [Op.iLike]: `%${q}%` } },
+            { email: { [Op.iLike]: `%${q}%` } },
+          ],
+        },
+        attributes: ["id", "firstName", "lastName", "email"],
+        limit: 10,
+      }
+    );
+
+    res.json({ data: users });
+  } catch (e: any) {
+    res
+      .status(500)
+      .json({ message: "Error searching users", error: e.message });
+  }
+};
 export default {
   create_user,
   verify_user_email,
@@ -572,4 +582,59 @@ export default {
   disapprove_user,
   get_approved_users,
   get_unapproved_users,
+  search_users,
+  get_current_user: async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res
+          .status(401)
+          .json({ message: "Unauthorized: No user ID found in token" });
+        return;
+      }
+
+      console.log(`🔍 Fetching current user: ${userId}`);
+
+      // Get user details
+      const user = await read_function<UserModelAttributes>("User", "findOne", {
+        where: { id: userId },
+        attributes: [
+          "id",
+          "firstName",
+          "lastName",
+          "email",
+          "phone",
+          "isVerified",
+          "approvalStatus",
+        ],
+      });
+
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      // Convert Sequelize instance to plain object if needed
+      const userData = isSequelizeInstance(user)
+        ? user.get({ plain: true })
+        : user;
+
+      // Return user data
+      res.status(200).json({
+        id: userData.id,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phone: userData.phone,
+        isVerified: userData.isVerified,
+        approvalStatus: userData.approvalStatus,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching current user:", error);
+      res
+        .status(500)
+        .json({ message: "An error occurred while fetching the user" });
+    }
+  },
 };

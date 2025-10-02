@@ -14,7 +14,10 @@ type ModelTypes =
   | "OrganizationCategory"
   | "Group"
   | "GroupMember"
-  | "Notification";
+  | "Notification"
+  | "Chat" 
+  | "ChatParticipant" 
+  | "ChatMessage";
 // Updated MethodTypes to include "findByPk"
 type MethodTypes =
   | "findAll"

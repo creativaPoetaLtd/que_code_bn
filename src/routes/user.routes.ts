@@ -1,6 +1,7 @@
 import fileUpload from "../middleware/multer";
 import userController from "../controllers/userController";
 import express from "express";
+import { authenticate } from "../middleware/auth.middleware";
 
 const userRouter = express.Router();
 userRouter.post(
@@ -24,5 +25,8 @@ userRouter.put(
 userRouter.delete("/:id", userController.delete_user);
 userRouter.put("/:id/approve", userController.approve_user);
 userRouter.put("/:id/disapprove", userController.disapprove_user);
+userRouter.get("/me", authenticate, userController.get_current_user);
+userRouter.get("/search", authenticate, userController.search_users);
+
 
 export default userRouter;

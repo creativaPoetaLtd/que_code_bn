@@ -1,0 +1,2179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QueCode Chat Demo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+      }
+      h1 {
+        text-align: center;
+        color: #333;
+      }
+      .auth-container {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f0f7ff;
+        border-radius: 5px;
+      }
+      .chat-container {
+        display: flex;
+        height: 500px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      .chat-sidebar {
+        width: 30%;
+        border-right: 1px solid #ddd;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .sidebar-tabs {
+        display: flex;
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #ddd;
+      }
+      .sidebar-tab {
+        flex: 1;
+        padding: 8px 4px;
+        text-align: center;
+        cursor: pointer;
+        font-size: 0.8em;
+        border: none;
+        background: none;
+        color: #666;
+      }
+      .sidebar-tab.active {
+        background-color: #4caf50;
+        color: white;
+      }
+      .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+      }
+      .chat-main {
+        width: 70%;
+        display: flex;
+        flex-direction: column;
+      }
+      .chat-header {
+        padding: 10px;
+        background-color: #f5f5f5;
+        border-bottom: 1px solid #ddd;
+      }
+      .messages {
+        flex-grow: 1;
+        padding: 15px;
+        overflow-y: auto;
+        background-color: #fafafa;
+      }
+      .message {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        max-width: 80%;
+      }
+      .message.received {
+        background-color: #f1f0f0;
+        align-self: flex-start;
+      }
+      .message.sent {
+        background-color: #dcf8c6;
+        align-self: flex-end;
+        margin-left: auto;
+      }
+      .message-form {
+        display: flex;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+      }
+      .message-input {
+        flex-grow: 1;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-right: 10px;
+      }
+      button {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      input {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-right: 10px;
+      }
+      .chat-list-item {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+      }
+      .chat-list-item:hover {
+        background-color: #f5f5f5;
+      }
+      .chat-list-item.active {
+        background-color: #e6e6e6;
+      }
+      .chat-list-item.new-message {
+        background-color: #e6ffe6;
+        font-weight: bold;
+      }
+      .chat-list-item.new-message::after {
+        content: "●";
+        color: #4caf50;
+        margin-left: 5px;
+      }
+      .typing-indicator {
+        padding: 5px 10px;
+        font-style: italic;
+        color: #666;
+        border-top: 1px solid #eee;
+      }
+      .invitation-item {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+      }
+      .invitation-item:hover {
+        background-color: #f5f5f5;
+      }
+      .invitation-actions {
+        margin-top: 5px;
+      }
+      .invitation-actions button {
+        margin-right: 5px;
+        padding: 4px 8px;
+        font-size: 0.8em;
+      }
+      .btn-accept {
+        background-color: #4caf50;
+      }
+      .btn-decline {
+        background-color: #f44336;
+      }
+      .btn-invite {
+        background-color: #2196f3;
+      }
+      .btn-pending {
+        background-color: #ff9800;
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+      .btn-respond {
+        background-color: #9c27b0;
+      }
+      .btn-rejected {
+        background-color: #757575;
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+      .user-status {
+        font-size: 0.6em;
+        margin-top: 2px;
+        font-weight: bold;
+      }
+      .status-available {
+        color: #4caf50;
+      }
+      .status-pending {
+        color: #ff9800;
+      }
+      .status-received {
+        color: #9c27b0;
+      }
+      .status-rejected {
+        color: #757575;
+      }
+      .invitation-status {
+        font-size: 0.7em;
+        margin-top: 2px;
+        font-weight: bold;
+      }
+      .status-accepted {
+        color: #4caf50;
+      }
+      .status-declined {
+        color: #f44336;
+      }
+      .status-expired {
+        color: #9e9e9e;
+      }
+      .status-unknown {
+        color: #607d8b;
+      }
+      .invitation-date {
+        font-size: 0.6em;
+        color: #999;
+        margin-top: 4px;
+      }
+      .user-item {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .user-item:hover {
+        background-color: #f5f5f5;
+      }
+      .user-info {
+        flex: 1;
+      }
+      .user-name {
+        font-weight: bold;
+        font-size: 0.9em;
+      }
+      .user-email {
+        font-size: 0.7em;
+        color: #666;
+      }
+      .no-items {
+        padding: 20px;
+        text-align: center;
+        color: #666;
+        font-style: italic;
+      }
+      .hidden {
+        display: none;
+      }
+      .tab-content {
+        height: 100%;
+        overflow-y: auto;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>QueCode Chat Demo</h1>
+
+      <div class="auth-container">
+        <h3>Authentication</h3>
+        <div>
+          <input type="email" id="email" placeholder="Email" />
+          <input type="password" id="password" placeholder="Password" />
+          <button id="login-btn">Login</button>
+          <button
+            id="logout-btn"
+            style="background-color: #f44336; margin-left: 10px; display: none"
+          >
+            Logout
+          </button>
+          <span id="auth-status"></span>
+        </div>
+        <div id="connection-status" style="margin-top: 5px; font-size: 12px">
+          Connection: <span style="color: gray">Disconnected</span>
+        </div>
+      </div>
+
+      <div id="chat-interface" class="hidden">
+        <h3>Create/Get Chat</h3>
+        <div>
+          <input
+            type="text"
+            id="user-id-input"
+            placeholder="User ID to chat with"
+          />
+          <button id="create-chat-btn">Start Chat</button>
+          <button
+            id="refresh-chats-btn"
+            style="background-color: #2196f3; margin-left: 10px"
+          >
+            Refresh Chats
+          </button>
+          <button
+            id="show-users-btn"
+            style="background-color: #9c27b0; margin-left: 10px"
+          >
+            Show Users
+          </button>
+          <button
+            id="debug-btn"
+            style="background-color: #808080; margin-left: 10px"
+          >
+            Debug
+          </button>
+        </div>
+
+        <div class="chat-container">
+          <div class="chat-sidebar">
+            <div class="sidebar-tabs">
+              <button class="sidebar-tab active" data-tab="chats">Chats</button>
+              <button class="sidebar-tab" data-tab="contacts">Contacts</button>
+              <button class="sidebar-tab" data-tab="invitations">
+                Received
+              </button>
+              <button class="sidebar-tab" data-tab="sent-invitations">
+                Sent
+              </button>
+              <button class="sidebar-tab" data-tab="users">Add Friends</button>
+            </div>
+            <div class="sidebar-content">
+              <!-- Chats Tab -->
+              <div id="chats-tab" class="tab-content">
+                <div id="chat-list"></div>
+              </div>
+
+              <!-- Contacts Tab -->
+              <div id="contacts-tab" class="tab-content hidden">
+                <div id="contacts-list"></div>
+              </div>
+
+              <!-- Invitations Tab -->
+              <div id="invitations-tab" class="tab-content hidden">
+                <div id="pending-invitations"></div>
+              </div>
+
+              <!-- Sent Invitations Tab -->
+              <div id="sent-invitations-tab" class="tab-content hidden">
+                <div id="sent-invitations-list"></div>
+              </div>
+
+              <!-- Add Friends Tab -->
+              <div id="users-tab" class="tab-content hidden">
+                <div style="padding: 15px">
+                  <h4>Add Friends</h4>
+
+                  <!-- Profile URL Section -->
+                  <div style="margin-bottom: 20px">
+                    <h5>Your Profile</h5>
+                    <div
+                      id="user-profile-info"
+                      style="
+                        background: #f0f7ff;
+                        padding: 10px;
+                        border-radius: 5px;
+                        margin-bottom: 10px;
+                      "
+                    >
+                      <p><strong>Share your profile URL:</strong></p>
+                      <div
+                        style="display: flex; align-items: center; gap: 10px"
+                      >
+                        <input
+                          type="text"
+                          id="user-profile-url"
+                          readonly
+                          style="
+                            flex: 1;
+                            padding: 8px;
+                            border: 1px solid #ddd;
+                            border-radius: 4px;
+                            background: #f9f9f9;
+                          "
+                          placeholder="Loading..."
+                        />
+                        <button
+                          id="copy-profile-btn"
+                          style="
+                            padding: 8px 12px;
+                            background: #2196f3;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                          "
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Invite by Profile URL Section -->
+                  <div style="margin-bottom: 20px">
+                    <h5>Invite Friend</h5>
+                    <div style="margin-bottom: 10px">
+                      <label
+                        for="profile-url-input"
+                        style="
+                          display: block;
+                          margin-bottom: 5px;
+                          font-weight: bold;
+                        "
+                        >Enter Profile URL:</label
+                      >
+                      <input
+                        type="text"
+                        id="profile-url-input"
+                        placeholder="https://yourdomain.com/welcome/user-id"
+                        style="
+                          width: 100%;
+                          padding: 8px;
+                          border: 1px solid #ddd;
+                          border-radius: 4px;
+                          margin-bottom: 10px;
+                        "
+                      />
+                      <button
+                        id="send-invitation-btn"
+                        style="
+                          width: 100%;
+                          padding: 10px;
+                          background: #2196f3;
+                          color: white;
+                          border: none;
+                          border-radius: 4px;
+                          cursor: pointer;
+                        "
+                      >
+                        Send Invitation
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- QR Code Section (placeholder) -->
+                  <div style="margin-bottom: 20px">
+                    <h5>QR Code Scanner</h5>
+                    <div
+                      style="
+                        background: #f0f0f0;
+                        padding: 20px;
+                        border-radius: 5px;
+                        text-align: center;
+                        border: 2px dashed #ccc;
+                      "
+                    >
+                      <p style="margin: 0; color: #666">
+                        QR Code scanner would be implemented here
+                      </p>
+                      <p
+                        style="margin: 5px 0 0 0; font-size: 0.8em; color: #999"
+                      >
+                        Scan a friend's QR code to get their profile URL
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chat-main">
+            <div class="chat-header">
+              <h3 id="chat-title">Select a chat</h3>
+            </div>
+            <div id="messages" class="messages"></div>
+            <div id="typing-indicator" class="typing-indicator hidden"></div>
+            <form id="message-form" class="message-form">
+              <input
+                type="text"
+                id="message-input"
+                class="message-input"
+                placeholder="Type a message..."
+                disabled
+              />
+              <button type="submit" id="send-btn" disabled>Send</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+      const API_URL = "http://localhost:5001/api/v1"; // Update with your server URL
+      let authToken = "";
+      let currentUser = null;
+      let socket = null;
+      let activeChatId = null;
+      let typingTimeout = null;
+
+      // Cookie utility functions
+      const cookieUtils = {
+        setCookie: function (name, value, days) {
+          let expires = "";
+          if (days) {
+            const date = new Date();
+            date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+            expires = "; expires=" + date.toUTCString();
+          }
+          document.cookie =
+            name +
+            "=" +
+            encodeURIComponent(JSON.stringify(value)) +
+            expires +
+            "; path=/";
+          console.log(`🍪 Cookie set: ${name}`);
+        },
+
+        getCookie: function (name) {
+          const nameEQ = name + "=";
+          const ca = document.cookie.split(";");
+          for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === " ") c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) {
+              try {
+                return JSON.parse(
+                  decodeURIComponent(c.substring(nameEQ.length, c.length))
+                );
+              } catch (e) {
+                console.error("Error parsing cookie:", e);
+                return null;
+              }
+            }
+          }
+          return null;
+        },
+
+        deleteCookie: function (name) {
+          document.cookie = name + "=; Max-Age=-99999999; path=/";
+          console.log(`🍪 Cookie deleted: ${name}`);
+        },
+      };
+
+      // Check for saved credentials and auto-login
+      function checkSavedCredentials() {
+        const savedToken = cookieUtils.getCookie("authToken");
+        const savedUser = cookieUtils.getCookie("currentUser");
+
+        if (savedToken && savedUser) {
+          console.log("🔄 Found saved credentials, attempting auto-login...");
+          authToken = savedToken;
+          currentUser = savedUser;
+
+          // Update UI
+          authStatus.textContent = currentUser.firstName
+            ? `Logged in as ${currentUser.firstName} ${currentUser.lastName}`
+            : "Logged in successfully";
+          authStatus.style.color = "green";
+
+          // Show/hide buttons
+          loginBtn.style.display = "none";
+          logoutBtn.style.display = "inline-block";
+
+          // Show chat interface
+          chatInterface.classList.remove("hidden");
+
+          // Initialize socket connection and load chats
+          initializeSocket();
+          loadChats();
+
+          return true;
+        }
+        return false;
+      }
+
+      // Add logout functionality
+      function logout() {
+        // Clear cookies
+        cookieUtils.deleteCookie("authToken");
+        cookieUtils.deleteCookie("currentUser");
+
+        // Clear variables
+        authToken = "";
+        currentUser = null;
+        activeChatId = null;
+
+        // Reset UI
+        authStatus.textContent = "";
+        chatInterface.classList.add("hidden");
+
+        // Show/hide buttons
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+
+        // Clear form inputs
+        document.getElementById("email").value = "";
+        document.getElementById("password").value = "";
+        document.getElementById("user-id-input").value = "";
+
+        // Disconnect socket
+        if (socket) {
+          socket.disconnect();
+        }
+
+        console.log("🚪 Logged out successfully");
+      }
+
+      // DOM Elements
+      const loginBtn = document.getElementById("login-btn");
+      const logoutBtn = document.getElementById("logout-btn");
+      const authStatus = document.getElementById("auth-status");
+      const chatInterface = document.getElementById("chat-interface");
+      const createChatBtn = document.getElementById("create-chat-btn");
+      const refreshChatsBtn = document.getElementById("refresh-chats-btn");
+      const showUsersBtn = document.getElementById("show-users-btn");
+      const debugBtn = document.getElementById("debug-btn");
+      const chatList = document.getElementById("chat-list");
+      const messages = document.getElementById("messages");
+      const messageForm = document.getElementById("message-form");
+      const messageInput = document.getElementById("message-input");
+      const sendBtn = document.getElementById("send-btn");
+      const chatTitle = document.getElementById("chat-title");
+      const typingIndicator = document.getElementById("typing-indicator");
+
+      // Login
+      loginBtn.addEventListener("click", async () => {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+
+        try {
+          const response = await fetch(`${API_URL}/auth/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email, password }),
+          });
+
+          const data = await response.json();
+          console.log("🎉 Login successful", data);
+
+          if (response.ok) {
+            // Set the auth token
+            if (data.token) {
+              authToken = data.token;
+
+              // Extract user data based on the response format
+              if (data.user) {
+                // Check for nested structures in our specific API response
+                if (data.user.dataValues) {
+                  currentUser = { ...data.user.dataValues };
+                  console.log(
+                    "📋 Extracted user data from dataValues:",
+                    currentUser
+                  );
+                } else {
+                  currentUser = { ...data.user };
+                }
+              } else if (data.data) {
+                currentUser = { ...data.data };
+              } else if (data.userId || data.id) {
+                // Create a minimal user object with just the ID
+                currentUser = { id: data.userId || data.id };
+              }
+
+              // If we only have minimal user data, fetch the full profile
+              if (!currentUser.firstName || !currentUser.lastName) {
+                console.log(
+                  "⚠️ Minimal user data in login response, fetching full profile..."
+                );
+                await fetchCurrentUser();
+              }
+            } else if (data.accessToken) {
+              authToken = data.accessToken;
+              currentUser = { ...(data.user || data.data) };
+            }
+
+            // Ensure currentUser has an id property
+            if (
+              currentUser &&
+              !currentUser.id &&
+              (currentUser.userId || currentUser._id)
+            ) {
+              currentUser.id = currentUser.userId || currentUser._id;
+            }
+
+            // Save token and user data to cookies for persistent session
+            cookieUtils.setCookie("authToken", authToken, 7); // Save for 7 days
+            cookieUtils.setCookie("currentUser", currentUser, 7);
+            console.log("🔐 Credentials saved to cookies");
+
+            authStatus.textContent =
+              currentUser && currentUser.firstName
+                ? `Logged in as ${currentUser.firstName} ${currentUser.lastName}`
+                : "Logged in successfully";
+            authStatus.style.color = "green";
+
+            // Show/hide buttons
+            loginBtn.style.display = "none";
+            logoutBtn.style.display = "inline-block";
+
+            // Show chat interface
+            chatInterface.classList.remove("hidden");
+
+            // Initialize Socket.IO
+            initializeSocket();
+
+            // Load user's chats
+            loadChats();
+          } else {
+            authStatus.textContent = `Error: ${data.message}`;
+            authStatus.style.color = "red";
+          }
+        } catch (error) {
+          console.error("Login error:", error);
+          authStatus.textContent = "Network error. Please try again.";
+          authStatus.style.color = "red";
+        }
+      });
+
+      // Logout button
+      logoutBtn.addEventListener("click", () => {
+        logout();
+      });
+
+      // Refresh chats button
+      refreshChatsBtn.addEventListener("click", () => {
+        console.log("🔄 Manually refreshing chats...");
+        loadChats();
+      });
+
+      // Show users button for debugging
+      showUsersBtn.addEventListener("click", async () => {
+        try {
+          console.log("🔍 Fetching all users...");
+          const response = await fetch(`${API_URL}/users`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log("👥 Available users:", data);
+
+            let userList = "Available Users:\n";
+            if (data.data && Array.isArray(data.data)) {
+              data.data.forEach((user) => {
+                userList += `ID: ${user.id} - ${user.firstName} ${user.lastName} (${user.email})\n`;
+              });
+            } else if (Array.isArray(data)) {
+              data.forEach((user) => {
+                userList += `ID: ${user.id} - ${user.firstName} ${user.lastName} (${user.email})\n`;
+              });
+            }
+
+            alert(userList);
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error("Failed to fetch users:", errorData);
+            alert(
+              `Failed to fetch users: ${errorData.message || "Unknown error"}`
+            );
+          }
+        } catch (error) {
+          console.error("Error fetching users:", error);
+          alert("Error fetching users. Check console for details.");
+        }
+      });
+
+      // Fetch current user details if we only have userId
+      async function fetchCurrentUser() {
+        if (!authToken) {
+          console.error("Cannot fetch user: No auth token available");
+          return;
+        }
+
+        try {
+          console.log("🔍 Fetching current user data...");
+          const response = await fetch(`${API_URL}/users/me`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const userData = await response.json();
+            console.log("📋 Raw user data response:", userData);
+
+            // Extract user data - the response should be the direct user object now
+            const userDataObj = userData;
+
+            // If we already have a currentUser object with an ID, merge the new data
+            if (currentUser && currentUser.id) {
+              const userId = currentUser.id;
+              currentUser = { ...userDataObj, id: userId };
+            } else {
+              currentUser = userDataObj;
+              // Ensure we have an id property
+              if (!currentUser.id && (currentUser.userId || currentUser._id)) {
+                currentUser.id = currentUser.userId || currentUser._id;
+              }
+            }
+
+            console.log("✅ User data fetched:", currentUser);
+
+            // Update auth status display with user info if available
+            if (currentUser.firstName) {
+              authStatus.textContent = `Logged in as ${currentUser.firstName} ${currentUser.lastName}`;
+              authStatus.style.color = "green";
+            }
+
+            return true;
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error(
+              "Failed to fetch user details:",
+              errorData.message || "Unknown error"
+            );
+            return false;
+          }
+        } catch (error) {
+          console.error("Failed to fetch user details:", error);
+          return false;
+        }
+      }
+
+      // Initialize Socket.IO
+      function initializeSocket() {
+        if (!authToken) {
+          console.error(
+            "Cannot initialize Socket.IO without authentication token"
+          );
+          return;
+        }
+
+        // Update connection status UI
+        const connectionStatus = document.getElementById("connection-status");
+        function updateConnectionStatus(status, color) {
+          if (connectionStatus) {
+            connectionStatus.innerHTML = `Connection: <span style="color: ${color};">${status}</span>`;
+          }
+        }
+
+        updateConnectionStatus("Connecting...", "orange");
+
+        console.log("🔌 Initializing Socket.IO connection...");
+        socket = io(API_URL.replace("/api/v1", ""), {
+          auth: { token: authToken },
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 20000,
+        });
+
+        // Socket event listeners
+        socket.on("connect", () => {
+          console.log("✅ Connected to Socket.IO");
+          updateConnectionStatus("Connected", "green");
+
+          // After connection, ensure we have user data
+          if (!currentUser || !currentUser.id) {
+            fetchCurrentUser().then(() => {
+              if (currentUser && currentUser.id) {
+                console.log("User data updated after socket connection");
+              }
+            });
+          }
+
+          // If there's an active chat, rejoin it
+          if (activeChatId) {
+            console.log(
+              "🔄 Rejoining active chat after reconnection:",
+              activeChatId
+            );
+            socket.emit("join_chat", { chatId: activeChatId });
+          }
+        });
+
+        socket.on("disconnect", () => {
+          console.warn("⚠️ Socket disconnected");
+          updateConnectionStatus("Disconnected", "red");
+        });
+
+        socket.on("reconnect_attempt", (attemptNumber) => {
+          console.log(`🔄 Reconnection attempt ${attemptNumber}...`);
+          updateConnectionStatus(
+            `Reconnecting (${attemptNumber})...`,
+            "orange"
+          );
+        });
+
+        socket.on("reconnect", (attemptNumber) => {
+          console.log(
+            `🔄 Reconnected to socket after ${attemptNumber} attempts`
+          );
+          updateConnectionStatus("Connected", "green");
+        });
+
+        socket.on("reconnect_error", (error) => {
+          console.error("❌ Socket reconnection error:", error);
+          updateConnectionStatus("Connection Error", "red");
+        });
+
+        socket.on("error", (error) => {
+          console.error("Socket error:", error);
+        });
+
+        socket.on("new_message", (message) => {
+          console.log("📩 Received new message:", message);
+          console.log("🔍 Current activeChatId:", activeChatId);
+          console.log("🔍 Message chatId:", message.chatId);
+          console.log(
+            "🔍 activeChatId === message.chatId:",
+            activeChatId === message.chatId
+          );
+
+          if (message.chatId === activeChatId) {
+            console.log("✅ Message is for current active chat, displaying");
+            console.log("✅ About to call appendMessage");
+
+            // TEMPORARILY REMOVE DUPLICATE DETECTION FOR TESTING
+            appendMessage(message);
+            console.log("✅ appendMessage called successfully");
+
+            // Mark as read
+            socket.emit("mark_as_read", { chatId: activeChatId });
+          } else {
+            console.log(
+              `ℹ️ Message is for chat ${message.chatId}, not current active chat ${activeChatId}`
+            );
+            // Update UI to show new message indicator on sidebar
+            const chatItem = document.querySelector(
+              `.chat-list-item[data-chat-id="${message.chatId}"]`
+            );
+            if (chatItem) {
+              chatItem.classList.add("new-message");
+            }
+          }
+        });
+
+        socket.on("user_typing", (data) => {
+          if (data.chatId === activeChatId && data.userId !== currentUser.id) {
+            typingIndicator.textContent = `${data.user.firstName} is typing...`;
+            typingIndicator.classList.remove("hidden");
+          }
+        });
+
+        socket.on("user_stopped_typing", (data) => {
+          if (data.chatId === activeChatId && data.userId !== currentUser.id) {
+            typingIndicator.classList.add("hidden");
+          }
+        });
+      }
+
+      // Load user's chats
+      async function loadChats() {
+        try {
+          if (!authToken) {
+            console.error("User not logged in - no auth token available");
+            return;
+          }
+
+          // If we don't have user data yet, try to fetch it
+          if (!currentUser || !currentUser.id) {
+            await fetchCurrentUser();
+            if (!currentUser || !currentUser.id) {
+              console.error("Failed to get user data - cannot load chats");
+              return;
+            }
+          }
+
+          console.log("🔍 Loading chats for user:", currentUser.id);
+
+          const response = await fetch(`${API_URL}/chats`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log("✅ Raw chats response:", data);
+
+            // Extract chats array from response - handle both formats
+            const chatsArray = data.data || data;
+            console.log("✅ Chats loaded:", chatsArray.length);
+            console.log("🔍 Current user for comparison:", currentUser);
+
+            // Debug: Log each chat's structure
+            chatsArray.forEach((chat, index) => {
+              console.log(`🔍 Chat ${index} structure:`, chat);
+            });
+
+            renderChatList(chatsArray);
+          } else {
+            console.error("Failed to load chats");
+          }
+        } catch (error) {
+          console.error("Error loading chats:", error);
+        }
+      }
+
+      // Render chat list
+      function renderChatList(chats) {
+        chatList.innerHTML = "";
+        console.log("🔄 Rendering chat list with", chats.length, "chats");
+        console.log("🙋‍♂️ Current user ID:", currentUser?.id);
+
+        if (chats.length === 0) {
+          chatList.innerHTML = '<div class="chat-list-item">No chats yet</div>';
+          return;
+        }
+
+        chats.forEach((chat) => {
+          console.log("📋 Processing chat:", chat);
+          console.log("👥 Chat participants:", chat.participants);
+
+          // Debug: Log the exact structure of participants
+          if (chat.participants && Array.isArray(chat.participants)) {
+            chat.participants.forEach((p, index) => {
+              console.log(`👤 Participant ${index}:`, p);
+              console.log(`👤 Participant ${index} userId:`, p.userId);
+              console.log(`👤 Participant ${index} user:`, p.user);
+            });
+          }
+
+          const chatItem = document.createElement("div");
+          chatItem.classList.add("chat-list-item");
+          chatItem.dataset.chatId = chat.id; // Add data attribute for easier selection
+
+          // Find the other participant (not current user)
+          let otherParticipant = null;
+
+          if (chat.participants && Array.isArray(chat.participants)) {
+            // Standard format with participants array
+            console.log(
+              "🔍 Looking for participant where userId !== ",
+              currentUser.id
+            );
+            const otherParticipantData = chat.participants.find(
+              (p) => p.userId !== currentUser.id
+            );
+            console.log(
+              "🔍 Found other participant data:",
+              otherParticipantData
+            );
+
+            // Try multiple possible user object locations
+            otherParticipant =
+              otherParticipantData?.user ||
+              otherParticipantData?.User ||
+              otherParticipantData;
+            console.log(
+              "🔍 Extracted user from participant:",
+              otherParticipant
+            );
+          }
+
+          // Fallback if no other participant found
+          if (!otherParticipant) {
+            otherParticipant = { firstName: "Unknown", lastName: "User" };
+            console.warn(
+              "⚠️ Could not find other participant for chat:",
+              chat.id
+            );
+          }
+
+          console.log("👤 Other participant:", otherParticipant);
+
+          chatItem.textContent = `${otherParticipant.firstName} ${otherParticipant.lastName}`;
+
+          // Set last message preview if available
+          if (chat.messages && chat.messages.length > 0) {
+            const lastMsg = chat.messages[0];
+            const previewDiv = document.createElement("div");
+            previewDiv.style.fontSize = "0.8em";
+            previewDiv.style.color = "#777";
+            previewDiv.textContent =
+              lastMsg.content.substring(0, 30) +
+              (lastMsg.content.length > 30 ? "..." : "");
+            chatItem.appendChild(previewDiv);
+          }
+
+          chatItem.addEventListener("click", () => {
+            console.log("🖱️ Chat selected:", chat.id);
+
+            // Set active chat
+            document
+              .querySelectorAll(".chat-list-item")
+              .forEach((item) =>
+                item.classList.remove("active", "new-message")
+              );
+            chatItem.classList.add("active");
+            chatItem.classList.remove("new-message"); // Remove new message indicator
+
+            activeChatId = chat.id;
+            chatTitle.textContent = `Chat with ${otherParticipant.firstName}`;
+
+            // Enable message input and send button - forcing this with setTimeout for reliability
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            console.log("🔓 Message input enabled:", !messageInput.disabled);
+
+            // Double-check that the message input is enabled after a short delay
+            setTimeout(() => {
+              if (messageInput.disabled) {
+                console.log("⚠️ Message input still disabled, forcing enable");
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+              }
+            }, 200);
+
+            // Clear any previous message input
+            messageInput.value = "";
+
+            // Set focus on message input
+            messageInput.focus();
+
+            // Join chat room
+            if (socket && socket.connected) {
+              console.log("🔌 Emitting join_chat event for:", chat.id);
+              socket.emit("join_chat", { chatId: chat.id });
+              console.log("🔄 Joined chat room:", chat.id);
+            } else {
+              console.error("❌ Socket not connected, can't join chat");
+              updateConnectionStatus(
+                "Disconnected - Trying to reconnect",
+                "red"
+              );
+              initializeSocket();
+            }
+            console.log("🔌 Joined chat room:", chat.id);
+
+            // Load messages
+            console.log("📥 About to load messages for chat:", chat.id);
+            loadMessages(chat.id);
+
+            // Mark as read
+            socket.emit("mark_as_read", { chatId: chat.id });
+          });
+
+          chatList.appendChild(chatItem);
+        });
+      }
+
+      // Contact Management Functions
+      async function loadContacts() {
+        try {
+          console.log("📞 Loading contacts...");
+          const response = await fetch(`${API_URL}/contacts`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const contacts = result.data || [];
+            renderContacts(contacts);
+          } else {
+            console.error("Failed to load contacts:", response.status);
+          }
+        } catch (error) {
+          console.error("Error loading contacts:", error);
+        }
+      }
+
+      async function loadPendingInvitations() {
+        try {
+          console.log("📨 Loading pending invitations...");
+          const response = await fetch(
+            `${API_URL}/contact-invitations/pending`,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const invitations = result.data || [];
+            renderInvitations(invitations);
+          } else {
+            console.error("Failed to load invitations:", response.status);
+          }
+        } catch (error) {
+          console.error("Error loading invitations:", error);
+        }
+      }
+
+      async function loadSentInvitations() {
+        try {
+          console.log("📤 Loading sent invitations...");
+          const response = await fetch(`${API_URL}/contact-invitations/sent`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const invitations = result.data || [];
+            renderSentInvitations(invitations);
+          } else {
+            console.error("Failed to load sent invitations:", response.status);
+          }
+        } catch (error) {
+          console.error("Error loading sent invitations:", error);
+        }
+      }
+
+      // Load current user's profile info
+      async function loadUserProfileInfo() {
+        try {
+          console.log("� Loading user profile info...");
+          const response = await fetch(`${API_URL}/contacts/profile`, {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const profileData = result.data;
+
+            // Update the profile URL input
+            const profileUrlInput = document.getElementById("user-profile-url");
+            if (profileUrlInput) {
+              profileUrlInput.value = profileData.profileUrl;
+            }
+          } else {
+            console.error("Failed to load profile info:", response.status);
+          }
+        } catch (error) {
+          console.error("Error loading profile info:", error);
+        }
+      }
+
+      // Send invitation using profile URL
+      async function sendInvitationByProfileUrl(profileUrl) {
+        try {
+          console.log("📤 Sending invitation via profile URL:", profileUrl);
+
+          const response = await fetch(`${API_URL}/contact-invitations/send`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+              profileUrl: profileUrl,
+            }),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log("✅ Invitation sent successfully");
+
+            // Clear the form
+            document.getElementById("profile-url-input").value = "";
+
+            // Refresh invitations
+            loadSentInvitations();
+
+            alert("Invitation sent successfully!");
+            return result.data;
+          } else {
+            const error = await response.json();
+            throw new Error(error.message || "Failed to send invitation");
+          }
+        } catch (error) {
+          console.error("Error sending invitation:", error);
+          alert("Failed to send invitation: " + error.message);
+          throw error;
+        }
+      }
+
+      function renderContacts(contacts) {
+        const contactsList = document.getElementById("contacts-list");
+        contactsList.innerHTML = "";
+
+        if (!contacts || contacts.length === 0) {
+          contactsList.innerHTML =
+            '<div class="no-items">No contacts yet</div>';
+          return;
+        }
+
+        contacts.forEach((contact) => {
+          const contactItem = document.createElement("div");
+          contactItem.classList.add("user-item");
+
+          const user = contact.contactUser;
+          contactItem.innerHTML = `
+            <div class="user-info">
+              <div class="user-name">${user.firstName} ${user.lastName}</div>
+              <div class="user-email">${user.email}</div>
+            </div>
+            <button class="btn-invite" onclick="createChatWithContact('${user.id}')">
+              Chat
+            </button>
+          `;
+
+          contactsList.appendChild(contactItem);
+        });
+      }
+
+      function renderInvitations(invitations) {
+        const invitationsList = document.getElementById("pending-invitations");
+        invitationsList.innerHTML = "";
+
+        if (!invitations || invitations.length === 0) {
+          invitationsList.innerHTML =
+            '<div class="no-items">No pending invitations</div>';
+          return;
+        }
+
+        invitations.forEach((invitation) => {
+          const invitationItem = document.createElement("div");
+          invitationItem.classList.add("invitation-item");
+
+          const inviter = invitation.inviter;
+          invitationItem.innerHTML = `
+            <div class="user-info">
+              <div class="user-name">${inviter.firstName} ${inviter.lastName}</div>
+              <div class="user-email">${inviter.email}</div>
+            </div>
+            <div class="invitation-actions">
+              <button class="btn-accept" onclick="acceptInvitation('${invitation.id}')">
+                Accept
+              </button>
+              <button class="btn-decline" onclick="declineInvitation('${invitation.id}')">
+                Decline
+              </button>
+            </div>
+          `;
+
+          invitationsList.appendChild(invitationItem);
+        });
+      }
+
+      function renderSentInvitations(invitations) {
+        const sentInvitationsList = document.getElementById(
+          "sent-invitations-list"
+        );
+        sentInvitationsList.innerHTML = "";
+
+        if (!invitations || invitations.length === 0) {
+          sentInvitationsList.innerHTML =
+            '<div class="no-items">No sent invitations</div>';
+          return;
+        }
+
+        invitations.forEach((invitation) => {
+          const invitationItem = document.createElement("div");
+          invitationItem.classList.add("invitation-item");
+
+          const invitee = invitation.invitee;
+          let statusText = "";
+          let statusClass = "";
+
+          switch (invitation.status) {
+            case "pending":
+              statusText = "Pending";
+              statusClass = "status-pending";
+              break;
+            case "accepted":
+              statusText = "Accepted";
+              statusClass = "status-accepted";
+              break;
+            case "declined":
+              statusText = "Declined";
+              statusClass = "status-declined";
+              break;
+            case "expired":
+              statusText = "Expired";
+              statusClass = "status-expired";
+              break;
+            default:
+              statusText = invitation.status;
+              statusClass = "status-unknown";
+          }
+
+          invitationItem.innerHTML = `
+            <div class="user-info">
+              <div class="user-name">${invitee.firstName} ${
+            invitee.lastName
+          }</div>
+              <div class="user-email">${invitee.email}</div>
+              <div class="invitation-status ${statusClass}">${statusText}</div>
+            </div>
+            <div class="invitation-date">
+              Sent: ${new Date(invitation.invitedAt).toLocaleDateString()}
+            </div>
+          `;
+
+          sentInvitationsList.appendChild(invitationItem);
+        });
+      }
+
+      // Removed renderAvailableUsers function - no longer needed for profile URL approach
+
+      // Copy profile URL to clipboard
+      function copyProfileUrl() {
+        const profileUrlInput = document.getElementById("user-profile-url");
+        if (profileUrlInput && profileUrlInput.value) {
+          navigator.clipboard
+            .writeText(profileUrlInput.value)
+            .then(() => {
+              alert("Profile URL copied to clipboard!");
+            })
+            .catch(() => {
+              // Fallback for older browsers
+              profileUrlInput.select();
+              document.execCommand("copy");
+              alert("Profile URL copied to clipboard!");
+            });
+        }
+      }
+
+      // Removed old sendInvitation function - now using profile URL approach
+
+      async function acceptInvitation(invitationId) {
+        try {
+          console.log("✅ Accepting invitation:", invitationId);
+          const response = await fetch(
+            `${API_URL}/contact-invitations/${invitationId}/accept`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            alert("Invitation accepted!");
+            loadPendingInvitations(); // Refresh invitations
+            loadContacts(); // Refresh contacts
+          } else {
+            const error = await response.json();
+            alert(`Failed to accept invitation: ${error.message}`);
+          }
+        } catch (error) {
+          console.error("Error accepting invitation:", error);
+          alert("Error accepting invitation");
+        }
+      }
+
+      async function declineInvitation(invitationId) {
+        try {
+          console.log("❌ Declining invitation:", invitationId);
+          const response = await fetch(
+            `${API_URL}/contact-invitations/${invitationId}/decline`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            alert("Invitation declined!");
+            loadPendingInvitations(); // Refresh invitations
+          } else {
+            const error = await response.json();
+            alert(`Failed to decline invitation: ${error.message}`);
+          }
+        } catch (error) {
+          console.error("Error declining invitation:", error);
+          alert("Error declining invitation");
+        }
+      }
+
+      function showInvitationActions(userId) {
+        // Find the user in the available users list to get their invitation ID
+        // For now, we'll use a simple confirm dialog approach
+        const action = confirm(
+          "Do you want to accept this invitation?\nOK = Accept, Cancel = Decline"
+        );
+
+        if (action) {
+          // User clicked OK - Accept invitation
+          // We need to find the invitation ID first
+          findAndAcceptInvitation(userId);
+        } else {
+          // User clicked Cancel - Decline invitation
+          findAndDeclineInvitation(userId);
+        }
+      }
+
+      async function findAndAcceptInvitation(userId) {
+        try {
+          // Get pending invitations to find the one from this user
+          const response = await fetch(
+            `${API_URL}/contact-invitations/pending`,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const invitations = result.data || [];
+
+            // Find invitation from this user
+            const invitation = invitations.find(
+              (inv) => inv.inviter.id === userId
+            );
+
+            if (invitation) {
+              await acceptInvitation(invitation.id);
+              // Profile URL approach doesn't need to refresh user list
+            } else {
+              alert("Invitation not found");
+            }
+          }
+        } catch (error) {
+          console.error("Error finding invitation:", error);
+        }
+      }
+
+      async function findAndDeclineInvitation(userId) {
+        try {
+          // Get pending invitations to find the one from this user
+          const response = await fetch(
+            `${API_URL}/contact-invitations/pending`,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const invitations = result.data || [];
+
+            // Find invitation from this user
+            const invitation = invitations.find(
+              (inv) => inv.inviter.id === userId
+            );
+
+            if (invitation) {
+              await declineInvitation(invitation.id);
+              // Profile URL approach doesn't need to refresh user list
+            } else {
+              alert("Invitation not found");
+            }
+          }
+        } catch (error) {
+          console.error("Error finding invitation:", error);
+        }
+      }
+
+      async function createChatWithContact(userId) {
+        try {
+          console.log("💬 Creating chat with contact:", userId);
+          const response = await fetch(`${API_URL}/chats`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ userId2: userId }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log("✅ Chat created/found:", data);
+
+            // Extract chat ID from response
+            const chatId = data.data?.id || data.id;
+            console.log("📝 Chat ID to select:", chatId);
+
+            if (!chatId) {
+              console.error("❌ No chat ID found in response");
+              alert(
+                "Chat was created but couldn't be opened. Please refresh and try again."
+              );
+              return;
+            }
+
+            // Switch to chats tab
+            switchTab("chats");
+
+            // Load chats and then auto-select the specific chat
+            try {
+              await loadChats();
+              console.log("✅ Chats loaded, now looking for chat:", chatId);
+
+              // Wait a bit for DOM to update
+              await new Promise((resolve) => setTimeout(resolve, 300));
+
+              // Look for the chat item
+              const chatItem = document.querySelector(
+                `[data-chat-id="${chatId}"]`
+              );
+              console.log("🔍 Found chat item:", chatItem);
+
+              if (chatItem) {
+                console.log("🖱️ Auto-clicking chat item");
+                chatItem.click();
+              } else {
+                console.warn(
+                  "⚠️ Chat item not found, trying alternative method"
+                );
+
+                // Alternative: look through all chat items
+                const allChatItems =
+                  document.querySelectorAll(".chat-list-item");
+                console.log("🔍 Total chat items:", allChatItems.length);
+
+                for (let item of allChatItems) {
+                  console.log(
+                    "🔍 Checking item:",
+                    item.dataset.chatId,
+                    "vs",
+                    chatId
+                  );
+                  if (item.dataset.chatId === chatId) {
+                    console.log("🎯 Found chat via alternative method");
+                    item.click();
+                    return;
+                  }
+                }
+
+                console.warn(
+                  "⚠️ Could not find chat to auto-select. Chat created but not opened."
+                );
+                alert(
+                  "Chat created successfully! Please select it from the chat list."
+                );
+              }
+            } catch (loadError) {
+              console.error("❌ Error loading chats:", loadError);
+              alert(
+                "Chat created but couldn't load chat list. Please refresh the page."
+              );
+            }
+          } else {
+            const error = await response.json();
+            console.error("❌ Failed to create chat:", error);
+            alert(`Failed to create chat: ${error.message}`);
+          }
+        } catch (error) {
+          console.error("❌ Error creating chat:", error);
+          alert("Error creating chat. Please try again.");
+        }
+      }
+
+      // Tab Management
+      function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll(".sidebar-tab").forEach((tab) => {
+          tab.classList.remove("active");
+        });
+        document
+          .querySelector(`[data-tab="${tabName}"]`)
+          .classList.add("active");
+
+        // Update tab content
+        document.querySelectorAll(".tab-content").forEach((content) => {
+          content.classList.add("hidden");
+        });
+        document.getElementById(`${tabName}-tab`).classList.remove("hidden");
+
+        // Load appropriate data
+        switch (tabName) {
+          case "chats":
+            loadChats();
+            break;
+          case "contacts":
+            loadContacts();
+            break;
+          case "invitations":
+            loadPendingInvitations();
+            break;
+          case "sent-invitations":
+            loadSentInvitations();
+            break;
+          case "users":
+            loadUserProfileInfo(); // Load current user's profile for sharing
+            break;
+        }
+      }
+
+      // Create or get chat
+      createChatBtn.addEventListener("click", async () => {
+        const userId2 = document.getElementById("user-id-input").value;
+
+        if (!userId2) {
+          alert("Please enter a user ID");
+          return;
+        }
+
+        // Check if we have auth token
+        if (!authToken) {
+          console.error("No authentication token available");
+          alert("You must be logged in to create a chat");
+          return;
+        }
+
+        // If we don't have user data, try to fetch it first
+        if (!currentUser || !currentUser.id) {
+          await fetchCurrentUser();
+          if (!currentUser || !currentUser.id) {
+            console.error("Current user ID not available even after fetching");
+            alert("Failed to get your user data. Please try logging in again.");
+            return;
+          }
+        }
+
+        console.log(`Creating chat between ${currentUser.id} and ${userId2}`);
+
+        try {
+          const response = await fetch(`${API_URL}/chats`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+              userId2,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log("Chat created/found:", data);
+
+            // Refresh chat list
+            loadChats();
+
+            // Store the ID of the created/found chat
+            const chatId = data.data?.id || data.id;
+            console.log("📝 Created/found chat ID:", chatId);
+
+            // Auto-select the new/found chat after the chat list is refreshed
+            setTimeout(() => {
+              console.log(
+                "🔍 Looking for chat item to select with ID:",
+                chatId
+              );
+              // Try to find by data-chat-id first (more reliable)
+              let chatToSelect = document.querySelector(
+                `.chat-list-item[data-chat-id="${chatId}"]`
+              );
+
+              // If not found, fall back to selecting the first chat
+              if (!chatToSelect) {
+                console.log(
+                  "⚠️ Specific chat not found, falling back to first chat item"
+                );
+                chatToSelect = document.querySelector(".chat-list-item");
+              }
+
+              if (chatToSelect) {
+                console.log("✅ Found chat to select, clicking it");
+                chatToSelect.click();
+
+                // Double check that message input is enabled
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+
+                // Set focus on message input
+                messageInput.focus();
+
+                // Forcefully ensure input is enabled
+                setTimeout(() => {
+                  if (messageInput.disabled) {
+                    console.log(
+                      "⚠️ Message input still disabled after chat creation, forcing enable"
+                    );
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    messageInput.focus();
+                  }
+                }, 500);
+              } else {
+                console.error("❌ No chats found to select");
+                // Create a notification
+                const notification = document.createElement("div");
+                notification.style.padding = "10px";
+                notification.style.backgroundColor = "#ffdddd";
+                notification.style.marginTop = "10px";
+                notification.style.borderRadius = "5px";
+                notification.textContent =
+                  "Chat created but not visible in list. Try refreshing the chat list.";
+                const refreshButton = document.createElement("button");
+                refreshButton.textContent = "Refresh Chats";
+                refreshButton.style.marginLeft = "10px";
+                refreshButton.addEventListener("click", loadChats);
+                notification.appendChild(refreshButton);
+                document
+                  .querySelector(".auth-container")
+                  .appendChild(notification);
+              }
+            }, 800); // Increased timeout to ensure chats are loaded
+          } else {
+            console.error(
+              "Failed to create chat, response status:",
+              response.status
+            );
+            const errorData = await response.json().catch(() => ({}));
+            console.error("Error response data:", errorData);
+            alert(
+              `Failed to create chat. ${
+                errorData.message || "Please check the user ID."
+              }`
+            );
+          }
+        } catch (error) {
+          console.error("Error creating chat:", error);
+        }
+      });
+
+      // Load messages for a chat
+      async function loadMessages(chatId) {
+        try {
+          console.log("📥 Loading messages for chat:", chatId);
+          const response = await fetch(
+            `${API_URL}/chats/${chatId}/messages?page=1&limit=50`,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log("📥 Received messages response:", result);
+
+            // The backend returns { message: "...", data: [...] }
+            const messageData = result.data || result;
+            console.log("📥 Processing message data:", messageData);
+            renderMessages(messageData);
+          } else {
+            console.error("Failed to load messages, status:", response.status);
+            const errorText = await response.text();
+            console.error("Error response:", errorText);
+          }
+        } catch (error) {
+          console.error("Error loading messages:", error);
+        }
+      }
+
+      // Render messages
+      function renderMessages(messageData) {
+        console.log("🖼️ Rendering messages:", messageData);
+        messages.innerHTML = "";
+
+        if (!messageData || messageData.length === 0) {
+          messages.innerHTML = '<div class="no-messages">No messages yet</div>';
+          return;
+        }
+
+        // Sort messages by createdAt (oldest first)
+        const sortedMessages = [...messageData].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        );
+
+        console.log("🖼️ Sorted messages:", sortedMessages);
+
+        sortedMessages.forEach((message) => {
+          appendMessage(message);
+        });
+
+        // Scroll to bottom
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      // Append a message to the messages container
+      function appendMessage(message) {
+        console.log("📝 Appending message:", message);
+        console.log("📝 Current messages container:", messages);
+        console.log(
+          "📝 Messages container children before:",
+          messages.children.length
+        );
+
+        const messageDiv = document.createElement("div");
+        messageDiv.classList.add("message");
+
+        // Add a unique identifier for debugging
+        messageDiv.setAttribute("data-message-id", message.id);
+        messageDiv.setAttribute("data-timestamp", message.createdAt);
+
+        // Check if the message is from the current user
+        if (message.senderId === currentUser.id) {
+          messageDiv.classList.add("sent");
+        } else {
+          messageDiv.classList.add("received");
+
+          // Add sender name for received messages
+          if (message.sender) {
+            const senderDiv = document.createElement("div");
+            senderDiv.style.fontWeight = "bold";
+            senderDiv.style.fontSize = "0.8em";
+            senderDiv.style.color = "#666";
+            senderDiv.style.marginBottom = "2px";
+            senderDiv.textContent = `${message.sender.firstName || "Unknown"} ${
+              message.sender.lastName || "User"
+            }`;
+            messageDiv.appendChild(senderDiv);
+          }
+        }
+
+        const contentDiv = document.createElement("div");
+        contentDiv.textContent = message.content;
+        contentDiv.style.marginBottom = "4px";
+        messageDiv.appendChild(contentDiv);
+
+        // Add timestamp
+        const timeDiv = document.createElement("div");
+        timeDiv.style.fontSize = "0.7em";
+        timeDiv.style.color = "#888";
+        timeDiv.style.textAlign = "right";
+        timeDiv.textContent = new Date(message.createdAt).toLocaleTimeString();
+        messageDiv.appendChild(timeDiv);
+
+        messages.appendChild(messageDiv);
+        console.log(
+          "📝 Message appended. Messages container children after:",
+          messages.children.length
+        );
+        console.log("📝 Appended message element:", messageDiv);
+
+        // Scroll to bottom
+        messages.scrollTop = messages.scrollHeight;
+        console.log("📝 Scrolled to bottom");
+
+        // Add visual flash for real-time messages (temporary debugging)
+        messageDiv.style.backgroundColor = "#ffeb3b";
+        setTimeout(() => {
+          messageDiv.style.backgroundColor = "";
+        }, 1000);
+      }
+
+      // Send message
+      messageForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const content = messageInput.value.trim();
+
+        if (!content) {
+          console.warn("⚠️ Cannot send empty message");
+          return;
+        }
+
+        if (!activeChatId) {
+          console.error("❌ No active chat selected");
+          alert("Please select a chat first");
+          return;
+        }
+
+        if (!socket || !socket.connected) {
+          console.error("❌ Socket not connected");
+          updateConnectionStatus(
+            "Disconnected - Attempting to reconnect",
+            "red"
+          );
+
+          // Attempt to reconnect
+          initializeSocket();
+
+          // Give it a moment to connect before trying again
+          setTimeout(() => {
+            if (socket && socket.connected) {
+              alert("Reconnected! Please try sending your message again.");
+            } else {
+              alert(
+                "Not connected to chat server. Please refresh the page and try again."
+              );
+            }
+          }, 2000);
+          return;
+        }
+
+        console.log(`📤 Sending message to chat ${activeChatId}: ${content}`);
+
+        try {
+          // Send via Socket.IO for real-time (we'll get the message back via socket)
+          console.log("📤 About to emit send_message event");
+          socket.emit("send_message", {
+            chatId: activeChatId,
+            content,
+            messageType: "text",
+          });
+
+          console.log("✅ Message emitted to socket server:", content);
+          console.log("✅ Socket connected:", socket.connected);
+          console.log("✅ Socket ID:", socket.id);
+
+          // Listen for acknowledgment (add a one-time listener)
+          socket.once("error", (error) => {
+            console.error("❌ Socket error after sending message:", error);
+            alert(`Error: ${error.message || "Unknown error sending message"}`);
+          });
+
+          // Clear input
+          messageInput.value = "";
+
+          // Stop typing indicator
+          socket.emit("typing_stop", { chatId: activeChatId });
+        } catch (error) {
+          console.error("Error sending message:", error);
+          alert("Failed to send message. Please try again.");
+        }
+      });
+
+      // Typing indicator
+      messageInput.addEventListener("input", () => {
+        if (!activeChatId) return;
+
+        // Clear previous timeout
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+        }
+
+        // Emit typing event
+        socket.emit("typing_start", { chatId: activeChatId });
+
+        // Set timeout to stop typing indicator
+        typingTimeout = setTimeout(() => {
+          socket.emit("typing_stop", { chatId: activeChatId });
+        }, 2000);
+      });
+
+      // Debug button
+      debugBtn.addEventListener("click", () => {
+        // Detailed debug info
+        console.log("🔍 DEBUG INFO:");
+        console.log("- Auth token:", authToken ? "Present" : "Missing");
+        console.log("- Current user:", currentUser);
+        console.log("- Active chat ID:", activeChatId);
+        console.log("- Socket connected:", socket?.connected);
+        console.log("- Message input disabled:", messageInput.disabled);
+
+        // Test message - send a test message if there's an active chat
+        if (activeChatId && socket?.connected) {
+          const testMessage = {
+            chatId: activeChatId,
+            content: "Test message from debug",
+            messageType: "text",
+          };
+
+          console.log("📤 Sending test message:", testMessage);
+          socket.emit("send_message", testMessage);
+        }
+
+        // Fix common issues
+        if (messageInput.disabled && activeChatId) {
+          messageInput.disabled = false;
+          sendBtn.disabled = false;
+          console.log("🔧 Fixed: Enabled message input");
+        }
+
+        // Reconnect socket if needed
+        if (!socket?.connected) {
+          console.log("🔄 Attempting to reconnect socket");
+          initializeSocket();
+        }
+      });
+
+      // Profile URL functionality event listeners
+
+      // Copy profile URL button
+      document.addEventListener("DOMContentLoaded", () => {
+        const copyProfileBtn = document.getElementById("copy-profile-btn");
+        if (copyProfileBtn) {
+          copyProfileBtn.addEventListener("click", copyProfileUrl);
+        }
+      });
+
+      // Send invitation button - direct invitation without validation
+      document.addEventListener("DOMContentLoaded", () => {
+        const sendInvitationBtn = document.getElementById(
+          "send-invitation-btn"
+        );
+        if (sendInvitationBtn) {
+          sendInvitationBtn.addEventListener("click", async () => {
+            const profileUrlInput =
+              document.getElementById("profile-url-input");
+            const profileUrl = profileUrlInput.value.trim();
+
+            if (!profileUrl) {
+              alert("Please enter a profile URL");
+              return;
+            }
+
+            try {
+              await sendInvitationByProfileUrl(profileUrl);
+            } catch (error) {
+              console.error("Error sending invitation:", error);
+            }
+
+            try {
+              await sendInvitationByProfileUrl(profileUrl);
+            } catch (error) {
+              console.error("Error sending invitation:", error);
+            }
+          });
+        }
+      });
+
+      // Helper function to ensure socket connection
+      async function ensureSocketConnection() {
+        if (socket && socket.connected) {
+          console.log("✅ Socket already connected");
+          updateConnectionStatus("Connected", "green");
+          return true;
+        }
+
+        console.log("🔄 Socket not connected, initializing...");
+        initializeSocket();
+
+        // Give it some time to connect
+        return new Promise((resolve) => {
+          let attempts = 0;
+          const checkInterval = setInterval(() => {
+            attempts++;
+
+            if (socket && socket.connected) {
+              console.log("✅ Socket connected after initialization");
+              updateConnectionStatus("Connected", "green");
+              clearInterval(checkInterval);
+              resolve(true);
+            } else if (attempts >= 5) {
+              console.error(
+                "❌ Failed to connect socket after multiple attempts"
+              );
+              updateConnectionStatus("Connection Failed", "red");
+              clearInterval(checkInterval);
+              resolve(false);
+            } else {
+              console.log(
+                `🔄 Waiting for socket connection... (attempt ${attempts})`
+              );
+              updateConnectionStatus("Connecting...", "orange");
+            }
+          }, 1000);
+        });
+      }
+
+      // Tab Management Event Listeners
+      document.addEventListener("DOMContentLoaded", () => {
+        // Setup tab switching
+        document.querySelectorAll(".sidebar-tab").forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const tabName = tab.getAttribute("data-tab");
+            switchTab(tabName);
+          });
+        });
+      });
+
+      // Initialize the app - check for saved credentials on page load
+      document.addEventListener("DOMContentLoaded", () => {
+        console.log("🚀 App initializing...");
+
+        // Check if user is already logged in via cookies
+        if (!checkSavedCredentials()) {
+          console.log("ℹ️ No saved credentials found, showing login form");
+        }
+      });
+    </script>
+  </body>
+</html>
