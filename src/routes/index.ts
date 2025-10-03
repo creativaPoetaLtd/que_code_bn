@@ -10,6 +10,7 @@ import contactRouter from "./contact.routes";
 import organizationCategoryRouter from "./organizationCategory.routes";
 import profileRouter from "./profile.routes";
 import groupRouter from "./group.routes";
+import chatRouter from "./chat.routes";
 import notificationRouter from "./notification.routes"; // Re-enabled
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.use("/analytics", analyticsRouter);
 router.use("/contacts", contactRouter);
 // router.use("/contact-invitations", contactInvitationRouter); // Temporarily disabled
 router.use("/groups", groupRouter); // Re-enabled after fixing compilation errors
+router.use("/", chatRouter); // Group chat routes
 router.use("/notifications", notificationRouter); // Re-enabled
 export default router;

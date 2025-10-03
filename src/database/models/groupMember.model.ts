@@ -15,6 +15,7 @@ class GroupMember extends Model<
   public joinedAt?: Date;
   public invitedAt?: Date;
   public respondedAt?: Date;
+  public lastReadAt?: Date;
 }
 
 const GroupMember_model = (sequelize: Sequelize) => {
@@ -35,6 +36,7 @@ const GroupMember_model = (sequelize: Sequelize) => {
       joinedAt: DataTypes.DATE,
       invitedAt: DataTypes.DATE,
       respondedAt: DataTypes.DATE,
+      lastReadAt: DataTypes.DATE,
     },
     { sequelize, tableName: "GroupMembers" }
   );

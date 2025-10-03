@@ -9,6 +9,7 @@ import payment_model from "./payment.model";
 import contact_model from "./contact.model";
 import group_model from "./group.model";
 import groupMember_model from "./groupMember.model";
+import groupChatSettings_model from "./groupChatSettings.model";
 import chat_model from "./chat.model";
 import chatParticipant_model from "./chatParticipant.model";
 import chatMessage_model from "./chatMessage.model";
@@ -40,6 +41,7 @@ const Models = (sequelize: Sequelize) => {
   const ContactInvitation = ContactInvitation_model(sequelize);
   const Group = group_model(sequelize);
   const GroupMember = groupMember_model(sequelize);
+  const GroupChatSettings = groupChatSettings_model(sequelize);
   const Chat = chat_model(sequelize);
   const ChatParticipant = chatParticipant_model(sequelize);
   const ChatMessage = chatMessage_model(sequelize);
@@ -157,7 +159,13 @@ const Models = (sequelize: Sequelize) => {
   });
   GroupMember.belongsTo(User, { foreignKey: "invitedBy", as: "inviter" });
 
+  // Group Chat Settings
+  Group.hasOne(GroupChatSettings, { foreignKey: "groupId", as: "chatSettings" });
+  GroupChatSettings.belongsTo(Group, { foreignKey: "groupId", as: "group" });
+
   // Chats
+  Group.hasOne(Chat, { foreignKey: "groupId", as: "chat" });
+  Chat.belongsTo(Group, { foreignKey: "groupId", as: "group" });
   Chat.hasMany(ChatParticipant, { foreignKey: "chatId", as: "participants" });
   ChatParticipant.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
 
@@ -172,6 +180,10 @@ const Models = (sequelize: Sequelize) => {
 
   User.hasMany(ChatMessage, { foreignKey: "senderId", as: "sentMessages" });
   ChatMessage.belongsTo(User, { foreignKey: "senderId", as: "sender" });
+
+  // Message replies (self-referencing)
+  ChatMessage.hasMany(ChatMessage, { foreignKey: "replyToMessageId", as: "replies" });
+  ChatMessage.belongsTo(ChatMessage, { foreignKey: "replyToMessageId", as: "replyToMessage" });
 
   Transaction.hasOne(ChatMessage, {
     foreignKey: "transactionId",
@@ -250,6 +262,7 @@ const Models = (sequelize: Sequelize) => {
     ContactInvitation,
     Group,
     GroupMember,
+    GroupChatSettings,
     Chat,
     ChatParticipant,
     ChatMessage,

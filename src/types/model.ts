@@ -146,13 +146,20 @@ export interface ChatMessageAttributes {
   chatId: string;
   senderId: string;
   content: string;
-  messageType: "text" | "image" | "file" | "money";
+  messageType: "text" | "image" | "file" | "money" | "system" | "announcement";
   transactionId?: string;
+  metadata?: any;
+  replyToMessageId?: string;
+  isEdited: boolean;
+  editedAt?: Date;
+  deletedAt?: Date;
+  readBy?: any;
   createdAt?: Date;
+  updatedAt?: Date;
 }
 export type ChatMessageCreationAttributes = Omit<
   ChatMessageAttributes,
-  "id" | "createdAt"
+  "id" | "createdAt" | "updatedAt" | "isEdited" | "editedAt" | "deletedAt" | "readBy"
 >;
 
 export interface ChatParticipantAttributes {
@@ -243,8 +250,34 @@ export interface GroupMemberAttributes {
   joinedAt?: Date;
   invitedAt?: Date;
   respondedAt?: Date;
+  lastReadAt?: Date;
 }
 export type GroupMemberCreationAttributes = Omit<GroupMemberAttributes, "id">;
+
+export interface GroupChatSettingsAttributes {
+  id: string;
+  groupId: string;
+  canMembersInvite: boolean;
+  canMembersDeleteMessages: boolean;
+  onlyAdminsCanPost: boolean;
+  messageRetentionDays?: number;
+  allowFileSharing: boolean;
+  allowMoneyTransfers: boolean;
+  maxFileSize?: number;
+  allowedFileTypes?: string[];
+  profanityFilter: boolean;
+  linkPreview: boolean;
+  readReceipts: boolean;
+  typingIndicators: boolean;
+  slowMode?: number;
+  announcementMode: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type GroupChatSettingsCreationAttributes = Omit<
+  GroupChatSettingsAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 export interface NotificationAttributes {
   id: string;
