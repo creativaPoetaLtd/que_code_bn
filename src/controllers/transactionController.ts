@@ -178,10 +178,23 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     
     // Calculate available unrestricted amount
     const totalBalance = parseFloat(senderWallet.balance.toString());
-    const availableUnrestrictedAmount = totalBalance - totalRestrictedAmount;
+    // Prevent negative unrestricted amount when restrictions exceed total balance
+    const availableUnrestrictedAmount = Math.max(0, totalBalance - totalRestrictedAmount);
 
+    // Rule: When sending to an individual user, only unrestricted funds can be used
+    if (receiverUserId) {
+      if (availableUnrestrictedAmount < transferAmount) {
+        await transaction?.rollback();
+        res.status(400).json({
+          success: false,
+          message: `Insufficient unrestricted balance for transfer to a user. Available: ${availableUnrestrictedAmount}, Required: ${transferAmount}`,
+          availableUnrestrictedAmount,
+          requiredAmount: transferAmount
+        });
+        return;
+      }
     // If spending on a specific category, check constraints
-    if (categoryId) {
+    } else if (categoryId) {
       const matchingRestriction = restrictions.find(restriction => 
         restriction.categoryId === categoryId
       );
@@ -319,7 +332,8 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Update wallet restrictions for sender based on spending source
-    if (categoryId) {
+    // Do NOT reduce restricted funds when sending to a user (unrestricted-only rule)
+    if (categoryId && !receiverUserId) {
       const matchingRestriction = restrictions.find(restriction => 
         restriction.categoryId === categoryId
       );
