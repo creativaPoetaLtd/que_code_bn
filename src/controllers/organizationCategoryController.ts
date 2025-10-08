@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { insert_function, read_function } from "../utils/db_methods";
 import {
-  OrganizationCategoryAttributes,
-  OrganizationCategoryCreationAttributes,
+  CategoryAttributes,
+  CategoryCreationAttributes,
 } from "../types/model";
 import database_models from "../database/config/db.config";
 
@@ -23,8 +23,8 @@ const create_category = async (req: Request, res: Response): Promise<void> => {
 
     // Check if category already exists
     const existingCategory =
-      await read_function<OrganizationCategoryAttributes>(
-        "OrganizationCategory",
+      await read_function<CategoryAttributes>(
+        "Category",
         "findOne",
         { where: { name } }
       );
@@ -37,13 +37,14 @@ const create_category = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Create category
-    const categoryData: OrganizationCategoryCreationAttributes = {
+    const categoryData: CategoryCreationAttributes = {
       name,
       description,
+      isActive: true,
     };
 
-    const newCategory = await insert_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    const newCategory = await insert_function<CategoryAttributes>(
+      "Category",
       "create",
       categoryData
     );
@@ -70,8 +71,8 @@ const get_all_categories = async (
   res: Response
 ): Promise<void> => {
   try {
-    const categories = await read_function<OrganizationCategoryAttributes[]>(
-      "OrganizationCategory",
+    const categories = await read_function<CategoryAttributes[]>(
+      "Category",
       "findAll",
       { order: [["name", "ASC"]] }
     );
@@ -101,8 +102,8 @@ const get_category_by_id = async (
   try {
     const { id } = req.params;
 
-    const category = await read_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    const category = await read_function<CategoryAttributes>(
+      "Category",
       "findByPk",
       id
     );
@@ -132,8 +133,8 @@ const update_category = async (req: Request, res: Response): Promise<void> => {
     const { name, description } = req.body;
 
     // Check if category exists
-    const category = await read_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    const category = await read_function<CategoryAttributes>(
+      "Category",
       "findByPk",
       id
     );
@@ -146,8 +147,8 @@ const update_category = async (req: Request, res: Response): Promise<void> => {
     // Check if name already exists (if name is being updated)
     if (name) {
       const existingCategory =
-        await read_function<OrganizationCategoryAttributes>(
-          "OrganizationCategory",
+        await read_function<CategoryAttributes>(
+          "Category",
           "findOne",
           { where: { name } }
         );
@@ -161,20 +162,20 @@ const update_category = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Update category
-    const updateData: Partial<OrganizationCategoryCreationAttributes> = {};
+    const updateData: Partial<CategoryCreationAttributes> = {};
     if (name) updateData.name = name;
     if (description !== undefined) updateData.description = description;
 
-    await insert_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    await insert_function<CategoryAttributes>(
+      "Category",
       "update",
       updateData,
       { where: { id } }
     );
 
     // Fetch updated category
-    const updatedCategory = await read_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    const updatedCategory = await read_function<CategoryAttributes>(
+      "Category",
       "findByPk",
       id
     );
@@ -201,8 +202,8 @@ const delete_category = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
     // Check if category exists
-    const category = await read_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    const category = await read_function<CategoryAttributes>(
+      "Category",
       "findByPk",
       id
     );
@@ -226,8 +227,8 @@ const delete_category = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Delete category
-    await read_function<OrganizationCategoryAttributes>(
-      "OrganizationCategory",
+    await read_function<CategoryAttributes>(
+      "Category",
       "destroy",
       { where: { id } }
     );

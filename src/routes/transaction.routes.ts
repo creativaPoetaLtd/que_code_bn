@@ -14,6 +14,15 @@ router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
 // Get user's wallet information
 router.get("/user/:userId/wallet", transactionController.getUserWallet);
 
+// Get organization's wallet information
+router.get("/organization/:organizationId/wallet", transactionController.getOrganizationWallet);
+
+// Get wallet restrictions
+router.get("/wallet/:walletId/restrictions", transactionController.getWalletRestrictions);
+
+// Get wallet balance breakdown (restricted vs unrestricted)
+router.get("/wallet/:walletId/balance-breakdown", transactionController.getWalletBalanceBreakdown);
+
 // Get transaction history for a wallet
 router.get("/wallet/:walletId/history", transactionController.getTransactionHistory);
 

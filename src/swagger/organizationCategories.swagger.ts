@@ -9,7 +9,7 @@
  * @swagger
  * components:
  *   schemas:
- *     OrganizationCategory:
+ *     Category:
  *       type: object
  *       required:
  *         - name
@@ -66,7 +66,7 @@
  *                 message:
  *                   type: string
  *                 data:
- *                   $ref: '#/components/schemas/OrganizationCategory'
+ *                   $ref: '#/components/schemas/Category'
  *       400:
  *         description: Bad request or category already exists
  *       500:
@@ -87,7 +87,7 @@
  *             schema:
  *               type: array
  *               items:
- *                 $ref: '#/components/schemas/OrganizationCategory'
+ *                 $ref: '#/components/schemas/Category'
  *       500:
  *         description: Internal server error
  */
@@ -112,7 +112,7 @@
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/OrganizationCategory'
+ *               $ref: '#/components/schemas/Category'
  *       404:
  *         description: Category not found
  *       500:
@@ -159,7 +159,7 @@
  *                 message:
  *                   type: string
  *                 data:
- *                   $ref: '#/components/schemas/OrganizationCategory'
+ *                   $ref: '#/components/schemas/Category'
  *       404:
  *         description: Category not found
  *       400:

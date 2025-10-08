@@ -5,10 +5,13 @@ export interface OrganizationModelAttributes {
   id: string;
   name: string;
   email: string;
-  password: string;
   ownerName: string;
-  ownerEmail: string;
   ownerPhone: string;
+  ownerEmail: string;
+  contactPhone: string;
+  tinNumber: string;
+  
+  password: string;
   approvalStatus: boolean;
   categoryId?: string;
   createdAt?: Date;
@@ -17,16 +20,8 @@ export interface OrganizationModelAttributes {
 
 export type OrganizationCreationAttributes = Optional<
   OrganizationModelAttributes,
-  "id" | "createdAt" | "updatedAt"
-> & {
-  name: string;
-  email: string;
-  password: string;
-  ownerName: string;
-  ownerEmail: string;
-  ownerPhone: string;
-  approvalStatus?: boolean;
-};
+  "id" | "createdAt" | "updatedAt" | "approvalStatus"
+>;
 
 export interface UserModelAttributes {
   id: string;
@@ -362,6 +357,20 @@ export type TransactionCreationAttributes = Omit<
   "id" | "createdAt" | "updatedAt" | "totalAmount" | "fee"
 >;
 
+export interface CategoryAttributes {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type CategoryCreationAttributes = Omit<
+  CategoryAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+// Keep old interfaces for backward compatibility during migration
 export interface TransactionCategoryAttributes {
   id: string;
   name: string;

@@ -9,7 +9,7 @@
  * @swagger
  * components:
  *   schemas:
- *     OrganizationCategory:
+ *     Category:
  *       type: object
  *       properties:
  *         id:
@@ -34,10 +34,13 @@
  *       required:
  *         - id
  *         - name
+ *         - type
  *         - email
  *         - ownerName
- *         - ownerEmail
  *         - ownerPhone
+ *         - ownerEmail
+ *         - contactPhone
+ *         - tinNumber
  *         - approvalStatus
  *       properties:
  *         id:
@@ -47,6 +50,9 @@
  *         name:
  *           type: string
  *           description: Organization name
+ *         type:
+ *           type: string
+ *           description: Organization type
  *         email:
  *           type: string
  *           format: email
@@ -54,13 +60,21 @@
  *         ownerName:
  *           type: string
  *           description: Organization owner name
+ *         ownerPhone:
+ *           type: string
+ *           description: Organization owner phone number
  *         ownerEmail:
  *           type: string
  *           format: email
  *           description: Organization owner email
- *         ownerPhone:
+ *         contactPhone:
  *           type: string
- *           description: Organization owner phone number
+ *           description: Organization contact phone number
+ *         tinNumber:
+ *           type: string
+ *           description: Tax Identification Number
+ *        
+ *         # Note: Location fields (province, district, sector, cell) and document fields (logo, operationalDocument) are now stored in the Profile model
  *         approvalStatus:
  *           type: boolean
  *           description: Organization approval status
@@ -75,7 +89,7 @@
  *           type: string
  *           format: date-time
  *         Category:
- *           $ref: '#/components/schemas/OrganizationCategory'
+ *           $ref: '#/components/schemas/Category'
  *
  *     OrganizationResponse:
  *       type: object
@@ -98,40 +112,55 @@
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
  *               - name
- *               - ownerName
- *               - ownerEmail
- *               - ownerPhone
+ *               - type
  *               - email
+ *               - ownerName
+ *               - ownerPhone
+ *               - ownerEmail
+ *               - contactPhone
+ *               - tinNumber
  *               - password
- *               - categoryId
  *             properties:
  *               name:
  *                 type: string
  *                 description: Organization name
  *                 example: "Tech Solutions Ltd"
- *               ownerName:
+ *               type:
  *                 type: string
- *                 description: Organization owner name
- *                 example: "John Doe"
- *               ownerEmail:
- *                 type: string
- *                 format: email
- *                 description: Organization owner email
- *                 example: "john.doe@example.com"
- *               ownerPhone:
- *                 type: string
- *                 description: Organization owner phone number
- *                 example: "+1234567890"
+ *                 description: Organization type
+ *                 example: "company"
  *               email:
  *                 type: string
  *                 format: email
  *                 description: Organization email
  *                 example: "info@techsolutions.com"
+ *               ownerName:
+ *                 type: string
+ *                 description: Organization owner name
+ *                 example: "John Doe"
+ *               ownerPhone:
+ *                 type: string
+ *                 description: Organization owner phone number
+ *                 example: "+1234567890"
+ *               ownerEmail:
+ *                 type: string
+ *                 format: email
+ *                 description: Organization owner email
+ *                 example: "john.doe@example.com"
+ *               contactPhone:
+ *                 type: string
+ *                 description: Organization contact phone number
+ *                 example: "+1234567891"
+ *               tinNumber:
+ *                 type: string
+ *                 description: Tax Identification Number
+ *                 example: "1234567890"
+ *               # Note: Location fields (province, district, sector, cell) and document fields (logo, operationalDocument) are now handled in the Profile model
  *               password:
  *                 type: string
  *                 format: password
@@ -154,10 +183,14 @@
  *               data:
  *                 id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
  *                 name: "Tech Solutions Ltd"
+ *                 type: "company"
  *                 email: "info@techsolutions.com"
  *                 ownerName: "John Doe"
- *                 ownerEmail: "john.doe@example.com"
  *                 ownerPhone: "+1234567890"
+ *                 ownerEmail: "john.doe@example.com"
+ *                 contactPhone: "+1234567891"
+ *                 tinNumber: "1234567890"
+ *                 # Location and document fields are now in the Profile model
  *                 approvalStatus: false
  *                 categoryId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
  *                 createdAt: "2025-08-22T06:59:11.842Z"
@@ -313,24 +346,32 @@
  *               name:
  *                 type: string
  *                 description: Organization name
- *               categoryId:
+ *               type:
  *                 type: string
- *                 format: uuid
- *                 description: Organization category ID
+ *                 description: Organization type
  *               email:
  *                 type: string
  *                 format: email
  *                 description: Organization email
- *               ownerName:
+ *               ownerPhone:
  *                 type: string
- *                 description: Organization owner name
+ *                 description: Organization owner phone number
  *               ownerEmail:
  *                 type: string
  *                 format: email
  *                 description: Organization owner email
- *               ownerPhone:
+ *               contactPhone:
  *                 type: string
- *                 description: Organization owner phone number
+ *                 description: Organization contact phone number
+ *               tinNumber:
+ *                 type: string
+ *                 description: Tax Identification Number
+
+ *               # Note: Location fields (province, district, sector, cell) and document fields (logo, operationalDocument) are now handled in the Profile model
+ *               categoryId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Organization category ID
  *     responses:
  *       200:
  *         description: Organization updated successfully

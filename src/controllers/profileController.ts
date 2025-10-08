@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Op } from "sequelize";
 import { insert_function, read_function } from "../utils/db_methods";
 import {
   ProfileModelAttributes,
@@ -19,9 +20,22 @@ const get_profile = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const whereClause = userId
-      ? { userId: userId as string }
-      : { organizationId: organizationId as string };
+    // Build where clause to handle both parameters with OR logic
+    let whereClause: any;
+    
+    if (userId && organizationId) {
+      // If both are provided, search for profile that matches either userId OR organizationId
+      whereClause = {
+        [Op.or]: [
+          { userId: userId as string },
+          { organizationId: organizationId as string }
+        ]
+      };
+    } else if (userId) {
+      whereClause = { userId: userId as string };
+    } else if (organizationId) {
+      whereClause = { organizationId: organizationId as string };
+    }
 
     const profile = await read_function<ProfileModelAttributes>(
       "Profile",

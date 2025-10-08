@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import database_models from '../database/config/db.config';
 import { sequelizeConnection } from '../database/config/db.config';
 
-const { Wallet, Transaction: TransactionModel, TransactionCategory } = database_models;
+const { Wallet, Transaction: TransactionModel, Category } = database_models;
 
 // GET /api/analytics/summary - Get expense summary
 const getExpenseSummary = async (req: Request, res: Response): Promise<void> => {
@@ -136,7 +136,7 @@ const getCategoryBreakdown = async (req: Request, res: Response): Promise<void> 
       },
       include: [
         {
-          model: TransactionCategory,
+          model: Category,
           as: 'category',
           attributes: ['id', 'name', 'description']
         }
@@ -375,7 +375,7 @@ const getRecentTransactions = async (req: Request, res: Response): Promise<void>
       where: whereCondition,
       include: [
         {
-          model: TransactionCategory,
+          model: Category,
           as: 'category',
           attributes: ['id', 'name', 'description']
         },

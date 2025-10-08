@@ -10,22 +10,22 @@ import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
 
-// Get all organization categories (public route)
+// Get all categories (public route) - now unified with transaction categories
 router.get("/", get_all_categories);
 
-// Get organization category by ID (public route)
+// Get category by ID (public route)
 router.get("/:id", get_category_by_id);
 
-// Create organization category (public route - no authentication required)
+// Create category (public route - no authentication required)
 router.post("/", create_category);
 
 // Protected routes (require authentication)
 router.use(authenticate);
 
-// Update organization category
+// Update category
 router.put("/:id", update_category);
 
-// Delete organization category
+// Delete category
 router.delete("/:id", delete_category);
 
 export default router;

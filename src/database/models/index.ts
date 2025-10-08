@@ -1,6 +1,5 @@
 import { Sequelize } from "sequelize";
 import organization_model from "./organization.model";
-import organizationCategories_model from "./organizationCategories.model";
 import user_model from "./user.model";
 import profile_model from "./profiles.model";
 import wallet_model from "./wallet.model";
@@ -13,7 +12,7 @@ import chat_model from "./chat.model";
 import chatParticipant_model from "./chatParticipant.model";
 import chatMessage_model from "./chatMessage.model";
 import WalletRestriction_model from "./walletRestrictions.model";
-import TransactionCategory_model from "./transactionCategories";
+import Category_model from "./categories.model";
 import ExternalAccount_model from "./externalAccounts.model";
 import ContactInvitation_model from "./contactInvitations.model";
 import notification_model from "./notification.model";
@@ -25,14 +24,13 @@ import userRole_model from "./userRole.model";
 const Models = (sequelize: Sequelize) => {
   // Initialize models
   const Organization = organization_model(sequelize);
-  const OrganizationCategory = organizationCategories_model(sequelize);
   const User = user_model(sequelize);
   const Profile = profile_model(sequelize);
 
   const Wallet = wallet_model(sequelize);
   const WalletRestriction = WalletRestriction_model(sequelize);
   const Transaction = transaction_model(sequelize);
-  const TransactionCategory = TransactionCategory_model(sequelize);
+  const Category = Category_model(sequelize);
   const Payment = payment_model(sequelize);
   const ExternalAccount = ExternalAccount_model(sequelize);
 
@@ -79,11 +77,11 @@ const Models = (sequelize: Sequelize) => {
   });
   WalletRestriction.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
 
-  TransactionCategory.hasMany(WalletRestriction, {
+  Category.hasMany(WalletRestriction, {
     foreignKey: "categoryId",
     as: "restrictions",
   });
-  WalletRestriction.belongsTo(TransactionCategory, {
+  WalletRestriction.belongsTo(Category, {
     foreignKey: "categoryId",
     as: "category",
   });
@@ -106,7 +104,7 @@ const Models = (sequelize: Sequelize) => {
     as: "receiverWallet",
   });
 
-  Transaction.belongsTo(TransactionCategory, {
+  Transaction.belongsTo(Category, {
     foreignKey: "categoryId",
     as: "category",
   });
@@ -203,13 +201,13 @@ const Models = (sequelize: Sequelize) => {
   });
 
   // Organization Categories
-  OrganizationCategory.hasMany(Organization, {
+  Category.hasMany(Organization, {
     foreignKey: "categoryId",
     as: "organizations",
   });
-  Organization.belongsTo(OrganizationCategory, {
+  Organization.belongsTo(Category, {
     foreignKey: "categoryId",
-    as: "Category",
+    as: "category",
   });
 
   // RBAC
@@ -238,12 +236,11 @@ const Models = (sequelize: Sequelize) => {
   return {
     User,
     Organization,
-    OrganizationCategory,
     Profile,
     Wallet,
     WalletRestriction,
     Transaction,
-    TransactionCategory,
+    Category,
     Payment,
     ExternalAccount,
     Contact,

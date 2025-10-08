@@ -11,10 +11,12 @@ class Organization extends Model<
   public id!: string;
   public name!: string;
   public email!: string;
-  public password!: string;
   public ownerName!: string;
-  public ownerEmail!: string;
   public ownerPhone!: string;
+  public ownerEmail!: string;
+  public contactPhone!: string;
+  public tinNumber!: string;
+  public password!: string;
   public approvalStatus!: boolean;
   public categoryId?: string;
 
@@ -28,16 +30,19 @@ const Organization_model = (sequelize: Sequelize) => {
       id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
       name: { type: DataTypes.STRING, allowNull: false },
       email: { type: DataTypes.STRING, unique: true, allowNull: false },
-      password: { type: DataTypes.STRING, allowNull: false },
       ownerName: { type: DataTypes.STRING, allowNull: false },
-      ownerEmail: { type: DataTypes.STRING, allowNull: false },
       ownerPhone: { type: DataTypes.STRING, allowNull: false },
+      ownerEmail: { type: DataTypes.STRING, allowNull: false },
+      contactPhone: { type: DataTypes.STRING, allowNull: false },
+      tinNumber: { type: DataTypes.STRING, allowNull: false },
+      
+      password: { type: DataTypes.STRING, allowNull: false },
       approvalStatus: { type: DataTypes.BOOLEAN, defaultValue: false },
       categoryId: {
         type: DataTypes.UUID,
         allowNull: true,
         references: {
-          model: "OrganizationCategories",
+          model: "Categories",
           key: "id",
         },
       },

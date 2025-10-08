@@ -2,7 +2,13 @@ import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import database_models from '../database/config/db.config';
 
-const { Wallet, Transaction: TransactionModel, TransactionCategory } = database_models;
+const { 
+  Wallet, 
+  Transaction: TransactionModel, 
+  Category, 
+  WalletRestriction,
+  Organization 
+} = database_models;
 
 // Helper function to calculate fee
 const calculateFee = (amount: number): number => {
@@ -14,25 +20,41 @@ const calculateFee = (amount: number): number => {
   return Math.min(Math.max(fee, minFee), maxFee);
 };
 
-// Transfer money between users
+// Transfer money between users and/or organizations
 const transferMoney = async (req: Request, res: Response): Promise<void> => {
   const transaction = await TransactionModel.sequelize?.transaction();
   
   try {
     const {
       senderUserId,
+      senderOrganizationId,
       receiverUserId,
+      receiverOrganizationId,
       amount,
       description = '',
       categoryId,
-      type = 'transfer'
+      type = 'transfer',
+      applyConstraints = false // New parameter to control constraint application
     } = req.body;
 
-    // Validation
-    if (!senderUserId || !receiverUserId || !amount) {
+    // Validation - must have either user or organization for sender and receiver
+    const hasSender = senderUserId || senderOrganizationId;
+    const hasReceiver = receiverUserId || receiverOrganizationId;
+    
+    if (!hasSender || !hasReceiver || !amount) {
       res.status(400).json({
         success: false,
-        message: 'Sender user ID, receiver user ID, and amount are required'
+        message: 'Sender (user or organization), receiver (user or organization), and amount are required'
+      });
+      return;
+    }
+
+    // Cannot send to self
+    if ((senderUserId && receiverUserId && senderUserId === receiverUserId) ||
+        (senderOrganizationId && receiverOrganizationId && senderOrganizationId === receiverOrganizationId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Cannot transfer to yourself'
       });
       return;
     }
@@ -45,22 +67,23 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (senderUserId === receiverUserId) {
-      res.status(400).json({
-        success: false,
-        message: 'Cannot transfer to yourself'
-      });
-      return;
-    }
-
     // Check for duplicate transactions in the last 30 seconds
     const now = new Date();
     const thirtySecondsAgo = new Date(now.getTime() - 30000);
     
+    // Build wallet search conditions for sender and receiver
+    const senderWhere = senderUserId 
+      ? { userId: senderUserId, isActive: true }
+      : { organizationId: senderOrganizationId, isActive: true };
+    
+    const receiverWhere = receiverUserId 
+      ? { userId: receiverUserId, isActive: true }
+      : { organizationId: receiverOrganizationId, isActive: true };
+    
     // First find the wallets to get their IDs
     const [checkSenderWallet, checkReceiverWallet] = await Promise.all([
-      Wallet.findOne({ where: { userId: senderUserId, isActive: true } }),
-      Wallet.findOne({ where: { userId: receiverUserId, isActive: true } })
+      Wallet.findOne({ where: senderWhere }),
+      Wallet.findOne({ where: receiverWhere })
     ]);
 
     if (checkSenderWallet && checkReceiverWallet) {
@@ -94,15 +117,15 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     const fee = 0;
     const totalAmount = transferAmount + fee;
 
-    // Find wallets for both users
+    // Find wallets for both sender and receiver (users or organizations)
     const [senderWallet, receiverWallet] = await Promise.all([
       Wallet.findOne({
-        where: { userId: senderUserId, isActive: true },
+        where: senderWhere,
         lock: transaction?.LOCK.UPDATE,
         transaction
       }),
       Wallet.findOne({
-        where: { userId: receiverUserId, isActive: true },
+        where: receiverWhere,
         lock: transaction?.LOCK.UPDATE,
         transaction
       })
@@ -137,9 +160,99 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check wallet restrictions and calculate available amounts
+    const restrictions = await WalletRestriction.findAll({
+      where: { walletId: senderWallet.id },
+      include: [{
+        model: Category,
+        as: 'category',
+        required: true
+      }],
+      transaction
+    });
+
+    // Calculate total restricted amount
+    const totalRestrictedAmount = restrictions.reduce((sum, restriction) => 
+      sum + parseFloat(restriction.amount.toString()), 0
+    );
+    
+    // Calculate available unrestricted amount
+    const totalBalance = parseFloat(senderWallet.balance.toString());
+    // Prevent negative unrestricted amount when restrictions exceed total balance
+    const availableUnrestrictedAmount = Math.max(0, totalBalance - totalRestrictedAmount);
+
+    // Rule: When sending to an individual user, only unrestricted funds can be used
+    if (receiverUserId) {
+      if (availableUnrestrictedAmount < transferAmount) {
+        await transaction?.rollback();
+        res.status(400).json({
+          success: false,
+          message: `Insufficient unrestricted balance for transfer to a user. Available: ${availableUnrestrictedAmount}, Required: ${transferAmount}`,
+          availableUnrestrictedAmount,
+          requiredAmount: transferAmount
+        });
+        return;
+      }
+    // If spending on a specific category, check constraints
+    } else if (categoryId) {
+      const matchingRestriction = restrictions.find(restriction => 
+        restriction.categoryId === categoryId
+      );
+
+      if (matchingRestriction) {
+        // Spending from restricted funds - check if enough is available
+        if (matchingRestriction.amount < transferAmount) {
+          await transaction?.rollback();
+          res.status(400).json({
+            success: false,
+            message: `Insufficient restricted balance for this category. Available: ${matchingRestriction.amount}, Required: ${transferAmount}`,
+            availableAmount: parseFloat(matchingRestriction.amount.toString()),
+            requiredAmount: transferAmount
+          });
+          return;
+        }
+      } else {
+        // Spending on a different category - check if enough unrestricted funds
+        if (availableUnrestrictedAmount < transferAmount) {
+          await transaction?.rollback();
+          const allowedCategories = restrictions.map(r => (r as any).category?.name).join(', ');
+          res.status(400).json({
+            success: false,
+            message: `Insufficient unrestricted balance. Available: ${availableUnrestrictedAmount}, Required: ${transferAmount}. You can spend restricted funds on: ${allowedCategories}`,
+            availableUnrestrictedAmount,
+            requiredAmount: transferAmount,
+            allowedCategories: restrictions.map(r => ({
+              categoryId: r.categoryId,
+              categoryName: (r as any).category?.name,
+              availableAmount: parseFloat(r.amount.toString())
+            }))
+          });
+          return;
+        }
+      }
+    } else {
+      // No category specified - check if enough unrestricted funds
+      if (availableUnrestrictedAmount < transferAmount) {
+        await transaction?.rollback();
+        const allowedCategories = restrictions.map(r => (r as any).category?.name).join(', ');
+        res.status(400).json({
+          success: false,
+          message: `Insufficient unrestricted balance. Available: ${availableUnrestrictedAmount}, Required: ${transferAmount}. You can spend restricted funds on: ${allowedCategories}`,
+          availableUnrestrictedAmount,
+          requiredAmount: transferAmount,
+          allowedCategories: restrictions.map(r => ({
+            categoryId: r.categoryId,
+            categoryName: (r as any).category?.name,
+            availableAmount: parseFloat(r.amount.toString())
+          }))
+        });
+        return;
+      }
+    }
+
     // Verify category if provided
     if (categoryId) {
-      const category = await TransactionCategory.findByPk(categoryId);
+      const category = await Category.findByPk(categoryId);
       if (!category) {
         await transaction?.rollback();
         res.status(400).json({
@@ -170,6 +283,10 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
     await senderWallet.reload({ transaction });
     await receiverWallet.reload({ transaction });
 
+    // Determine constraint type
+    const spendConstraintType = applyConstraints && categoryId ? 'category' : 'none';
+    const constraintCategoryId = applyConstraints && categoryId ? categoryId : null;
+
     // Create transaction record
     const newTransaction = await TransactionModel.create({
       referenceId,
@@ -183,9 +300,59 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       type,
       description,
       categoryId,
-      spendConstraintType: 'none',
+      spendConstraintType,
+      constraintCategoryId,
       hasAccount: true
     } as any, { transaction });
+
+    // Create wallet restriction if constraints are applied
+    if (applyConstraints && categoryId) {
+      // Check if restriction already exists for this wallet and category
+      const existingRestriction = await WalletRestriction.findOne({
+        where: {
+          walletId: receiverWallet.id,
+          categoryId: categoryId
+        },
+        transaction
+      });
+
+      if (existingRestriction) {
+        // Update existing restriction amount
+        await existingRestriction.update({
+          amount: parseFloat(existingRestriction.amount.toString()) + transferAmount
+        }, { transaction });
+      } else {
+        // Create new restriction
+        await WalletRestriction.create({
+          walletId: receiverWallet.id,
+          categoryId: categoryId,
+          amount: transferAmount
+        }, { transaction });
+      }
+    }
+
+    // Update wallet restrictions for sender based on spending source
+    // Do NOT reduce restricted funds when sending to a user (unrestricted-only rule)
+    if (categoryId && !receiverUserId) {
+      const matchingRestriction = restrictions.find(restriction => 
+        restriction.categoryId === categoryId
+      );
+
+      if (matchingRestriction) {
+        // Spending from restricted funds - reduce the restriction
+        const newAmount = parseFloat(matchingRestriction.amount.toString()) - transferAmount;
+        if (newAmount <= 0) {
+          // Remove restriction if amount is zero or negative
+          await matchingRestriction.destroy({ transaction });
+        } else {
+          // Update restriction amount
+          await matchingRestriction.update({ amount: newAmount }, { transaction });
+        }
+      }
+      // If no matching restriction, we're spending from unrestricted funds - no restriction updates needed
+    } else {
+      // No category specified - spending from unrestricted funds - no restriction updates needed
+    }
 
     // Commit the transaction
     await transaction?.commit();
@@ -201,9 +368,15 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
         fee,
         totalAmount,
         senderBalance: senderWallet.balance,
-        receiverUserId,
+        senderUserId: senderUserId || null,
+        senderOrganizationId: senderOrganizationId || null,
+        receiverUserId: receiverUserId || null,
+        receiverOrganizationId: receiverOrganizationId || null,
         description,
         categoryId,
+        spendConstraintType,
+        constraintCategoryId,
+        constraintsApplied: applyConstraints,
         status: 'completed'
       }
     });
@@ -226,6 +399,15 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
 const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
   try {
     const { walletId } = req.params;
+
+    // Validate walletId
+    if (!walletId || walletId === 'undefined' || walletId === 'null') {
+      res.status(400).json({
+        success: false,
+        message: 'Valid walletId is required'
+      });
+      return;
+    }
 
     const wallet = await Wallet.findByPk(walletId);
 
@@ -260,6 +442,16 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
 const getTransactionHistory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { walletId } = req.params;
+    
+    // Validate walletId
+    if (!walletId || walletId === 'undefined' || walletId === 'null') {
+      res.status(400).json({
+        success: false,
+        message: 'Valid walletId is required'
+      });
+      return;
+    }
+    
     const { 
       page = 1, 
       limit = 10, 
@@ -300,7 +492,7 @@ const getTransactionHistory = async (req: Request, res: Response): Promise<void>
       offset,
       include: [
         {
-          model: TransactionCategory,
+          model: Category,
           as: 'category',
           required: false
         },
@@ -347,7 +539,7 @@ const getTransactionDetails = async (req: Request, res: Response): Promise<void>
     const transaction = await TransactionModel.findByPk(transactionId, {
       include: [
         {
-          model: TransactionCategory,
+          model: Category,
           as: 'category',
           required: false
         },
@@ -386,12 +578,12 @@ const getTransactionDetails = async (req: Request, res: Response): Promise<void>
   }
 };
 
-// Get all transaction categories
+// Get all categories
 const getTransactionCategories = async (req: Request, res: Response): Promise<void> => {
   try {
-    const categories = await TransactionCategory.findAll({
+    const categories = await Category.findAll({
       where: {
-        isRestricted: false
+        isActive: true
       },
       order: [['name', 'ASC']]
     });
@@ -447,11 +639,163 @@ const getUserWallet = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Get organization's wallet information
+const getOrganizationWallet = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { organizationId } = req.params;
+
+    const wallet = await Wallet.findOne({
+      where: { organizationId, isActive: true }
+    });
+
+    if (!wallet) {
+      res.status(404).json({
+        success: false,
+        message: 'Active wallet not found for this organization'
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        walletId: wallet.id,
+        organizationId: wallet.organizationId,
+        balance: parseFloat(wallet.balance.toString()),
+        currency: wallet.currency,
+        isActive: wallet.isActive
+      }
+    });
+
+  } catch (error) {
+    console.error('Get organization wallet error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get wallet restrictions
+const getWalletRestrictions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { walletId } = req.params;
+
+    // Validate walletId
+    if (!walletId || walletId === 'undefined' || walletId === 'null') {
+      res.status(400).json({
+        success: false,
+        message: 'Valid walletId is required'
+      });
+      return;
+    }
+
+    const restrictions = await WalletRestriction.findAll({
+      where: { walletId },
+      include: [{
+        model: Category,
+        as: 'category',
+        required: true
+      }],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: restrictions.map(restriction => ({
+        id: restriction.id,
+        walletId: restriction.walletId,
+        categoryId: restriction.categoryId,
+        categoryName: (restriction as any).category?.name,
+        categoryDescription: (restriction as any).category?.description,
+        amount: parseFloat(restriction.amount.toString()),
+        createdAt: (restriction as any).createdAt,
+        updatedAt: (restriction as any).updatedAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('Get wallet restrictions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get wallet balance breakdown (restricted vs unrestricted)
+const getWalletBalanceBreakdown = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { walletId } = req.params;
+
+    // Validate walletId
+    if (!walletId || walletId === 'undefined' || walletId === 'null') {
+      res.status(400).json({
+        success: false,
+        message: 'Valid walletId is required'
+      });
+      return;
+    }
+
+    const wallet = await Wallet.findByPk(walletId);
+    if (!wallet) {
+      res.status(404).json({
+        success: false,
+        message: 'Wallet not found'
+      });
+      return;
+    }
+
+    const restrictions = await WalletRestriction.findAll({
+      where: { walletId },
+      include: [{
+        model: Category,
+        as: 'category',
+        required: true
+      }],
+      order: [['createdAt', 'DESC']]
+    });
+
+    const totalBalance = parseFloat(wallet.balance.toString());
+    const totalRestrictedAmount = restrictions.reduce((sum, restriction) => 
+      sum + parseFloat(restriction.amount.toString()), 0
+    );
+    const availableUnrestrictedAmount = totalBalance - totalRestrictedAmount;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        walletId: wallet.id,
+        totalBalance,
+        availableUnrestrictedAmount,
+        totalRestrictedAmount,
+        restrictions: restrictions.map(restriction => ({
+          id: restriction.id,
+          categoryId: restriction.categoryId,
+          categoryName: (restriction as any).category?.name,
+          categoryDescription: (restriction as any).category?.description,
+          amount: parseFloat(restriction.amount.toString())
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('Get wallet balance breakdown error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 export default {
   transferMoney,
   getWalletBalance,
   getUserWallet,
+  getOrganizationWallet,
   getTransactionHistory,
   getTransactionDetails,
-  getTransactionCategories
+  getTransactionCategories,
+  getWalletRestrictions,
+  getWalletBalanceBreakdown
 };
