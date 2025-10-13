@@ -5,71 +5,96 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      // Add new required fields
-      await queryInterface.addColumn('Organizations', 'type', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: 'organization'
-      }, { transaction });
+      // Check if Organizations table exists
+      const [organizationsExists] = await queryInterface.sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'Organizations'
+        );
+      `, { transaction });
+      
+      if (!organizationsExists[0].exists) {
+        console.log("ℹ️ Organizations table doesn't exist, skipping field updates");
+        await transaction.commit();
+        return;
+      }
 
-      await queryInterface.addColumn('Organizations', 'contactPhone', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
+      // Define columns to add
+      const columnsToAdd = [
+        { name: 'type', config: { type: Sequelize.STRING, allowNull: false, defaultValue: 'organization' } },
+        { name: 'contactPhone', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'tinNumber', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'registrationNumber', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'province', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'district', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'sector', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } }
+      ];
 
-      await queryInterface.addColumn('Organizations', 'tinNumber', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
+      // Add columns if they don't exist
+      for (const column of columnsToAdd) {
+        const [columnExists] = await queryInterface.sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = 'Organizations'
+            AND column_name = '${column.name}'
+          );
+        `, { transaction });
+        
+        if (!columnExists[0].exists) {
+          await queryInterface.addColumn('Organizations', column.name, column.config, { transaction });
+          console.log(`✅ Added ${column.name} column to Organizations`);
+        } else {
+          console.log(`ℹ️ ${column.name} column already exists in Organizations`);
+        }
+      }
 
-      await queryInterface.addColumn('Organizations', 'registrationNumber', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
+      // Add additional columns
+      const additionalColumns = [
+        { name: 'cell', config: { type: Sequelize.STRING, allowNull: false, defaultValue: '' } },
+        { name: 'logo', config: { type: Sequelize.STRING, allowNull: true } },
+        { name: 'operationalDocument', config: { type: Sequelize.STRING, allowNull: true } }
+      ];
 
-      await queryInterface.addColumn('Organizations', 'province', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
+      for (const column of additionalColumns) {
+        const [columnExists] = await queryInterface.sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = 'Organizations'
+            AND column_name = '${column.name}'
+          );
+        `, { transaction });
+        
+        if (!columnExists[0].exists) {
+          await queryInterface.addColumn('Organizations', column.name, column.config, { transaction });
+          console.log(`✅ Added ${column.name} column to Organizations`);
+        }
+      }
 
-      await queryInterface.addColumn('Organizations', 'district', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
-
-      await queryInterface.addColumn('Organizations', 'sector', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
-
-      await queryInterface.addColumn('Organizations', 'cell', {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: ''
-      }, { transaction });
-
-      // Add optional fields
-      await queryInterface.addColumn('Organizations', 'logo', {
-        type: Sequelize.STRING,
-        allowNull: true
-      }, { transaction });
-
-      await queryInterface.addColumn('Organizations', 'operationalDocument', {
-        type: Sequelize.STRING,
-        allowNull: true
-      }, { transaction });
-
-      // Remove old fields that are no longer needed
-      await queryInterface.removeColumn('Organizations', 'ownerName', { transaction });
-      await queryInterface.removeColumn('Organizations', 'description', { transaction });
-      await queryInterface.removeColumn('Organizations', 'address', { transaction });
-      await queryInterface.removeColumn('Organizations', 'services', { transaction });
+      // Remove old fields that are no longer needed (only if they exist)
+      const columnsToRemove = ['ownerName', 'description', 'address', 'services'];
+      
+      for (const columnName of columnsToRemove) {
+        try {
+          const [columnExists] = await queryInterface.sequelize.query(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_schema = 'public' 
+              AND table_name = 'Organizations'
+              AND column_name = '${columnName}'
+            );
+          `, { transaction });
+          
+          if (columnExists[0].exists) {
+            await queryInterface.removeColumn('Organizations', columnName, { transaction });
+            console.log(`✅ Removed ${columnName} column from Organizations`);
+          }
+        } catch (error) {
+          console.log(`ℹ️ Could not remove ${columnName} column: ${error.message}`);
+        }
+      }
 
       await transaction.commit();
     } catch (error) {
