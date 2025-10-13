@@ -2,14 +2,9 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import database_models from '../database/config/db.config';
+import { UserModelAttributes, OrganizationModelAttributes } from '../types/model';
 
 const { User, Organization } = database_models;
-
-declare module 'express-serve-static-core' {
-    interface Request {
-        user?: any; // Or use your specific User type
-    }
-}
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
     (async () => {
@@ -54,7 +49,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
                 });
             }
 
-            req.user = entity.get({ plain: true });
+            req.user = entity.get({ plain: true }) as any;
             next();
         } catch (error) {
             next(error);
