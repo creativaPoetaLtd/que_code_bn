@@ -1,10 +1,10 @@
 import { Response, NextFunction, Request } from "express";
 import { Op } from "sequelize";
 import Models from "../database/models";
-import { 
-  SendMessageRequest, 
-  EditMessageRequest, 
-  GetMessagesQuery, 
+import {
+  SendMessageRequest,
+  EditMessageRequest,
+  GetMessagesQuery,
   MarkAsReadRequest,
   GroupChatSettingsUpdateRequest,
   ChatMessage,
@@ -17,12 +17,12 @@ import multer from "multer";
 export const getGroupChat = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { groupId } = req.params;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -54,7 +54,7 @@ export const getGroupChat = async (req: Request, res: Response, next: NextFuncti
               attributes: ['id', 'firstName', 'lastName', 'email'],
               include: [{
                 model: models.Profile,
-                as: 'profiles',
+                as: 'profile',
                 attributes: ['profileImage']
               }]
             }
@@ -69,7 +69,7 @@ export const getGroupChat = async (req: Request, res: Response, next: NextFuncti
             attributes: ['id', 'firstName', 'lastName', 'email'],
             include: [{
               model: models.Profile,
-              as: 'profiles',
+              as: 'profile',
               attributes: ['profileImage']
             }]
           }]
@@ -112,7 +112,7 @@ export const getGroupChat = async (req: Request, res: Response, next: NextFuncti
                 attributes: ['id', 'firstName', 'lastName', 'email'],
                 include: [{
                   model: models.Profile,
-                  as: 'profiles',
+                  as: 'profile',
                   attributes: ['profileImage']
                 }]
               }
@@ -127,7 +127,7 @@ export const getGroupChat = async (req: Request, res: Response, next: NextFuncti
               attributes: ['id', 'firstName', 'lastName', 'email'],
               include: [{
                 model: models.Profile,
-                as: 'profiles',
+                as: 'profile',
                 attributes: ['profileImage']
               }]
             }]
@@ -177,12 +177,12 @@ export const sendMessage = async (req: Request, res: Response, next: NextFunctio
   try {
     const { groupId } = req.params;
     const { content, messageType = "text", transactionId, metadata, replyToMessageId }: SendMessageRequest = req.body;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -227,8 +227,8 @@ export const sendMessage = async (req: Request, res: Response, next: NextFunctio
       if (lastMessage && lastMessage.createdAt) {
         const timeDiff = Date.now() - new Date(lastMessage.createdAt).getTime();
         if (timeDiff < chatSettings.slowMode * 1000) {
-          res.status(429).json({ 
-            message: `Please wait ${chatSettings.slowMode - Math.floor(timeDiff / 1000)} seconds before sending another message` 
+          res.status(429).json({
+            message: `Please wait ${chatSettings.slowMode - Math.floor(timeDiff / 1000)} seconds before sending another message`
           });
           return;
         }
@@ -268,9 +268,9 @@ export const sendMessage = async (req: Request, res: Response, next: NextFunctio
       senderId: userId,
       content: content.trim(),
       messageType,
-      transactionId,
-      metadata,
-      replyToMessageId
+      transactionId: transactionId || undefined,
+      metadata: metadata || undefined,
+      replyToMessageId: replyToMessageId || undefined
     });
 
     // Get message with sender details
@@ -282,7 +282,7 @@ export const sendMessage = async (req: Request, res: Response, next: NextFunctio
           attributes: ['id', 'firstName', 'lastName', 'email'],
           include: [{
             model: models.Profile,
-            as: 'profiles',
+            as: 'profile',
             attributes: ['profileImage']
           }]
         },
@@ -319,7 +319,7 @@ export const sendMessage = async (req: Request, res: Response, next: NextFunctio
           groupName: group?.name,
           userId: req.user!.id,
           userName: `${req.user!.firstName} ${req.user!.lastName}`,
-          message: replyToMessageId 
+          message: replyToMessageId
             ? `${req.user!.firstName} replied to a message in ${group?.name}`
             : `${req.user!.firstName} sent a message in ${group?.name}`,
           description: content.substring(0, 100)
@@ -344,12 +344,12 @@ export const getMessages = async (req: Request, res: Response, next: NextFunctio
   try {
     const { groupId } = req.params;
     const { page = 1, limit = 50, before, after }: GetMessagesQuery = req.query as any;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -420,7 +420,7 @@ export const getMessages = async (req: Request, res: Response, next: NextFunctio
           attributes: ['id', 'firstName', 'lastName', 'email'],
           include: [{
             model: models.Profile,
-            as: 'profiles',
+            as: 'profile',
             attributes: ['profileImage']
           }]
         },
@@ -464,12 +464,12 @@ export const editMessage = async (req: Request, res: Response, next: NextFunctio
   try {
     const { groupId, messageId } = req.params;
     const { content }: EditMessageRequest = req.body;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -512,7 +512,7 @@ export const editMessage = async (req: Request, res: Response, next: NextFunctio
           attributes: ['id', 'firstName', 'lastName', 'email'],
           include: [{
             model: models.Profile,
-            as: 'profiles',
+            as: 'profile',
             attributes: ['profileImage']
           }]
         },
@@ -568,12 +568,12 @@ export const editMessage = async (req: Request, res: Response, next: NextFunctio
 export const deleteMessage = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { groupId, messageId } = req.params;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -613,8 +613,8 @@ export const deleteMessage = async (req: Request, res: Response, next: NextFunct
 
     // Check delete permissions
     const canDelete = message.senderId === userId || // Own message
-                     ["owner", "admin"].includes(groupMember.role) || // Admin/Owner
-                     chatSettings?.canMembersDeleteMessages; // Setting allows
+      ["owner", "admin"].includes(groupMember.role) || // Admin/Owner
+      chatSettings?.canMembersDeleteMessages; // Setting allows
 
     if (!canDelete) {
       res.status(403).json({ message: "You don't have permission to delete this message" });
@@ -665,12 +665,12 @@ export const markAsRead = async (req: Request, res: Response, next: NextFunction
   try {
     const { groupId } = req.params;
     const { messageIds }: MarkAsReadRequest = req.body;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -733,12 +733,12 @@ export const updateChatSettings = async (req: Request, res: Response, next: Next
   try {
     const { groupId } = req.params;
     const settings: GroupChatSettingsUpdateRequest = req.body;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -825,12 +825,12 @@ export const updateChatSettings = async (req: Request, res: Response, next: Next
 export const getChatSettings = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { groupId } = req.params;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -884,12 +884,12 @@ export const getChatSettings = async (req: Request, res: Response, next: NextFun
 export const uploadFile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { groupId } = req.params;
-    
+
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
       return;
     }
-    
+
     const userId = req.user.id;
     const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -929,7 +929,7 @@ export const uploadFile = async (req: Request, res: Response, next: NextFunction
           'jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'txt', 'mp4', 'mp3'
         ];
         const fileExtension = file.originalname.split('.').pop()?.toLowerCase();
-        
+
         if (fileExtension && allowedTypes.includes(fileExtension)) {
           cb(null, true);
         } else {
@@ -953,8 +953,8 @@ export const uploadFile = async (req: Request, res: Response, next: NextFunction
 
       // Check file size against group settings
       if (chatSettings?.maxFileSize && req.file.size > chatSettings.maxFileSize) {
-        res.status(400).json({ 
-          message: `File size exceeds limit of ${chatSettings.maxFileSize / 1024 / 1024}MB` 
+        res.status(400).json({
+          message: `File size exceeds limit of ${chatSettings.maxFileSize / 1024 / 1024}MB`
         });
         return;
       }
@@ -962,8 +962,8 @@ export const uploadFile = async (req: Request, res: Response, next: NextFunction
       // Check file type against group settings
       const fileExtension = req.file.originalname.split('.').pop()?.toLowerCase();
       if (chatSettings?.allowedFileTypes && !chatSettings.allowedFileTypes.includes(fileExtension || '')) {
-        res.status(400).json({ 
-          message: `File type .${fileExtension} is not allowed in this group` 
+        res.status(400).json({
+          message: `File type .${fileExtension} is not allowed in this group`
         });
         return;
       }

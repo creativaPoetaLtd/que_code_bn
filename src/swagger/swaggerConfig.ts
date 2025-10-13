@@ -158,6 +158,7 @@ const swaggerOptions = {
     "./src/swagger/notifications.swagger.ts",
     "./src/swagger/contacts.swagger.ts",
     "./src/swagger/groups.swagger.ts",
+    "./src/swagger/chat.swagger.ts",
   ],
 };
 
