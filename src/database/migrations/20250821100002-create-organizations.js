@@ -18,15 +18,7 @@ module.exports = {
         allowNull: false,
         unique: true,
       },
-      password: {
-        type: Sequelize.STRING,
-        allowNull: false,
-      },
       ownerName: {
-        type: Sequelize.STRING,
-        allowNull: false,
-      },
-      ownerEmail: {
         type: Sequelize.STRING,
         allowNull: false,
       },
@@ -34,10 +26,32 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: false,
       },
+      ownerEmail: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+      contactPhone: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        defaultValue: '',
+      },
+      tinNumber: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        defaultValue: '',
+      },
+      password: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
       approvalStatus: {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
         allowNull: false,
+      },
+      categoryId: {
+        type: Sequelize.UUID,
+        allowNull: true,
       },
       createdAt: {
         type: Sequelize.DATE,
@@ -51,7 +65,6 @@ module.exports = {
       },
     });
 
-    // Add indexes
     await queryInterface.addIndex("Organizations", ["email"], {
       name: "idx_organizations_email",
       unique: true,
