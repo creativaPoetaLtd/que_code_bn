@@ -6,7 +6,7 @@ const router = express.Router();
 router.use(authenticate);
 
 // Transfer money between users
-router.post("/transfer", transactionController.transferMoney);
+router.post("/transfer", transactionController.transferMoney as express.RequestHandler);
 
 // Get wallet balance
 router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);

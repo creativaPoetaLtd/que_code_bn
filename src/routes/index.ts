@@ -11,12 +11,14 @@ import organizationCategoryRouter from "./organizationCategory.routes";
 import profileRouter from "./profile.routes";
 import groupRouter from "./group.routes";
 import notificationRouter from "./notification.routes"; // Re-enabled
+import pinRouter from "./pin.routes";
 
 const router = express.Router();
 router.use("/organizations", orgRouter);
 router.use("/organization-categories", organizationCategoryRouter);
 router.use("/profiles", profileRouter);
 router.use("/users", userRouter);
+router.use("/users/pin", pinRouter);
 router.use("/auth", loginRouter);
 router.use("/auth", resetRouter);
 router.use("/transactions", transactionRouter);
