@@ -200,16 +200,21 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       );
 
       if (matchingRestriction) {
-        // Spending from restricted funds - check if enough is available
-        if (matchingRestriction.amount < transferAmount) {
-          await transaction?.rollback();
-          res.status(400).json({
-            success: false,
-            message: `Insufficient restricted balance for this category. Available: ${matchingRestriction.amount}, Required: ${transferAmount}`,
-            availableAmount: parseFloat(matchingRestriction.amount.toString()),
-            requiredAmount: transferAmount
-          });
-          return;
+        // Allow mixing: use restricted up to available, then top-up from unrestricted
+        const restrictedAvailable = parseFloat(matchingRestriction.amount.toString());
+        if (restrictedAvailable < transferAmount) {
+          const remainderNeededFromUnrestricted = transferAmount - restrictedAvailable;
+          if (availableUnrestrictedAmount < remainderNeededFromUnrestricted) {
+            await transaction?.rollback();
+            res.status(400).json({
+              success: false,
+              message: `Insufficient funds. Restricted available: ${restrictedAvailable}, Unrestricted available: ${availableUnrestrictedAmount}, Required: ${transferAmount}`,
+              restrictedAvailable,
+              unrestrictedAvailable: availableUnrestrictedAmount,
+              requiredAmount: transferAmount
+            });
+            return;
+          }
         }
       } else {
         // Spending on a different category - check if enough unrestricted funds
@@ -339,8 +344,10 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       );
 
       if (matchingRestriction) {
-        // Spending from restricted funds - reduce the restriction
-        const newAmount = parseFloat(matchingRestriction.amount.toString()) - transferAmount;
+        // Reduce restriction only up to available restricted funds; remainder comes from unrestricted
+        const restrictedAvailable = parseFloat(matchingRestriction.amount.toString());
+        const reduceBy = Math.min(restrictedAvailable, transferAmount);
+        const newAmount = restrictedAvailable - reduceBy;
         if (newAmount <= 0) {
           // Remove restriction if amount is zero or negative
           await matchingRestriction.destroy({ transaction });
