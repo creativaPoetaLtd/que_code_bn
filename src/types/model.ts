@@ -34,13 +34,17 @@ export interface UserModelAttributes {
   approvalStatus: boolean;
   otp: string | null; // Nullable in model, as cleared after verification
   otpExpires: Date | null; // Nullable in model, as cleared after verification
+  transactionPin: string | null; // Hashed 4-digit PIN for transactions
+  hasPinSet: boolean; // Whether user has set up their PIN
+  pinAttempts: number; // Number of failed PIN attempts
+  pinLockedUntil: Date | null; // Temporary lockout timestamp
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type UserCreationAttributes = Optional<
   UserModelAttributes,
-  "id" | "createdAt" | "updatedAt" | "isVerified" | "approvalStatus"
+  "id" | "createdAt" | "updatedAt" | "isVerified" | "approvalStatus" | "transactionPin" | "hasPinSet" | "pinAttempts" | "pinLockedUntil"
 > & {
   firstName: string;
   lastName: string;

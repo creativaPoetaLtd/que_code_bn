@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/requests';
 import { Op } from 'sequelize';
+import * as bcrypt from 'bcrypt';
 import database_models from '../database/config/db.config';
 
 const { 
@@ -7,6 +9,7 @@ const {
   Transaction: TransactionModel, 
   Category, 
   WalletRestriction,
+  User,
   Organization 
 } = database_models;
 
@@ -21,7 +24,7 @@ const calculateFee = (amount: number): number => {
 };
 
 // Transfer money between users and/or organizations
-const transferMoney = async (req: Request, res: Response): Promise<void> => {
+const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const transaction = await TransactionModel.sequelize?.transaction();
   
   try {
@@ -34,7 +37,8 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
       description = '',
       categoryId,
       type = 'transfer',
-      applyConstraints = false // New parameter to control constraint application
+      applyConstraints = false, // New parameter to control constraint application
+      pin // PIN for verification
     } = req.body;
 
     // Validation - must have either user or organization for sender and receiver
@@ -65,6 +69,121 @@ const transferMoney = async (req: Request, res: Response): Promise<void> => {
         message: 'Amount must be greater than 0'
       });
       return;
+    }
+
+    // SECURITY FIX: Authenticated user must be the sender
+    const authenticatedUserId = req.user.id;
+    
+    // For user-to-user transfers, authenticated user must be the sender
+    if (senderUserId && senderUserId !== authenticatedUserId) {
+      res.status(403).json({
+        success: false,
+        message: 'You can only send money from your own account'
+      });
+      return;
+    }
+    
+    // For organization transfers, we need to check if user is authorized for that organization
+    // TODO: Add organization authorization check
+    
+    // PIN check for authenticated user senders (organizations don't require PIN)
+    if (senderUserId) {
+      const authenticatedUser = await User.findByPk(authenticatedUserId);
+      if (!authenticatedUser) {
+        res.status(404).json({
+          success: false,
+          message: 'Authenticated user not found'
+        });
+        return;
+      }
+
+      if (!authenticatedUser.hasPinSet) {
+        res.status(403).json({
+          success: false,
+          message: 'PIN not set up. Please set up your transaction PIN before making transfers.',
+          requiresPinSetup: true
+        });
+        return;
+      }
+    }
+
+    // PIN verification for authenticated user senders
+    if (senderUserId) {
+      if (!pin) {
+        res.status(400).json({
+          success: false,
+          message: 'PIN is required for transactions'
+        });
+        return;
+      }
+
+      // Validate PIN format
+      if (!/^\d{4}$/.test(pin)) {
+        res.status(400).json({
+          success: false,
+          message: 'PIN must be exactly 4 digits'
+        });
+        return;
+      }
+
+      // Get the authenticated user (we already verified they exist and have PIN set)
+      const authenticatedUser = await User.findByPk(authenticatedUserId);
+      
+      // Check if user is currently locked out
+      if (authenticatedUser!.pinLockedUntil && authenticatedUser!.pinLockedUntil > new Date()) {
+        const remainingTime = Math.ceil((authenticatedUser!.pinLockedUntil.getTime() - Date.now()) / 60000);
+        res.status(429).json({
+          success: false,
+          message: `PIN is temporarily locked. Try again in ${remainingTime} minutes.`,
+          lockedUntil: authenticatedUser!.pinLockedUntil,
+          remainingMinutes: remainingTime
+        });
+        return;
+      }
+
+      // Verify PIN for authenticated user
+      const isValidPin = await bcrypt.compare(pin, authenticatedUser!.transactionPin!);
+      
+      if (!isValidPin) {
+        // Failed verification - increment attempts
+        const newAttempts = (authenticatedUser!.pinAttempts || 0) + 1;
+        const maxAttempts = 5;
+        const lockoutMinutes = 15;
+
+        let updateData: any = { pinAttempts: newAttempts };
+
+        // Check if max attempts reached
+        if (newAttempts >= maxAttempts) {
+          const lockedUntil = new Date(Date.now() + lockoutMinutes * 60000);
+          updateData.pinLockedUntil = lockedUntil;
+
+          await authenticatedUser!.update(updateData);
+
+          res.status(429).json({
+            success: false,
+            message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
+            attemptsRemaining: 0,
+            lockedUntil: lockedUntil,
+            remainingMinutes: lockoutMinutes
+          });
+        } else {
+          await authenticatedUser!.update(updateData);
+
+          const attemptsRemaining = maxAttempts - newAttempts;
+          res.status(400).json({
+            success: false,
+            message: `Invalid PIN. ${attemptsRemaining} attempts remaining.`,
+            attemptsRemaining: attemptsRemaining
+          });
+        }
+        return;
+      } else {
+        // Successful verification - reset attempts and clear lockout
+        await authenticatedUser!.update({
+          pinAttempts: 0,
+          pinLockedUntil: null
+        });
+      }
     }
 
     // Check for duplicate transactions in the last 30 seconds

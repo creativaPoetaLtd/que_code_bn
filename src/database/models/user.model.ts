@@ -12,6 +12,10 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
   public approvalStatus!: boolean;
   public otp!: string | null; // Added for OTP
   public otpExpires!: Date | null; // Added for OTP expiration
+  public transactionPin!: string | null; // Hashed 4-digit PIN for transactions
+  public hasPinSet!: boolean; // Whether user has set up their PIN
+  public pinAttempts!: number; // Number of failed PIN attempts
+  public pinLockedUntil!: Date | null; // Temporary lockout timestamp
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -34,6 +38,10 @@ const User_model = (sequelize: Sequelize) => {
       approvalStatus: { type: DataTypes.BOOLEAN, defaultValue: false },
       otp: { type: DataTypes.STRING, allowNull: true }, // Added
       otpExpires: { type: DataTypes.DATE, allowNull: true }, // Added
+      transactionPin: { type: DataTypes.STRING, allowNull: true }, // Hashed PIN
+      hasPinSet: { type: DataTypes.BOOLEAN, defaultValue: false }, // PIN setup status
+      pinAttempts: { type: DataTypes.INTEGER, defaultValue: 0 }, // Failed attempts counter
+      pinLockedUntil: { type: DataTypes.DATE, allowNull: true }, // Lockout timestamp
     },
     {
       sequelize,
