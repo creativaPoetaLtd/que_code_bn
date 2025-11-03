@@ -143,6 +143,9 @@ const Models = (sequelize: Sequelize) => {
   User.hasMany(Group, { foreignKey: "ownerId", as: "ownedGroups" });
   Group.belongsTo(User, { foreignKey: "ownerId", as: "owner" });
 
+  User.hasMany(Group, { foreignKey: "adminId", as: "adminGroups" });
+  Group.belongsTo(User, { foreignKey: "adminId", as: "admin" });
+
   Group.hasMany(GroupMember, { foreignKey: "groupId", as: "members" });
   GroupMember.belongsTo(Group, { foreignKey: "groupId", as: "group" });
 
@@ -154,6 +157,18 @@ const Models = (sequelize: Sequelize) => {
     as: "groupInvitations",
   });
   GroupMember.belongsTo(User, { foreignKey: "invitedBy", as: "inviter" });
+
+  User.hasMany(GroupMember, {
+    foreignKey: "approvedBy",
+    as: "approvedMemberships",
+  });
+  GroupMember.belongsTo(User, { foreignKey: "approvedBy", as: "approver" });
+
+  User.hasMany(GroupMember, {
+    foreignKey: "rejectedBy",
+    as: "rejectedMemberships",
+  });
+  GroupMember.belongsTo(User, { foreignKey: "rejectedBy", as: "rejector" });
 
   // Chats
   Chat.hasMany(ChatParticipant, { foreignKey: "chatId", as: "participants" });

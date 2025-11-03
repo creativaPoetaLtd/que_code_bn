@@ -10,11 +10,20 @@ class GroupMember extends Model<
   public groupId!: string;
   public userId!: string;
   public role!: "owner" | "admin" | "member";
-  public status!: "pending" | "active" | "left" | "removed";
+  public status!: "pending" | "active" | "left" | "removed" | "rejected";
   public invitedBy?: string;
   public joinedAt?: Date;
   public invitedAt?: Date;
   public respondedAt?: Date;
+  public invitationMessage?: string;
+  public additionalInfo?: string;
+  public autoApproved!: boolean;
+  public approvedBy?: string;
+  public rejectedBy?: string;
+  public rejectedAt?: Date;
+  public rejectionReason?: string;
+  public createdAt?: Date;
+  public updatedAt?: Date;
 }
 
 const GroupMember_model = (sequelize: Sequelize) => {
@@ -28,13 +37,20 @@ const GroupMember_model = (sequelize: Sequelize) => {
         defaultValue: "member",
       },
       status: {
-        type: DataTypes.ENUM("pending", "active", "left", "removed"),
+        type: DataTypes.ENUM("pending", "active", "left", "removed", "rejected"),
         defaultValue: "pending",
       },
       invitedBy: DataTypes.UUID,
       joinedAt: DataTypes.DATE,
       invitedAt: DataTypes.DATE,
       respondedAt: DataTypes.DATE,
+      invitationMessage: DataTypes.TEXT,
+      additionalInfo: DataTypes.TEXT,
+      autoApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
+      approvedBy: DataTypes.UUID,
+      rejectedBy: DataTypes.UUID,
+      rejectedAt: DataTypes.DATE,
+      rejectionReason: DataTypes.TEXT,
     },
     { sequelize, tableName: "GroupMembers" }
   );

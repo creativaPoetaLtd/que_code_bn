@@ -13,7 +13,10 @@ export interface EmailOptions {
     | "group_invitation"
     | "group_join_request"
     | "join_request_response"
-    | "email_verification";
+    | "email_verification"
+    | "group_creation_notification"
+    | "fundraising_target_reached"
+    | "group_expiring_soon";
   data: { [key: string]: string | undefined };
 }
 
@@ -355,6 +358,117 @@ class EmailService {
             }
         </div>
     `;
+
+      case "group_creation_notification":
+        return `
+        <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">🎉 Group Created Successfully!</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+                Your group <strong>${data.groupName}</strong> has been created successfully!
+            </p>
+            
+            ${data.groupDescription ? `
+            <p style="color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 20px; font-style: italic;">
+                "${data.groupDescription}"
+            </p>
+            ` : ''}
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #333; margin-bottom: 15px;">Group Details:</h3>
+                <p><strong>Privacy:</strong> ${data.privacyType}</p>
+                <p><strong>Max Members:</strong> ${data.maxMembers || 'Unlimited'}</p>
+                ${data.hasFundraising === 'true' ? `<p><strong>Fundraising Target:</strong> $${data.fundraisingTarget}</p>` : ''}
+                ${data.expirationDate ? `<p><strong>Expires:</strong> ${data.expirationDate}</p>` : ''}
+            </div>
+            
+            ${data.accessLink ? `
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.accessLink}" style="
+                    display: inline-block;
+                    padding: 12px 24px;
+                    margin: 10px 5px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    text-align: center;
+                    background: #007bff;
+                    color: white;
+                ">View Group</a>
+            </div>
+            ` : ''}
+        </div>
+        `;
+
+      case "fundraising_target_reached":
+        return `
+        <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">🎯 Fundraising Target Reached!</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+                Congratulations! The group <strong>${data.groupName}</strong> has reached its fundraising target!
+            </p>
+            
+            <div style="background: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #c3e6cb;">
+                <h3 style="color: #155724; margin-bottom: 15px;">🎉 Target Achieved!</h3>
+                <p><strong>Target Amount:</strong> $${data.targetAmount}</p>
+                <p><strong>Amount Raised:</strong> $${data.currentAmount}</p>
+                <p><strong>Achievement Date:</strong> ${data.achievementDate}</p>
+            </div>
+            
+            ${data.groupLink ? `
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.groupLink}" style="
+                    display: inline-block;
+                    padding: 12px 24px;
+                    margin: 10px 5px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    text-align: center;
+                    background: #28a745;
+                    color: white;
+                ">View Group Details</a>
+            </div>
+            ` : ''}
+        </div>
+        `;
+
+      case "group_expiring_soon":
+        return `
+        <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">⏰ Group Expiring Soon</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+                The group <strong>${data.groupName}</strong> will expire soon!
+            </p>
+            
+            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffeaa7;">
+                <h3 style="color: #856404; margin-bottom: 15px;">⚠️ Expiration Notice</h3>
+                <p><strong>Expiration Date:</strong> ${data.expirationDate}</p>
+                <p><strong>Days Remaining:</strong> ${data.daysRemaining}</p>
+                <p><strong>Expiration Type:</strong> ${data.expirationType}</p>
+            </div>
+            
+            <p style="color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
+                Make sure to complete any important activities before the group expires.
+            </p>
+            
+            ${data.groupLink ? `
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.groupLink}" style="
+                    display: inline-block;
+                    padding: 12px 24px;
+                    margin: 10px 5px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    text-align: center;
+                    background: #ffc107;
+                    color: #212529;
+                ">Manage Group</a>
+            </div>
+            ` : ''}
+        </div>
+        `;
+
       default:
         return `<p style="text-align: center; color: #ff0000;">Invalid email type</p>`;
     }

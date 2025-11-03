@@ -10,6 +10,15 @@ router.use(authenticate);
 // Search users for potential contacts
 router.get("/search", contactController.search_users as RequestHandler);
 
+// Get pending contact invitations
+router.get("/pending", contactController.get_pending_invitations as RequestHandler);
+
+// Get sent contact invitations
+router.get("/sent", contactController.get_sent_invitations as RequestHandler);
+
+// Get accepted contacts (active contacts)
+router.get("/accepted", contactController.get_accepted_contacts as RequestHandler);
+
 // Get contact statistics
 router.get("/stats", contactController.get_contact_stats as RequestHandler);
 

@@ -14,38 +14,133 @@ import {
     UpdateGroupRequest,
     RequestToJoinGroupRequest,
     GroupMemberRole,
-    GroupMemberStatus
+    GroupMemberStatus,
+    GroupPrivacyType,
+    GroupExpirationType
 } from "../types/group";
 import sendEmail from "../helpers/email";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification, markNotificationAsRead, getUserNotifications } from "../utils/notificationService";
+import CloudinaryService from "../services/cloudinaryService";
 
 const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { name, description, picture, isPrivate = false, maxMembers = 100, memberIds = [] }: CreateGroupRequest = req.body;
+        const {
+            name,
+            description,
+            picture,
+            isPrivate = false,
+            privacyType = GroupPrivacyType.REQUIRE_APPROVAL,
+            maxMembers = 100,
+            memberIds = [],
+            adminId,
+            hasFundraising = false,
+            fundraisingTarget,
+            expirationDate,
+            expirationType = GroupExpirationType.NEVER,
+            hasAdditionalInfo = false,
+            additionalInfoPrompt
+        }: CreateGroupRequest = req.body;
         const ownerId = req.user.id;
 
+        // Validate required fields
         if (!name || name.trim().length < 2) {
             res.status(400).json({ message: "Group name is required and must be at least 2 characters" });
             return;
         }
 
+        // Validate fundraising data
+        if (hasFundraising && !fundraisingTarget) {
+            res.status(400).json({ message: "Fundraising target is required when fundraising is enabled" });
+            return;
+        }
+
+        // Validate expiration data
+        if (expirationType === GroupExpirationType.CUSTOM_DATE && !expirationDate) {
+            res.status(400).json({ message: "Expiration date is required for custom date expiration" });
+            return;
+        }
+
+        // Validate admin selection
+        if (adminId && !memberIds.includes(adminId)) {
+            res.status(400).json({ message: "Selected admin must be included in the member list" });
+            return;
+        }
+
         const models = req.app.get('models') as ReturnType<typeof Models>;
+
+        // Validate admin exists in contacts if provided
+        if (adminId) {
+            const adminContact = await models.Contact.findOne({
+                where: {
+                    [Op.or]: [
+                        { userAId: ownerId, userBId: adminId },
+                        { userAId: adminId, userBId: ownerId }
+                    ],
+                    status: ContactStatus.ACCEPTED
+                }
+            });
+
+            if (!adminContact) {
+                res.status(400).json({ message: "Selected admin must be in your contacts" });
+                return;
+            }
+        }
 
         const accessToken = uuidv4();
         const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
 
+        // Handle profile picture upload
+        let profilePictureUrl: string | undefined;
+        let profilePicturePublicId: string | undefined;
+
+        if (req.file) {
+            try {
+                const fileName = CloudinaryService.generateFileName(`group_${name.replace(/[^a-zA-Z0-9]/g, '_')}`);
+                const uploadResult = await CloudinaryService.uploadImage(req.file.buffer, 'group-profiles', fileName);
+                profilePictureUrl = uploadResult.url;
+                profilePicturePublicId = uploadResult.publicId;
+            } catch (uploadError) {
+                console.error("Failed to upload profile picture:", uploadError);
+                res.status(400).json({ message: "Failed to upload profile picture" });
+                return;
+            }
+        } else if (picture) {
+            // Handle base64 image upload
+            try {
+                const fileName = CloudinaryService.generateFileName(`group_${name.replace(/[^a-zA-Z0-9]/g, '_')}`);
+                const uploadResult = await CloudinaryService.uploadBase64Image(picture, 'group-profiles', fileName);
+                profilePictureUrl = uploadResult.url;
+                profilePicturePublicId = uploadResult.publicId;
+            } catch (uploadError) {
+                console.error("Failed to upload base64 image:", uploadError);
+                res.status(400).json({ message: "Failed to upload profile picture" });
+                return;
+            }
+        }
+
         const group = await models.Group.create({
             name: name.trim(),
             description: description?.trim(),
-            picture,
+            picture: profilePictureUrl || picture,
+            profilePictureUrl,
+            profilePicturePublicId,
             ownerId,
+            adminId: adminId || ownerId, // Default admin to owner if not specified
             accessToken,
             accessLink,
             isPrivate,
-            maxMembers
+            privacyType,
+            maxMembers,
+            hasFundraising,
+            fundraisingTarget: hasFundraising ? fundraisingTarget : undefined,
+            expirationDate: expirationType === GroupExpirationType.CUSTOM_DATE ? expirationDate : undefined,
+            expirationType,
+            hasAdditionalInfo,
+            additionalInfoPrompt: hasAdditionalInfo ? additionalInfoPrompt : undefined
         });
 
+        // Generate QR code
         try {
             const qrCodeData = await QRCode.toDataURL(accessLink);
             await group.update({ qrCode: qrCodeData });
@@ -53,6 +148,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             console.error("Failed to generate QR code:", qrError);
         }
 
+        // Create owner membership
         await models.GroupMember.create({
             groupId: group.id,
             userId: ownerId,
@@ -60,8 +156,23 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             status: GroupMemberStatus.ACTIVE,
             invitedBy: ownerId,
             joinedAt: new Date(),
-            invitedAt: new Date()
+            invitedAt: new Date(),
+            autoApproved: true
         });
+
+        // Create admin membership if different from owner
+        if (adminId && adminId !== ownerId) {
+            await models.GroupMember.create({
+                groupId: group.id,
+                userId: adminId,
+                role: GroupMemberRole.ADMIN,
+                status: privacyType === GroupPrivacyType.PUBLIC ? GroupMemberStatus.ACTIVE : GroupMemberStatus.PENDING,
+                invitedBy: ownerId,
+                joinedAt: privacyType === GroupPrivacyType.PUBLIC ? new Date() : undefined,
+                invitedAt: new Date(),
+                autoApproved: privacyType === GroupPrivacyType.PUBLIC
+            });
+        }
 
         // Send invitations with notifications
         if (memberIds.length > 0) {
@@ -88,13 +199,23 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
                 name: group.name,
                 description: group.description,
                 picture: group.picture,
+                profilePictureUrl: group.profilePictureUrl,
                 ownerId: group.ownerId,
+                adminId: group.adminId,
                 ownerName: owner ? `${owner.firstName} ${owner.lastName}` : undefined,
                 qrCode: group.qrCode,
                 accessLink: group.accessLink,
                 isPrivate: group.isPrivate,
+                privacyType: group.privacyType,
                 maxMembers: group.maxMembers,
                 memberCount: group.memberCount,
+                hasFundraising: group.hasFundraising,
+                fundraisingTarget: group.fundraisingTarget,
+                fundraisingCurrentAmount: group.fundraisingCurrentAmount,
+                expirationDate: group.expirationDate,
+                expirationType: group.expirationType,
+                hasAdditionalInfo: group.hasAdditionalInfo,
+                additionalInfoPrompt: group.additionalInfoPrompt,
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: GroupMemberRole.OWNER,
@@ -160,7 +281,7 @@ const inviteToGroup = async (req: AuthenticatedRequest, res: Response, next: Nex
         const inviterName = inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Someone';
 
         const results = await inviteUsersToGroup(groupId, foundMemberIds, inviterId, models, app);
-
+        console.log('result', results);
         const failedResults = [
             ...results.failed,
             ...notFoundMemberIds.map(id => ({
@@ -289,6 +410,7 @@ const respondToGroupInvitation = async (req: AuthenticatedRequest, res: Response
                 id: membership.id,
                 groupId: membership.groupId,
                 groupName: membership.group.name,
+                inviterName: membership.inviter ? `${membership.inviter.firstName} ${membership.inviter.lastName}` : undefined,
                 status: membership.status,
                 role: membership.role,
                 joinedAt: membership.joinedAt,
@@ -303,30 +425,20 @@ const respondToGroupInvitation = async (req: AuthenticatedRequest, res: Response
 
 const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { accessToken, qrCodeData }: JoinGroupByLinkRequest = req.body;
+        const { accessToken, additionalInfo }: JoinGroupByLinkRequest = req.body;
         const userId = req.user.id;
 
-        if (!accessToken && !qrCodeData) {
-            res.status(400).json({ message: "Access token or QR code data is required" });
+        if (!accessToken) {
+            res.status(400).json({ message: "Access token is required" });
             return;
         }
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
-        // Find group by access token or QR code
-        let group;
-        if (accessToken) {
-            group = await models.Group.findOne({
-                where: { accessToken }
-            });
-        } else if (qrCodeData) {
-            const tokenMatch = qrCodeData.match(/token=([^&]+)/);
-            if (tokenMatch) {
-                group = await models.Group.findOne({
-                    where: { accessToken: tokenMatch[1] }
-                });
-            }
-        }
+        // Find group by access token
+        const group = await models.Group.findOne({
+            where: { accessToken }
+        });
 
         if (!group) {
             res.status(404).json({ message: "Invalid access link or QR code" });
@@ -362,14 +474,18 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
             return;
         }
 
-        // Create join request (always requires approval)
+        // Create join request based on group privacy settings
+        const isAutoApproved = group.privacyType === GroupPrivacyType.PUBLIC;
         const membership = await models.GroupMember.create({
             groupId: group.id,
             userId,
             role: GroupMemberRole.MEMBER,
-            status: GroupMemberStatus.PENDING,
+            status: isAutoApproved ? GroupMemberStatus.ACTIVE : GroupMemberStatus.PENDING,
             invitedBy: userId, // Self-invited
-            invitedAt: new Date()
+            invitedAt: new Date(),
+            joinedAt: isAutoApproved ? new Date() : undefined,
+            autoApproved: isAutoApproved,
+            additionalInfo
         });
 
         // Notify group owner with approve/decline actions
@@ -439,7 +555,7 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
 const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const userId = req.user.id;
-        const { page = 1, limit = 10, status = 'accepted' } = req.query;
+        const { page = 1, limit = 10, status = 'active' } = req.query;
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -592,7 +708,8 @@ const inviteUsersToGroup = async (
                 role: GroupMemberRole.MEMBER,
                 status: GroupMemberStatus.PENDING,
                 invitedBy: inviterId,
-                invitedAt: new Date()
+                invitedAt: new Date(),
+                autoApproved: false
             });
 
             // Create URLs for accept/reject actions
@@ -636,7 +753,7 @@ const inviteUsersToGroup = async (
                                     url: acceptUrl
                                 },
                                 {
-                                    type: 'decline',
+                                    type: 'reject',
                                     label: 'Decline',
                                     url: rejectUrl
                                 }
@@ -722,7 +839,7 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
 const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { groupId } = req.params;
-        const { page = 1, limit = 20, status = 'accepted' } = req.query;
+        const { page = 1, limit = 20, status = 'active' } = req.query;
         const userId = req.user.id;
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
@@ -764,12 +881,7 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
-                },
-                {
-                    model: models.User,
-                    as: 'inviter',
-                    attributes: ['id', 'firstName', 'lastName']
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ],
             limit: Number(limit),
@@ -1071,6 +1183,7 @@ const deleteGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             include: [
                 {
                     model: models.User,
+                    as: 'user',
                     attributes: ['id', 'firstName', 'lastName']
                 }
             ]
@@ -1156,7 +1269,8 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
             role: GroupMemberRole.MEMBER,
             status: GroupMemberStatus.PENDING,
             invitedBy: userId, // Self-invited for join requests
-            invitedAt: new Date()
+            invitedAt: new Date(),
+            autoApproved: false
         });
 
         // Get user and owner details for notification
