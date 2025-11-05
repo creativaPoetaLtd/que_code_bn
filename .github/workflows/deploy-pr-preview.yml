@@ -188,6 +188,10 @@ jobs:
           /usr/bin/heroku config:set DEV_MODE=production --app $APP_NAME
           /usr/bin/heroku config:set BASE_URL="https://$APP_NAME.herokuapp.com/api/v1" --app $APP_NAME
           
+          # Generate session secret for express-session
+          SESSION_SECRET=$(openssl rand -base64 32)
+          /usr/bin/heroku config:set SESSION_SECRET="$SESSION_SECRET" --app $APP_NAME
+          
           # Set optional environment variables from secrets (if they exist)
           if [ -n "${{ secrets.ACCESS_TOKEN_SECRET }}" ]; then
             /usr/bin/heroku config:set ACCESS_TOKEN_SECRET="${{ secrets.ACCESS_TOKEN_SECRET }}" --app $APP_NAME
@@ -268,8 +272,12 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           echo "Verifying deployment..."
-          max_attempts=12
+          max_attempts=15
           attempt=1
+          
+          # Wait longer for app to fully start
+          echo "Waiting for app to initialize..."
+          sleep 45
           
           while [ $attempt -le $max_attempts ]; do
             echo "Health check attempt $attempt/$max_attempts..."
@@ -290,7 +298,7 @@ jobs:
               exit 1
             else
               echo "Waiting for app to start... (HTTP $response)"
-              sleep 20
+              sleep 25
               attempt=$((attempt + 1))
             fi
           done
