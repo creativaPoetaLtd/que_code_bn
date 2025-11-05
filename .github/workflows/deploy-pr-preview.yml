@@ -87,6 +87,31 @@ jobs:
           # Test the installation (CLI installs to /usr/bin/heroku)
           /usr/bin/heroku --version
 
+      - name: Configure Heroku for Docker
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ steps.app-info.outputs.app-name }}
+        run: |
+          # Login to Heroku
+          echo $HEROKU_API_KEY | /usr/bin/heroku auth:token
+          
+          # Check if app exists and get current stack
+          if /usr/bin/heroku apps:info --app $APP_NAME > /dev/null 2>&1; then
+            echo "App $APP_NAME exists, checking stack..."
+            CURRENT_STACK=$(/usr/bin/heroku stack --app $APP_NAME | grep -E "^\*" | awk '{print $2}' || echo "unknown")
+            echo "Current stack: $CURRENT_STACK"
+            
+            # Set stack to container if it's not already
+            if [ "$CURRENT_STACK" != "container" ]; then
+              echo "Setting stack to container..."
+              /usr/bin/heroku stack:set container --app $APP_NAME
+            else
+              echo "Stack is already set to container"
+            fi
+          else
+            echo "App $APP_NAME doesn't exist yet, will be created with container stack"
+          fi
+
       - name: Prepare for deployment
         run: |
           # Debug git state
@@ -128,6 +153,7 @@ jobs:
           docker_heroku_process_type: web
           dontautocreate: false
           dontuseforce: false
+          stack: "container"
         env:
           COREPACK_ENABLE_STRICT: "0"
           NODE_OPTIONS: "--max-old-space-size=512"
