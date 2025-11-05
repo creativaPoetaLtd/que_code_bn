@@ -59,57 +59,57 @@ jobs:
         id: app-info
         run: |
           # Create a unique app name for this PR
-          APP_NAME="${{ secrets.HEROKU_APP_NAME }}-pr-${{ github.event.number }}"
+          BASE_NAME="${{ secrets.HEROKU_APP_NAME }}"
+          PR_NUMBER="${{ github.event.number }}"
+          APP_NAME="${BASE_NAME}-pr-${PR_NUMBER}"
+          
           # Heroku app names must be lowercase and contain only letters, numbers, and dashes
           APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+          
           # Truncate if too long (Heroku limit is 30 characters)
           APP_NAME=${APP_NAME:0:30}
+          
+          echo "Generated app name: $APP_NAME"
           echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
 
-      - name: Install Heroku CLI
-        run: |
-          curl https://cli-assets.heroku.com/install.sh | sh
+      - name: Deploy to Heroku
+        uses: akhileshns/heroku-deploy@v3.13.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ steps.app-info.outputs.app-name }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          usedocker: false
+          appdir: "."
+          branch: ${{ github.head_ref }}
+          dontautocreate: false
+          healthcheck: "https://${{ steps.app-info.outputs.app-name }}.herokuapp.com/health"
+          checkstring: "ok"
+          rollbackonhealthcheckfailed: true
+          delay: 5
 
-      - name: Login to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-        run: |
-          echo $HEROKU_API_KEY | heroku auth:token
-
-      - name: Create or update Heroku app
-        id: deploy
+      - name: Set up database
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
-          # Check if app already exists
-          if heroku apps:info $APP_NAME >/dev/null 2>&1; then
-            echo "App $APP_NAME already exists, updating..."
+          # Install Heroku CLI
+          curl https://cli-assets.heroku.com/install.sh | sh
+          
+          # Login to Heroku
+          echo $HEROKU_API_KEY | heroku auth:token
+          
+          # Check if PostgreSQL addon exists, if not create it
+          if ! heroku addons --app $APP_NAME | grep -q "heroku-postgresql"; then
+            echo "Creating PostgreSQL database..."
+            heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME --wait
           else
-            echo "Creating new app $APP_NAME..."
-            heroku apps:create $APP_NAME --region us
-            
-            # Copy environment variables from main app
-            echo "Copying environment variables..."
-            heroku config --app ${{ secrets.HEROKU_APP_NAME }} --shell | \
-              heroku config:set --app $APP_NAME $(cat)
-            
-            # Add database addon
-            heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME
+            echo "PostgreSQL database already exists"
           fi
           
-          # Set Git remote
-          heroku git:remote -a $APP_NAME
-          
-          # Deploy the code
-          git push heroku HEAD:main --force
-          
-          echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
-
-      - name: Wait for deployment
-        run: sleep 30
+          # Wait for database to be ready
+          echo "Waiting for database to be ready..."
+          sleep 20
 
       - name: Run database migrations
         env:
@@ -117,7 +117,30 @@ jobs:
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
           echo "Running database migrations..."
-          heroku run npm run migrate --app $APP_NAME
+          
+          # Try migrations with retry logic
+          max_attempts=3
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Migration attempt $attempt/$max_attempts..."
+            
+            if heroku run "npm run migrate" --app $APP_NAME; then
+              echo "✅ Database migrations completed successfully"
+              break
+            elif [ $attempt -eq $max_attempts ]; then
+              echo "❌ Database migrations failed after $max_attempts attempts"
+              echo "Checking database status..."
+              heroku pg:info --app $APP_NAME || true
+              echo "Recent app logs:"
+              heroku logs --tail --num 50 --app $APP_NAME || true
+              exit 1
+            else
+              echo "Migration failed, retrying in 15 seconds..."
+              sleep 15
+              attempt=$((attempt + 1))
+            fi
+          done
 
       - name: Verify deployment
         env:
@@ -128,16 +151,19 @@ jobs:
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
-            echo "Attempt $attempt/$max_attempts..."
+            echo "Health check attempt $attempt/$max_attempts..."
             response=$(curl -s -o /dev/null -w "%{http_code}" https://$APP_NAME.herokuapp.com/health || echo "000")
             
             if [ "$response" = "200" ]; then
               echo "✅ Preview deployment successful!"
               echo "🔗 Preview URL: https://$APP_NAME.herokuapp.com"
               echo "📊 Health Check: https://$APP_NAME.herokuapp.com/health"
+              echo "📚 API Docs: https://$APP_NAME.herokuapp.com/api-docs"
               break
             elif [ $attempt -eq $max_attempts ]; then
               echo "❌ Preview deployment failed after $max_attempts attempts (HTTP $response)"
+              echo "App logs:"
+              heroku logs --tail --num 100 --app $APP_NAME || true
               exit 1
             else
               echo "Waiting for app to start... (HTTP $response)"
@@ -145,6 +171,12 @@ jobs:
               attempt=$((attempt + 1))
             fi
           done
+
+      - name: Set output for other jobs
+        id: deploy
+        run: |
+          echo "app-name=${{ steps.app-info.outputs.app-name }}" >> $GITHUB_OUTPUT
+          echo "preview-url=${{ steps.app-info.outputs.preview-url }}" >> $GITHUB_OUTPUT
 
   comment-pr:
     name: Comment on PR
@@ -173,9 +205,9 @@ jobs:
             ${{ needs.deploy-preview.result == 'success' && '✅ **Deployment Successful**' || '❌ **Deployment Failed**' }}
             
             ${{ needs.deploy-preview.result == 'success' && format('
-            **Preview URL:** {0}
-            **Health Check:** {0}/health
-            **API Base:** {0}/api/v1
+            **Preview URL:** [{0}]({0})
+            **Health Check:** [{0}/health]({0}/health)
+            **API Base:** [{0}/api/v1]({0}/api/v1)
             
             ### 📊 Quick Links
             - 🔍 [Health Status]({0}/health)
@@ -185,18 +217,35 @@ jobs:
             ### 🔧 App Details
             - **App Name:** `{1}`
             - **Branch:** `{2}`
-            - **Commit:** `{3}`
+            - **Commit:** [`{3}`](https://github.com/{4}/commit/{3})
             
-            > This preview will be automatically updated when you push new commits to this PR.
-            > The preview app will be deleted when the PR is closed or merged.
-            ', needs.deploy-preview.outputs.preview-url, needs.deploy-preview.outputs.app-name, github.head_ref, github.sha) || format('
-            **Error Details:**
-            Please check the [workflow logs]({0}) for more information.
+            ### 🧪 Testing Your Changes
+            ```bash
+            # Test the health endpoint
+            curl {0}/health
             
-            Common issues:
-            - Build or lint failures
-            - Database connection issues
-            - Environment variable misconfigurations
+            # Test API endpoints
+            curl {0}/api/v1
+            ```
+            
+            > 💡 This preview will be automatically updated when you push new commits to this PR.
+            > 🗑️ The preview app will be deleted when the PR is closed or merged.
+            ', needs.deploy-preview.outputs.preview-url, needs.deploy-preview.outputs.app-name, github.head_ref, github.sha, github.repository) || format('
+            **❌ Deployment Failed**
+            
+            Please check the [workflow logs]({0}) for detailed error information.
+            
+            ### Common Issues:
+            - **Build Failures**: Check for linting or compilation errors
+            - **Database Issues**: Verify migration files are correct
+            - **Environment Variables**: Ensure all required secrets are set
+            - **Resource Limits**: Check if you''ve reached Heroku app limits
+            
+            ### Troubleshooting:
+            1. Review the workflow logs above
+            2. Check if all GitHub secrets are properly configured
+            3. Verify your Heroku account has sufficient resources
+            4. Try pushing a new commit to retry the deployment
             ', format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id)) }}
             
             ---
