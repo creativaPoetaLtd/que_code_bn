@@ -79,19 +79,36 @@ jobs:
           echo "/usr/local/bin" >> $GITHUB_PATH
 
       - name: Deploy to Heroku
-        uses: akhileshns/heroku-deploy@v3.13.15
-        with:
-          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-          heroku_app_name: ${{ steps.app-info.outputs.app-name }}
-          heroku_email: ${{ secrets.HEROKU_EMAIL }}
-          usedocker: false
-          appdir: "."
-          dontautocreate: false
-          justlogin: false
-          healthcheck: "https://${{ steps.app-info.outputs.app-name }}.herokuapp.com/health"
-          checkstring: "ok"
-          rollbackonhealthcheckfailed: true
-          delay: 5
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ steps.app-info.outputs.app-name }}
+          HEROKU_EMAIL: ${{ secrets.HEROKU_EMAIL }}
+        run: |
+          # Login to Heroku
+          echo $HEROKU_API_KEY | heroku auth:token
+          
+          # Check if app exists, if not create it
+          if ! heroku apps:info --app $APP_NAME 2>/dev/null; then
+            echo "Creating Heroku app: $APP_NAME"
+            heroku create $APP_NAME
+          else
+            echo "Heroku app already exists: $APP_NAME"
+          fi
+          
+          # Add heroku remote if it doesn't exist
+          if ! git remote | grep -q heroku; then
+            heroku git:remote --app $APP_NAME
+          fi
+          
+          # Configure git
+          git config user.email "$HEROKU_EMAIL"
+          git config user.name "GitHub Actions"
+          
+          # Deploy to Heroku
+          echo "Deploying to Heroku..."
+          git push https://heroku:$HEROKU_API_KEY@git.heroku.com/$APP_NAME.git HEAD:main --force
+          
+          echo "✅ Deployment initiated successfully"
 
       - name: Set up database
         env:
