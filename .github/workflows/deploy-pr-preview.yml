@@ -214,6 +214,16 @@ jobs:
             /usr/bin/heroku config:set EMAIL_SECURE="${{ secrets.EMAIL_SECURE }}" --app $APP_NAME
           fi
           
+          # Set OAuth config if secrets exist
+          if [ -n "${{ secrets.GOOGLE_CLIENT_ID }}" ]; then
+            /usr/bin/heroku config:set GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" --app $APP_NAME
+            /usr/bin/heroku config:set GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" --app $APP_NAME
+          else
+            # Set dummy values for preview deployments to prevent crashes
+            /usr/bin/heroku config:set GOOGLE_CLIENT_ID="dummy-client-id-for-preview" --app $APP_NAME
+            /usr/bin/heroku config:set GOOGLE_CLIENT_SECRET="dummy-client-secret-for-preview" --app $APP_NAME
+          fi
+          
           # Wait for database to be ready
           echo "Waiting for database to be ready..."
           sleep 20
