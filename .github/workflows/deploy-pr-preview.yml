@@ -174,6 +174,46 @@ jobs:
             echo "PostgreSQL database already exists"
           fi
           
+          # Get the database URL from the addon
+          DATABASE_URL=$(/usr/bin/heroku config:get DATABASE_URL --app $APP_NAME)
+          echo "Database URL retrieved: ${DATABASE_URL:0:30}..."
+          
+          # Set up essential environment variables
+          echo "Setting up environment variables..."
+          /usr/bin/heroku config:set NODE_ENV=production --app $APP_NAME
+          /usr/bin/heroku config:set DB_PROD_URL="$DATABASE_URL" --app $APP_NAME
+          /usr/bin/heroku config:set DATABASE_URL="$DATABASE_URL" --app $APP_NAME
+          /usr/bin/heroku config:set DB_DIALECT=postgres --app $APP_NAME
+          /usr/bin/heroku config:set DB_HOSTED_MODE=hosted --app $APP_NAME
+          /usr/bin/heroku config:set DEV_MODE=production --app $APP_NAME
+          /usr/bin/heroku config:set BASE_URL="https://$APP_NAME.herokuapp.com/api/v1" --app $APP_NAME
+          
+          # Set optional environment variables from secrets (if they exist)
+          if [ -n "${{ secrets.ACCESS_TOKEN_SECRET }}" ]; then
+            /usr/bin/heroku config:set ACCESS_TOKEN_SECRET="${{ secrets.ACCESS_TOKEN_SECRET }}" --app $APP_NAME
+          else
+            # Generate a random secret for preview deployments
+            RANDOM_SECRET=$(openssl rand -base64 32)
+            /usr/bin/heroku config:set ACCESS_TOKEN_SECRET="$RANDOM_SECRET" --app $APP_NAME
+          fi
+          
+          # Set Cloudinary config if secrets exist
+          if [ -n "${{ secrets.CLOUDINARY_API_KEY }}" ]; then
+            /usr/bin/heroku config:set CLOUDINARY_API_KEY="${{ secrets.CLOUDINARY_API_KEY }}" --app $APP_NAME
+            /usr/bin/heroku config:set CLOUDINARY_API_SECRET="${{ secrets.CLOUDINARY_API_SECRET }}" --app $APP_NAME
+            /usr/bin/heroku config:set CLOUDINARY_CLOUD_NAME="${{ secrets.CLOUDINARY_CLOUD_NAME }}" --app $APP_NAME
+            /usr/bin/heroku config:set CLOUDINARY_FOLDER_NAME="${{ secrets.CLOUDINARY_FOLDER_NAME }}" --app $APP_NAME
+          fi
+          
+          # Set email config if secrets exist
+          if [ -n "${{ secrets.EMAIL }}" ]; then
+            /usr/bin/heroku config:set EMAIL="${{ secrets.EMAIL }}" --app $APP_NAME
+            /usr/bin/heroku config:set EMAIL_HOST="${{ secrets.EMAIL_HOST }}" --app $APP_NAME
+            /usr/bin/heroku config:set EMAIL_PASS="${{ secrets.EMAIL_PASS }}" --app $APP_NAME
+            /usr/bin/heroku config:set EMAIL_PORT="${{ secrets.EMAIL_PORT }}" --app $APP_NAME
+            /usr/bin/heroku config:set EMAIL_SECURE="${{ secrets.EMAIL_SECURE }}" --app $APP_NAME
+          fi
+          
           # Wait for database to be ready
           echo "Waiting for database to be ready..."
           sleep 20
