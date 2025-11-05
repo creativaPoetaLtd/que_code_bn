@@ -114,7 +114,10 @@ jobs:
           dontautocreate: false
           buildpack: "heroku/nodejs"
           dontuseforce: false
-          remote_branch: "main"
+          branch: "main"
+        env:
+          COREPACK_ENABLE_STRICT: "0"
+          NODE_OPTIONS: "--max-old-space-size=512"
 
       - name: Set up database
         env:

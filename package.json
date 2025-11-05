@@ -9,6 +9,7 @@
     "dev:verbose": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --require dotenv/config --poll --rs --clear src/index.ts",
     "build": "tsc",
     "start": "node --require dotenv/config dist/index.js",
+    "heroku-prebuild": "npm install -g pnpm@10.8.1",
     "heroku-postbuild": "pnpm run build && pnpm run migrate",
     "drop-all-tables": "psql -U your_username -d your_database_name -c \"SELECT 'DROP TABLE IF EXISTS \"' || tablename || '\" CASCADE;' FROM pg_tables WHERE schemaname = 'public'\" | psql -U your_username -d your_database_name",
     "migrate": "npx sequelize-cli db:migrate",
@@ -30,8 +31,8 @@
     "test": "npm-run-all run-tests run-after-tests --continue-on-error"
   },
   "engines": {
-    "node": ">=22.14.0",
-    "pnpm": ">=10.8.1"
+    "node": "22.14.0",
+    "pnpm": "10.8.1"
   },
   "keywords": [],
   "author": "",
