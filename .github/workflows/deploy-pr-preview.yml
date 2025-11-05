@@ -86,8 +86,8 @@ jobs:
           heroku_email: ${{ secrets.HEROKU_EMAIL }}
           usedocker: false
           appdir: "."
-          branch: ${{ github.head_ref }}
           dontautocreate: false
+          justlogin: false
           healthcheck: "https://${{ steps.app-info.outputs.app-name }}.herokuapp.com/health"
           checkstring: "ok"
           rollbackonhealthcheckfailed: true
