@@ -73,19 +73,16 @@ jobs:
           echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
 
-      - name: Install Heroku CLI
+      - name: Setup Heroku CLI
         run: |
-          # Install Heroku CLI using snap (more reliable on Ubuntu)
-          sudo snap install heroku --classic
+          # Download and install Heroku CLI
+          wget -qO- https://cli-assets.heroku.com/install-ubuntu.sh | sh
           
-          # Also add to PATH and create symlinks for compatibility
-          echo "/snap/bin" >> $GITHUB_PATH
-          sudo ln -sf /snap/bin/heroku /usr/local/bin/heroku || true
-          sudo ln -sf /snap/bin/heroku /usr/bin/heroku || true
+          # Make sure it's in the PATH for subsequent steps
+          echo "/usr/local/bin" >> $GITHUB_PATH
           
-          # Verify installation
-          which heroku
-          heroku --version
+          # Test the installation
+          /usr/local/bin/heroku --version
 
       - name: Deploy to Heroku
         uses: akhileshns/heroku-deploy@v3.13.15
@@ -104,13 +101,13 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
-          # Login to Heroku
-          echo $HEROKU_API_KEY | heroku auth:token
+          # Login to Heroku (use full path first time)
+          echo $HEROKU_API_KEY | /usr/local/bin/heroku auth:token
           
           # Check if PostgreSQL addon exists, if not create it
-          if ! heroku addons --app $APP_NAME | grep -q "heroku-postgresql"; then
+          if ! /usr/local/bin/heroku addons --app $APP_NAME | grep -q "heroku-postgresql"; then
             echo "Creating PostgreSQL database..."
-            heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME --wait
+            /usr/local/bin/heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME --wait
           else
             echo "PostgreSQL database already exists"
           fi
@@ -124,8 +121,8 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
-          # Login to Heroku
-          echo $HEROKU_API_KEY | heroku auth:token
+          # Login to Heroku (use full path)
+          echo $HEROKU_API_KEY | /usr/local/bin/heroku auth:token
           
           echo "Running database migrations..."
           
@@ -136,15 +133,15 @@ jobs:
           while [ $attempt -le $max_attempts ]; do
             echo "Migration attempt $attempt/$max_attempts..."
             
-            if heroku run "npm run migrate" --app $APP_NAME; then
+            if /usr/local/bin/heroku run "npm run migrate" --app $APP_NAME; then
               echo "✅ Database migrations completed successfully"
               break
             elif [ $attempt -eq $max_attempts ]; then
               echo "❌ Database migrations failed after $max_attempts attempts"
               echo "Checking database status..."
-              heroku pg:info --app $APP_NAME || true
+              /usr/local/bin/heroku pg:info --app $APP_NAME || true
               echo "Recent app logs:"
-              heroku logs --tail --num 50 --app $APP_NAME || true
+              /usr/local/bin/heroku logs --tail --num 50 --app $APP_NAME || true
               exit 1
             else
               echo "Migration failed, retrying in 15 seconds..."
@@ -175,9 +172,9 @@ jobs:
             elif [ $attempt -eq $max_attempts ]; then
               echo "❌ Preview deployment failed after $max_attempts attempts (HTTP $response)"
               echo "Fetching app logs for debugging..."
-              # Use already installed Heroku CLI for log retrieval
-              echo $HEROKU_API_KEY | heroku auth:token
-              heroku logs --tail --num 100 --app $APP_NAME || true
+              # Use full path for Heroku CLI
+              echo $HEROKU_API_KEY | /usr/local/bin/heroku auth:token
+              /usr/local/bin/heroku logs --tail --num 100 --app $APP_NAME || true
               exit 1
             else
               echo "Waiting for app to start... (HTTP $response)"
