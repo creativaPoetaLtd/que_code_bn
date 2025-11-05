@@ -1,0 +1,128 @@
+name: Deploy to Heroku
+
+on:
+  push:
+    branches:
+      - dev-2
+  pull_request:
+    branches:
+      - dev-2
+    types:
+      - closed
+
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10.8.1'
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run linter
+        run: pnpm run lint
+
+      - name: Build application
+        run: pnpm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-files
+          path: dist/
+
+  deploy:
+    name: Deploy to Heroku
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    
+    # Only run this job if the PR was merged (not just closed) or on direct push to dev-2
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-files
+          path: dist/
+
+      - name: Deploy to Heroku
+        uses: akhileshns/heroku-deploy@v3.13.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          usedocker: false
+          appdir: "."
+          procfile: "web: npm start"
+          healthcheck: "https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com/health"
+          checkstring: "ok"
+          rollbackonhealthcheckfailed: true
+          delay: 5
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Verify deployment health
+        run: |
+          echo "Checking application health..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com/health)
+          if [ $response -eq 200 ]; then
+            echo "✅ Application is healthy (HTTP $response)"
+          else
+            echo "❌ Application health check failed (HTTP $response)"
+            exit 1
+          fi
+
+  notification:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [test-and-build, deploy]
+    if: always()
+    
+    steps:
+      - name: Notify deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "🚀 Deployment to Heroku completed successfully!"
+            echo "🔗 Application URL: https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com"
+            echo "📊 Health Check: https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com/health"
+          else
+            echo "❌ Deployment to Heroku failed!"
+            echo "Build Status: ${{ needs.test-and-build.result }}"
+            echo "Deploy Status: ${{ needs.deploy.result }}"
+            exit 1
+          fi

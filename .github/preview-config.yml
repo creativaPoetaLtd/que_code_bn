@@ -1,0 +1,48 @@
+# PR Preview Configuration
+# This file contains settings for the PR preview deployment system
+
+# Branches that trigger PR previews
+PREVIEW_BRANCHES:
+  - dev-2
+  - main
+  - develop
+
+# Heroku app settings
+HEROKU_REGION: us
+HEROKU_STACK: heroku-22
+DATABASE_ADDON: heroku-postgresql:essential-0
+
+# Preview app limits
+MAX_PREVIEW_APPS: 10
+AUTO_CLEANUP_AFTER_DAYS: 7
+
+# Health check settings
+HEALTH_CHECK_TIMEOUT: 300  # 5 minutes
+HEALTH_CHECK_INTERVAL: 15  # seconds
+HEALTH_CHECK_RETRIES: 10
+
+# Database settings
+RUN_MIGRATIONS: true
+RUN_SEEDS: false  # Set to true if you want to seed preview databases
+
+# Notification settings
+POST_PR_COMMENTS: true
+UPDATE_GITHUB_STATUS: true
+NOTIFY_ON_SUCCESS: true
+NOTIFY_ON_FAILURE: true
+
+# Security settings
+COPY_ENV_VARS: true
+EXCLUDE_ENV_VARS:
+  - PRODUCTION_API_KEY
+  - STRIPE_LIVE_KEY
+  - SENDGRID_LIVE_KEY
+
+# Custom domains (optional)
+CUSTOM_DOMAIN_TEMPLATE: "{app-name}.preview.yourcompany.com"
+ENABLE_CUSTOM_DOMAINS: false
+
+# Advanced settings
+ENABLE_DRAFT_PREVIEWS: false  # Set to true to create previews for draft PRs
+ENABLE_FORK_PREVIEWS: false   # Set to true to create previews for forks (security risk)
+PARALLEL_DEPLOYMENTS: false   # Set to true to allow multiple concurrent deployments

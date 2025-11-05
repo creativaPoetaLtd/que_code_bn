@@ -1,0 +1,206 @@
+name: Deploy PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - dev-2
+      - main
+      - develop
+
+jobs:
+  deploy-preview:
+    name: Deploy PR Preview
+    runs-on: ubuntu-latest
+    
+    # Skip if PR is draft
+    if: github.event.pull_request.draft == false
+    
+    outputs:
+      preview-url: ${{ steps.deploy.outputs.preview-url }}
+      app-name: ${{ steps.deploy.outputs.app-name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10.8.1'
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run linter
+        run: pnpm run lint
+
+      - name: Build application
+        run: pnpm run build
+
+      - name: Generate app name
+        id: app-info
+        run: |
+          # Create a unique app name for this PR
+          APP_NAME="${{ secrets.HEROKU_APP_NAME }}-pr-${{ github.event.number }}"
+          # Heroku app names must be lowercase and contain only letters, numbers, and dashes
+          APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+          # Truncate if too long (Heroku limit is 30 characters)
+          APP_NAME=${APP_NAME:0:30}
+          echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
+
+      - name: Install Heroku CLI
+        run: |
+          curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Login to Heroku
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          echo $HEROKU_API_KEY | heroku auth:token
+
+      - name: Create or update Heroku app
+        id: deploy
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ steps.app-info.outputs.app-name }}
+        run: |
+          # Check if app already exists
+          if heroku apps:info $APP_NAME >/dev/null 2>&1; then
+            echo "App $APP_NAME already exists, updating..."
+          else
+            echo "Creating new app $APP_NAME..."
+            heroku apps:create $APP_NAME --region us
+            
+            # Copy environment variables from main app
+            echo "Copying environment variables..."
+            heroku config --app ${{ secrets.HEROKU_APP_NAME }} --shell | \
+              heroku config:set --app $APP_NAME $(cat)
+            
+            # Add database addon
+            heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME
+          fi
+          
+          # Set Git remote
+          heroku git:remote -a $APP_NAME
+          
+          # Deploy the code
+          git push heroku HEAD:main --force
+          
+          echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Run database migrations
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ steps.app-info.outputs.app-name }}
+        run: |
+          echo "Running database migrations..."
+          heroku run npm run migrate --app $APP_NAME
+
+      - name: Verify deployment
+        env:
+          APP_NAME: ${{ steps.app-info.outputs.app-name }}
+        run: |
+          echo "Verifying deployment..."
+          max_attempts=10
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt/$max_attempts..."
+            response=$(curl -s -o /dev/null -w "%{http_code}" https://$APP_NAME.herokuapp.com/health || echo "000")
+            
+            if [ "$response" = "200" ]; then
+              echo "✅ Preview deployment successful!"
+              echo "🔗 Preview URL: https://$APP_NAME.herokuapp.com"
+              echo "📊 Health Check: https://$APP_NAME.herokuapp.com/health"
+              break
+            elif [ $attempt -eq $max_attempts ]; then
+              echo "❌ Preview deployment failed after $max_attempts attempts (HTTP $response)"
+              exit 1
+            else
+              echo "Waiting for app to start... (HTTP $response)"
+              sleep 15
+              attempt=$((attempt + 1))
+            fi
+          done
+
+  comment-pr:
+    name: Comment on PR
+    runs-on: ubuntu-latest
+    needs: deploy-preview
+    if: always() && !cancelled()
+    
+    steps:
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v2
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 'Preview Deployment'
+
+      - name: Create or update PR comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## 🚀 Preview Deployment
+            
+            ${{ needs.deploy-preview.result == 'success' && '✅ **Deployment Successful**' || '❌ **Deployment Failed**' }}
+            
+            ${{ needs.deploy-preview.result == 'success' && format('
+            **Preview URL:** {0}
+            **Health Check:** {0}/health
+            **API Base:** {0}/api/v1
+            
+            ### 📊 Quick Links
+            - 🔍 [Health Status]({0}/health)
+            - 📚 [API Documentation]({0}/api-docs)
+            - 🗄️ [Database Status]({0}/api/v1)
+            
+            ### 🔧 App Details
+            - **App Name:** `{1}`
+            - **Branch:** `{2}`
+            - **Commit:** `{3}`
+            
+            > This preview will be automatically updated when you push new commits to this PR.
+            > The preview app will be deleted when the PR is closed or merged.
+            ', needs.deploy-preview.outputs.preview-url, needs.deploy-preview.outputs.app-name, github.head_ref, github.sha) || format('
+            **Error Details:**
+            Please check the [workflow logs]({0}) for more information.
+            
+            Common issues:
+            - Build or lint failures
+            - Database connection issues
+            - Environment variable misconfigurations
+            ', format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id)) }}
+            
+            ---
+            *Generated by GitHub Actions • [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*

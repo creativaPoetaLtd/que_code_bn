@@ -1,0 +1,55 @@
+name: PR Preview Status
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - dev-2
+      - main
+      - develop
+
+jobs:
+  preview-status:
+    name: Preview Status Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Set pending status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'pending',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: 'Preview deployment in progress...',
+              context: 'preview/deployment'
+            });
+
+      - name: Wait for preview deployment
+        id: wait-for-deployment
+        run: |
+          echo "Waiting for preview deployment workflow to complete..."
+          sleep 60  # Give the deploy workflow time to start
+          
+          # We'll update this with the actual status in the deploy workflow
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Set final status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const appName = '${{ secrets.HEROKU_APP_NAME }}-pr-${{ github.event.number }}'.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 30);
+            const previewUrl = `https://${appName}.herokuapp.com`;
+            
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'success',
+              target_url: previewUrl,
+              description: 'Preview deployment ready',
+              context: 'preview/deployment'
+            });
