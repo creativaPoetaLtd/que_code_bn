@@ -4,32 +4,27 @@ FROM node:22.14.0-alpine
 # Set working directory
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm globally
 RUN npm install -g pnpm@10.8.1
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
 
-# Copy package files and change ownership
-COPY --chown=nodejs:nodejs package.json pnpm-lock.yaml ./
-
-# Switch to nodejs user
-USER nodejs
-
-# Install dependencies
+# Install dependencies as root to avoid permission issues
 RUN pnpm install --frozen-lockfile
 
-# Copy source code and change ownership
-COPY --chown=nodejs:nodejs . .
-
-# Switch back to root to build
-USER root
+# Copy source code
+COPY . .
 
 # Build the application
 RUN pnpm run build
 
-# Switch back to nodejs user
+# Create non-root user for runtime security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+# Switch to nodejs user for runtime
 USER nodejs
 
 # Heroku sets the PORT environment variable
