@@ -73,48 +73,26 @@ jobs:
           echo "app-name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "preview-url=https://$APP_NAME.herokuapp.com" >> $GITHUB_OUTPUT
 
-      - name: Install Heroku CLI
-        run: |
-          curl https://cli-assets.heroku.com/install.sh | sh
-          echo "/usr/local/bin" >> $GITHUB_PATH
-
       - name: Deploy to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          APP_NAME: ${{ steps.app-info.outputs.app-name }}
-          HEROKU_EMAIL: ${{ secrets.HEROKU_EMAIL }}
-        run: |
-          # Login to Heroku
-          echo $HEROKU_API_KEY | heroku auth:token
-          
-          # Check if app exists, if not create it
-          if ! heroku apps:info --app $APP_NAME 2>/dev/null; then
-            echo "Creating Heroku app: $APP_NAME"
-            heroku create $APP_NAME
-          else
-            echo "Heroku app already exists: $APP_NAME"
-          fi
-          
-          # Add heroku remote if it doesn't exist
-          if ! git remote | grep -q heroku; then
-            heroku git:remote --app $APP_NAME
-          fi
-          
-          # Configure git
-          git config user.email "$HEROKU_EMAIL"
-          git config user.name "GitHub Actions"
-          
-          # Deploy to Heroku
-          echo "Deploying to Heroku..."
-          git push https://heroku:$HEROKU_API_KEY@git.heroku.com/$APP_NAME.git HEAD:main --force
-          
-          echo "✅ Deployment initiated successfully"
+        uses: akhileshns/heroku-deploy@v3.13.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ steps.app-info.outputs.app-name }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          usedocker: false
+          dontautocreate: false
+          buildpack: "heroku/nodejs"
+          branch: ${{ github.head_ref }}
+          dontuseforce: false
 
       - name: Set up database
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
+          # Install Heroku CLI
+          curl https://cli-assets.heroku.com/install.sh | sh
+          
           # Login to Heroku
           echo $HEROKU_API_KEY | heroku auth:token
           
@@ -135,6 +113,14 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
         run: |
+          # Ensure Heroku CLI is available
+          if ! command -v heroku &> /dev/null; then
+            curl https://cli-assets.heroku.com/install.sh | sh
+          fi
+          
+          # Login to Heroku
+          echo $HEROKU_API_KEY | heroku auth:token
+          
           echo "Running database migrations..."
           
           # Try migrations with retry logic
@@ -164,9 +150,10 @@ jobs:
       - name: Verify deployment
         env:
           APP_NAME: ${{ steps.app-info.outputs.app-name }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           echo "Verifying deployment..."
-          max_attempts=10
+          max_attempts=12
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
@@ -181,12 +168,17 @@ jobs:
               break
             elif [ $attempt -eq $max_attempts ]; then
               echo "❌ Preview deployment failed after $max_attempts attempts (HTTP $response)"
-              echo "App logs:"
+              echo "Fetching app logs for debugging..."
+              # Install Heroku CLI for log retrieval if needed
+              if ! command -v heroku &> /dev/null; then
+                curl https://cli-assets.heroku.com/install.sh | sh
+              fi
+              echo $HEROKU_API_KEY | heroku auth:token
               heroku logs --tail --num 100 --app $APP_NAME || true
               exit 1
             else
               echo "Waiting for app to start... (HTTP $response)"
-              sleep 15
+              sleep 20
               attempt=$((attempt + 1))
             fi
           done
