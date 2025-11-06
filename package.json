@@ -9,8 +9,7 @@
     "dev:verbose": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --require dotenv/config --poll --rs --clear src/index.ts",
     "build": "tsc",
     "start": "node --require dotenv/config dist/index.js",
-    "heroku-prebuild": "npm install -g pnpm@10.8.1",
-    "heroku-postbuild": "pnpm run build && pnpm run migrate",
+    "heroku-postbuild": "pnpm run build",
     "drop-all-tables": "psql -U your_username -d your_database_name -c \"SELECT 'DROP TABLE IF EXISTS \"' || tablename || '\" CASCADE;' FROM pg_tables WHERE schemaname = 'public'\" | psql -U your_username -d your_database_name",
     "migrate": "npx sequelize-cli db:migrate",
     "migrate:reset": "npx sequelize-cli db:migrate:undo:all && pnpm run migrate && pnpm run seed",
@@ -31,8 +30,7 @@
     "test": "npm-run-all run-tests run-after-tests --continue-on-error"
   },
   "engines": {
-    "node": "22.14.0",
-    "pnpm": "10.8.1"
+    "node": "22.14.0"
   },
   "keywords": [],
   "author": "",
@@ -56,9 +54,7 @@
     "husky": "^9.1.6",
     "nodemon": "^3.1.7",
     "rimraf": "^6.0.1",
-    "sequelize-cli": "^6.6.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.6.2"
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "@sequelize/postgres": "^7.0.0-alpha.43",
@@ -89,6 +85,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.2",
+    "sequelize-cli": "^6.6.2",
     "undici-types": "^6.19.8",
     "uuid": "^11.0.5"
   },
