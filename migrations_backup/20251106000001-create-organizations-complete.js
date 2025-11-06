@@ -87,7 +87,12 @@ module.exports = {
       categoryId: {
         type: Sequelize.UUID,
         allowNull: true,
-        // Note: Foreign key constraint will be added later after OrganizationCategories table is created
+        references: {
+          model: 'OrganizationCategories',
+          key: 'id',
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL',
       },
       createdAt: {
         type: Sequelize.DATE,

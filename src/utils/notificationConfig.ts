@@ -15,6 +15,7 @@ export enum NotificationType {
   GROUP_INVITATION_SENT = "GROUP_INVITATION_SENT",
   
   // Contact-related notifications
+  CONTACT_INVITATION_SENT = "CONTACT_INVITATION_SENT",
   CONTACT_REQUEST_RECEIVED = "CONTACT_REQUEST_RECEIVED",
   CONTACT_REQUEST_ACCEPTED = "CONTACT_REQUEST_ACCEPTED",
   CONTACT_REQUEST_REJECTED = "CONTACT_REQUEST_REJECTED",
@@ -133,6 +134,10 @@ const notificationConfig = {
   },
   
   // Contact notifications
+  [NotificationType.CONTACT_INVITATION_SENT]: {
+    description: "You have sent a contact invitation",
+    priority: "low",
+  },
   [NotificationType.CONTACT_REQUEST_RECEIVED]: {
     description: "You have received a contact request",
     priority: "high",
@@ -143,6 +148,22 @@ const notificationConfig = {
   },
   [NotificationType.CONTACT_REQUEST_REJECTED]: {
     description: "Your contact request has been rejected",
+    priority: "normal",
+  },
+  [NotificationType.CONTACT_ADDED]: {
+    description: "You have been added as a contact",
+    priority: "normal",
+  },
+  [NotificationType.CONTACT_BLOCKED]: {
+    description: "You have been blocked by a contact",
+    priority: "normal",
+  },
+  [NotificationType.CONTACT_UNBLOCKED]: {
+    description: "You have been unblocked by a contact",
+    priority: "normal",
+  },
+  [NotificationType.CONTACT_REMOVED]: {
+    description: "You have been removed from someone's contacts",
     priority: "normal",
   },
   

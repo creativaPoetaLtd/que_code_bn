@@ -11,7 +11,23 @@ export enum GroupMemberStatus {
     PENDING = "pending",
     ACTIVE = "active",
     LEFT = "left",
-    REMOVED = "removed"
+    REMOVED = "removed",
+    REJECTED = "rejected"
+}
+
+// Group Privacy Types
+export enum GroupPrivacyType {
+    PRIVATE = "private",
+    PUBLIC = "public",
+    REQUIRE_APPROVAL = "require_approval"
+}
+
+// Group Expiration Types
+export enum GroupExpirationType {
+    CUSTOM_DATE = "custom_date",
+    TARGET_REACHED = "target_reached",
+    DEADLINE_REACHED = "deadline_reached",
+    NEVER = "never"
 }
 
 
@@ -22,12 +38,23 @@ export interface GroupModelAttributes {
     description?: string;
     picture?: string;
     ownerId: string;
+    adminId?: string;
     qrCode?: string;
     accessLink?: string;
     accessToken?: string;
     isPrivate: boolean;
+    privacyType: GroupPrivacyType;
     maxMembers?: number;
     memberCount?: number;
+    hasFundraising: boolean;
+    fundraisingTarget?: number;
+    fundraisingCurrentAmount: number;
+    expirationDate?: Date;
+    expirationType: GroupExpirationType;
+    hasAdditionalInfo: boolean;
+    additionalInfoPrompt?: string;
+    profilePictureUrl?: string;
+    profilePicturePublicId?: string;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -38,12 +65,23 @@ export interface GroupCreationAttributes {
     description?: string;
     picture?: string;
     ownerId: string;
+    adminId?: string;
     qrCode?: CreationOptional<string>;
     accessLink?: CreationOptional<string>;
     accessToken?: CreationOptional<string>;
     isPrivate?: boolean;
+    privacyType?: GroupPrivacyType;
     maxMembers?: number;
     memberCount?: CreationOptional<number>;
+    hasFundraising?: boolean;
+    fundraisingTarget?: number;
+    fundraisingCurrentAmount?: CreationOptional<number>;
+    expirationDate?: Date;
+    expirationType?: GroupExpirationType;
+    hasAdditionalInfo?: boolean;
+    additionalInfoPrompt?: string;
+    profilePictureUrl?: string;
+    profilePicturePublicId?: string;
 }
 
 // Group Member Model Types
@@ -58,6 +96,13 @@ export interface GroupMemberModelAttributes {
     invitedAt: Date;
     respondedAt?: Date;
     invitationToken?: string;
+    invitationMessage?: string;
+    additionalInfo?: string;
+    autoApproved: boolean;
+    approvedBy?: string;
+    rejectedBy?: string;
+    rejectedAt?: Date;
+    rejectionReason?: string;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -73,6 +118,13 @@ export interface GroupMemberCreationAttributes {
     invitedAt?: CreationOptional<Date>;
     respondedAt?: Date;
     invitationToken?: string;
+    invitationMessage?: string;
+    additionalInfo?: string;
+    autoApproved?: boolean;
+    approvedBy?: string;
+    rejectedBy?: string;
+    rejectedAt?: Date;
+    rejectionReason?: string;
 }
 
 // API Request/Response Types
@@ -81,13 +133,23 @@ export interface CreateGroupRequest {
     description?: string;
     picture?: string;
     isPrivate?: boolean;
+    privacyType?: GroupPrivacyType;
     maxMembers?: number;
     memberIds?: string[]; // userIds of users to invite
+    adminId?: string; // Admin selected from contacts
+    hasFundraising?: boolean;
+    fundraisingTarget?: number;
+    expirationDate?: Date;
+    expirationType?: GroupExpirationType;
+    hasAdditionalInfo?: boolean;
+    additionalInfoPrompt?: string;
+    profilePictureFile?: File; // For file uploads
 }
 
 export interface InviteToGroupRequest {
     groupId: string;
-    memberIds: string[]; // userIds of users to invite
+    memberIds: string[];
+    invitationMessage?: string;
 }
 
 export interface RespondToGroupInvitationRequest {
@@ -95,8 +157,8 @@ export interface RespondToGroupInvitationRequest {
 }
 
 export interface JoinGroupByLinkRequest {
-    accessToken?: string;
-    qrCodeData?: string; // For QR code scanning
+    accessToken: string;
+    additionalInfo?: string;
 }
 
 export interface UpdateGroupRequest {
@@ -145,7 +207,7 @@ export interface GroupListResponse {
 }
 
 export interface RequestToJoinGroupRequest {
-    message?: string; // Optional message for the request
+    additionalInfo?: string;
 }
 
 export interface RespondToJoinRequestRequest {

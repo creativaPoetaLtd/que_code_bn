@@ -1,5 +1,6 @@
 import { NextFunction, Response } from "express";
 import { AuthenticatedRequest } from "../types/requests";
+import Models from "../database/models";
 import {
   getUserContacts,
   getContactById,
@@ -197,6 +198,141 @@ export {
   search_users,
   create_contact,
   get_contact_stats,
+  get_pending_invitations,
+  get_accepted_contacts,
+  get_sent_invitations,
+};
+
+// Get pending contact invitations
+const get_pending_invitations = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = req.user.id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    const [invitations, totalCount] = await Promise.all([
+      models.ContactInvitation.findAll({
+        where: {
+          inviteeId: userId,
+          status: "pending",
+        },
+        include: [
+          {
+            model: models.User,
+            as: "inviter",
+            attributes: ["id", "firstName", "lastName", "email"],
+          },
+        ],
+        order: [["invitedAt", "DESC"]],
+        limit,
+        offset,
+      }),
+      models.ContactInvitation.count({
+        where: {
+          inviteeId: userId,
+          status: "pending",
+        },
+      }),
+    ]);
+
+    const plainInvitations = invitations.map((invitation) => invitation.get({ plain: true }));
+
+    res.json({
+      invitations: plainInvitations,
+      totalCount,
+      currentPage: page,
+      totalPages: Math.ceil(totalCount / limit),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get accepted contacts (active contacts)
+const get_accepted_contacts = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const { contacts, totalCount } = await getUserContacts(
+      req.app,
+      req.user.id,
+      "active",
+      page,
+      limit
+    );
+
+    res.json({
+      contacts,
+      totalCount,
+      pagination: {
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get sent contact invitations
+const get_sent_invitations = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = req.user.id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    const [invitations, totalCount] = await Promise.all([
+      models.ContactInvitation.findAll({
+        where: {
+          inviterId: userId,
+        },
+        include: [
+          {
+            model: models.User,
+            as: "invitee",
+            attributes: ["id", "firstName", "lastName", "email"],
+          },
+        ],
+        order: [["invitedAt", "DESC"]],
+        limit,
+        offset,
+      }),
+      models.ContactInvitation.count({
+        where: {
+          inviterId: userId,
+        },
+      }),
+    ]);
+
+    const plainInvitations = invitations.map((invitation) => invitation.get({ plain: true }));
+
+    res.json({
+      invitations: plainInvitations,
+      totalCount,
+      currentPage: page,
+      totalPages: Math.ceil(totalCount / limit),
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 const contactController = {
@@ -207,6 +343,9 @@ const contactController = {
   search_users,
   create_contact,
   get_contact_stats,
+  get_pending_invitations,
+  get_accepted_contacts,
+  get_sent_invitations,
 };
 
 export default contactController;
