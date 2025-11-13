@@ -38,6 +38,8 @@ export interface UserModelAttributes {
   hasPinSet: boolean; // Whether user has set up their PIN
   pinAttempts: number; // Number of failed PIN attempts
   pinLockedUntil: Date | null; // Temporary lockout timestamp
+  isOnline?: boolean; // Online status
+  lastSeen?: Date; // Last seen timestamp
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -147,11 +149,17 @@ export interface ChatMessageAttributes {
   content: string;
   messageType: "text" | "image" | "file" | "money";
   transactionId?: string;
+  isEncrypted: boolean;
+  encryptionIv?: string;
+  status: "sent" | "delivered" | "read";
+  deliveredAt?: Date;
+  readAt?: Date;
   createdAt?: Date;
+  updatedAt?: Date;
 }
 export type ChatMessageCreationAttributes = Omit<
   ChatMessageAttributes,
-  "id" | "createdAt"
+  "id" | "createdAt" | "updatedAt"
 >;
 
 export interface ChatParticipantAttributes {

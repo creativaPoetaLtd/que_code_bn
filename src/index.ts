@@ -6,7 +6,7 @@ import {
 } from "./database/config/db.config";
 import * as http from "http";
 import { Server as SocketIOServer } from "socket.io";
-import { PORT } from "./utils/keys";
+// Remove PORT import since we define it locally as SERVER_PORT
 import Models from "./database/models";
 
 const startServer = async () => {
@@ -32,31 +32,27 @@ const startServer = async () => {
     // 5. Create and start server
     const server = http.createServer(app);
 
-    // 6. Set up Socket.IO
+    // 6. Set up Socket.IO with enhanced chat functionality
     const io = new SocketIOServer(server, {
       cors: {
-        origin: "*", // Adjust as needed
+        origin: process.env.NODE_ENV === "production" 
+          ? ["https://your-frontend-domain.com"] 
+          : ["http://localhost:3000", "http://localhost:3001"],
         methods: ["GET", "POST"],
+        credentials: true
       },
+      transports: ["websocket", "polling"]
     });
     app.set("io", io);
 
-    io.on("connection", (socket) => {
-      console.log("A user connected:", socket.id);
-      // You can add authentication and room joining logic here
-      // Client should emit 'join' with their userId after connecting
-      socket.on("join", (userId: string) => {
-        socket.join(userId);
-        console.log(`Socket ${socket.id} joined room ${userId}`);
-      });
-      socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.id);
-      });
-    });
+    // Initialize Socket Manager for enhanced chat functionality
+    const SocketManager = await import("./socket/socketManager");
+    const socketManager = new SocketManager.default(io, app);
+    app.set("socketManager", socketManager);
 
-    const PORT = process.env.PORT || 5500;
-    server.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
+    const SERVER_PORT = process.env.PORT || 5500;
+    server.listen(SERVER_PORT, () => {
+      console.log(`🚀 Server is running on port ${SERVER_PORT}`);
     });
 
     process.on("SIGINT", () => {

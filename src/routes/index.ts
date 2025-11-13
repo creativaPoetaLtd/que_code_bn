@@ -12,6 +12,7 @@ import profileRouter from "./profile.routes";
 import groupRouter from "./group.routes";
 import notificationRouter from "./notification.routes"; // Re-enabled
 import pinRouter from "./pin.routes";
+import chatRouter from "./chat.routes";
 
 const router = express.Router();
 router.use("/organizations", orgRouter);
@@ -28,4 +29,5 @@ router.use("/contacts", contactRouter);
 router.use("/contact-invitations", contactInvitationRouter);
 router.use("/groups", groupRouter); // Re-enabled after fixing compilation errors
 router.use("/notifications", notificationRouter); // Re-enabled
+router.use("/chats", chatRouter);
 export default router;

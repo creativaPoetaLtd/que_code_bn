@@ -21,6 +21,7 @@ export const DEV_MODE = process.env.DEV_MODE;
 export const CLONE_TIME = process.env.CLONE_TIME as string;
 export const PASS_EXPIRE_DURATION = process.env.PASS_EXPIRE_DURATION as string;
 export const DB_PROD_URL = process.env.DB_PROD_URL;
+export const JWT_SECRET = process.env.JWT_SECRET as string;
 
 export const MTN_CALLBACK_HOST = process.env.MTN_CALLBACK_HOST as string;
 export const MTN_CALLBACK_URL = process.env.MTN_CALLBACK_URL;
