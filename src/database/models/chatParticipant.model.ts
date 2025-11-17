@@ -9,6 +9,8 @@ class ChatParticipant extends Model<
   public id!: string;
   public chatId!: string;
   public userId!: string;
+  public joinedAt!: Date;
+  public lastReadAt?: Date;
 }
 
 const ChatParticipant_model = (sequelize: Sequelize) => {
@@ -20,7 +22,16 @@ const ChatParticipant_model = (sequelize: Sequelize) => {
       joinedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
       lastReadAt: DataTypes.DATE,
     },
-    { sequelize, tableName: "ChatParticipants" }
+    { 
+      sequelize, 
+      tableName: "ChatParticipants",
+      indexes: [
+        {
+          unique: true,
+          fields: ['chatId', 'userId']
+        }
+      ]
+    }
   );
 
   return ChatParticipant;
