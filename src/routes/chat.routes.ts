@@ -19,6 +19,9 @@ router.get("/:chatId/messages", chatController.getChatMessages as RequestHandler
 // Send message (HTTP endpoint for non-realtime scenarios)
 router.post("/:chatId/messages", chatController.sendMessage as RequestHandler);
 
+// Send media message (images, videos, audio, documents)
+router.post("/:chatId/media", chatController.upload.single('file'), chatController.sendMediaMessage as RequestHandler);
+
 // Mark messages as read
 router.post("/:chatId/read", chatController.markMessagesAsRead as RequestHandler);
 

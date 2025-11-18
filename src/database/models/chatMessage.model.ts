@@ -10,13 +10,21 @@ class ChatMessage extends Model<
   public chatId!: string;
   public senderId!: string;
   public content!: string;
-  public messageType!: "text" | "image" | "file" | "money";
+  public messageType!: "text" | "image" | "file" | "money" | "audio" | "video" | "document";
   public transactionId?: string;
   public isEncrypted!: boolean;
   public encryptionIv?: string;
   public status!: "sent" | "delivered" | "read";
   public deliveredAt?: Date;
   public readAt?: Date;
+  // Media fields
+  public mediaUrl?: string;
+  public mediaType?: string;
+  public fileSize?: number;
+  public thumbnailUrl?: string;
+  public fileName?: string;
+  public mimeType?: string;
+  public duration?: number;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -29,7 +37,7 @@ const ChatMessage_model = (sequelize: Sequelize) => {
       senderId: { type: DataTypes.UUID, allowNull: false },
       content: { type: DataTypes.TEXT, allowNull: false },
       messageType: {
-        type: DataTypes.ENUM("text", "image", "file", "money"),
+        type: DataTypes.ENUM("text", "image", "file", "money", "audio", "video", "document"),
         allowNull: false,
       },
       transactionId: DataTypes.UUID,
@@ -42,6 +50,14 @@ const ChatMessage_model = (sequelize: Sequelize) => {
       },
       deliveredAt: { type: DataTypes.DATE, allowNull: true },
       readAt: { type: DataTypes.DATE, allowNull: true },
+      // Media fields
+      mediaUrl: { type: DataTypes.TEXT, allowNull: true },
+      mediaType: { type: DataTypes.STRING, allowNull: true },
+      fileSize: { type: DataTypes.INTEGER, allowNull: true },
+      thumbnailUrl: { type: DataTypes.TEXT, allowNull: true },
+      fileName: { type: DataTypes.STRING, allowNull: true },
+      mimeType: { type: DataTypes.STRING, allowNull: true },
+      duration: { type: DataTypes.INTEGER, allowNull: true },
     },
     { 
       sequelize, 
@@ -53,6 +69,9 @@ const ChatMessage_model = (sequelize: Sequelize) => {
         },
         {
           fields: ['senderId']
+        },
+        {
+          fields: ['mediaUrl']
         }
       ]
     }

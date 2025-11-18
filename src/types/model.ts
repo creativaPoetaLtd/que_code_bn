@@ -149,13 +149,21 @@ export interface ChatMessageAttributes {
   chatId: string;
   senderId: string;
   content: string;
-  messageType: "text" | "image" | "file" | "money";
+  messageType: "text" | "image" | "file" | "money" | "audio" | "video" | "document";
   transactionId?: string;
   isEncrypted: boolean;
   encryptionIv?: string;
   status: "sent" | "delivered" | "read";
   deliveredAt?: Date;
   readAt?: Date;
+  // Media fields
+  mediaUrl?: string;
+  mediaType?: string;
+  fileSize?: number;
+  thumbnailUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  duration?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }

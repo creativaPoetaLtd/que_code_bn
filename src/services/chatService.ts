@@ -4,6 +4,7 @@ import Models from "../database/models";
 import { Op } from "sequelize";
 import MessageEncryption from "./messageEncryption.service";
 import bcrypt from "bcryptjs";
+import { uploadChatMedia } from "./mediaUploadService";
 
 export class ChatService {
   private static instance: ChatService;
@@ -246,6 +247,123 @@ export class ChatService {
       return messageWithSender;
     } catch (error) {
       console.error('Error sending message:', error);
+      throw error;
+    }
+  }
+
+  // Send media message (images, videos, audio, documents)
+  async sendMediaMessage(
+    senderId: string,
+    chatId: string,
+    file: Express.Multer.File,
+    caption: string = '',
+    models: any,
+    io?: any
+  ) {
+    try {
+      // Upload media to Cloudinary
+      const uploadResult = await uploadChatMedia(file);
+
+      if (!uploadResult.success || !uploadResult.data) {
+        throw new Error(uploadResult.error || 'Failed to upload media');
+      }
+
+      const {
+        url,
+        thumbnailUrl,
+        mediaType,
+        fileSize,
+        fileName,
+        mimeType,
+        duration
+      } = uploadResult.data;
+
+      // Determine message type based on media type
+      let messageType: string;
+      switch (mediaType) {
+        case 'image':
+          messageType = 'image';
+          break;
+        case 'video':
+          messageType = 'video';
+          break;
+        case 'audio':
+          messageType = 'audio';
+          break;
+        case 'document':
+          messageType = 'document';
+          break;
+        default:
+          messageType = 'file';
+      }
+
+      // Get chat key for encryption (if needed)
+      let chatKeyRecord = await models.ChatKey.findOne({
+        where: { chatId, userId: senderId }
+      });
+
+      if (!chatKeyRecord) {
+        await this.ensureChatKeyForUser(chatId, senderId, models);
+      }
+
+      // Save media message to database
+      const message = await models.ChatMessage.create({
+        chatId,
+        senderId,
+        content: caption || `Sent a ${mediaType}`,
+        messageType,
+        isEncrypted: false,
+        encryptionIv: '',
+        status: 'sent',
+        mediaUrl: url,
+        mediaType,
+        fileSize,
+        thumbnailUrl,
+        fileName,
+        mimeType,
+        duration,
+        createdAt: new Date()
+      });
+
+      // Get message with sender info for response
+      const messageWithSender = await models.ChatMessage.findByPk(message.id, {
+        include: [{
+          model: models.User,
+          as: 'sender',
+          attributes: ['id', 'firstName', 'lastName'],
+          include: [{
+            model: models.Profile,
+            as: 'profile',
+            attributes: ['profileImage']
+          }]
+        }]
+      });
+
+      // Broadcast to chat participants via Socket.IO
+      if (io) {
+        const participants = await models.ChatParticipant.findAll({
+          where: { chatId },
+          attributes: ['userId']
+        });
+
+        const broadcastMessage = messageWithSender.toJSON();
+
+        for (const participant of participants) {
+          io.to(`user:${participant.userId}`).emit('new_message', broadcastMessage);
+        }
+
+        // Update message delivery status
+        setTimeout(async () => {
+          await models.ChatMessage.update(
+            { status: 'delivered', deliveredAt: new Date() },
+            { where: { id: message.id } }
+          );
+        }, 100);
+      }
+
+      return messageWithSender;
+    } catch (error) {
+      console.error('Error sending media message:', error);
       throw error;
     }
   }

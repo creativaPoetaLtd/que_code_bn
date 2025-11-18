@@ -4,6 +4,9 @@ import Models from "../database/models";
 import { Op } from "sequelize";
 import { sequelizeConnection } from "../database/config/db.config";
 import ChatService from "../services/chatService";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 // Get user's chats (both DMs and group chats)
 export const getUserChats = async (
@@ -196,6 +199,14 @@ export const getChatMessages = async (
       deliveredAt: message.deliveredAt,
       readAt: message.readAt,
       createdAt: message.createdAt,
+      // Media fields
+      mediaUrl: message.mediaUrl,
+      mediaType: message.mediaType,
+      fileSize: message.fileSize,
+      thumbnailUrl: message.thumbnailUrl,
+      fileName: message.fileName,
+      mimeType: message.mimeType,
+      duration: message.duration,
       sender: {
         id: message.senderId,
         name: message.sender ? 
@@ -478,6 +489,122 @@ export const markMessagesAsRead = async (
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Failed to mark messages as read"
+    });
+  }
+};
+
+// Configure multer for media uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../../uploads/temp');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+export const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB max file size
+  }
+});
+
+// Send media message (images, videos, audio, documents)
+export const sendMediaMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId } = req.params;
+    const { caption } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      res.status(400).json({
+        success: false,
+        message: "No file uploaded"
+      });
+      return;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const chatService = ChatService.getInstance();
+
+    // Verify user is participant in the chat
+    const participant = await models.ChatParticipant.findOne({
+      where: { chatId, userId }
+    });
+
+    if (!participant) {
+      // Clean up uploaded file
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      
+      res.status(403).json({
+        success: false,
+        message: "You are not authorized to send messages to this chat"
+      });
+      return;
+    }
+
+    // Get Socket.IO instance for real-time updates
+    const io = req.app.get("io");
+
+    // Send media message using ChatService
+    const message = await chatService.sendMediaMessage(
+      userId,
+      chatId,
+      file,
+      caption || '',
+      models,
+      io
+    );
+
+    // Clean up temporary file after upload
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: message.id,
+        chatId,
+        content: message.content,
+        messageType: message.messageType,
+        status: message.status,
+        mediaUrl: message.mediaUrl,
+        mediaType: message.mediaType,
+        fileSize: message.fileSize,
+        thumbnailUrl: message.thumbnailUrl,
+        fileName: message.fileName,
+        mimeType: message.mimeType,
+        duration: message.duration,
+        createdAt: message.createdAt,
+        sender: message.get("sender")
+      }
+    });
+
+  } catch (error) {
+    console.error("Error sending media message:", error);
+    
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to send media message"
     });
   }
 };
