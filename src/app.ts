@@ -9,8 +9,12 @@ import router from "./routes";
 import { SESSION_SECRET } from "./utils/keys";
 import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
+import * as path from "path";
 
 const app = express();
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Session configuration
 app.use(

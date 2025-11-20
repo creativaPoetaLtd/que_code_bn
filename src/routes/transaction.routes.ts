@@ -1,5 +1,6 @@
 import express from "express";
 import transactionController from "../controllers/transactionController";
+import { downloadReceipt } from "../controllers/receiptController";
 import { authenticate } from "../middleware/auth.middleware";
 
 const router = express.Router();
@@ -7,6 +8,9 @@ router.use(authenticate);
 
 // Transfer money between users
 router.post("/transfer", transactionController.transferMoney as express.RequestHandler);
+
+// Download transaction receipt
+router.get("/receipt/:transactionId", downloadReceipt as express.RequestHandler);
 
 // Get wallet balance
 router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
