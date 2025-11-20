@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/requests';
 import * as bcrypt from 'bcrypt';
 import database_models from '../database/config/db.config';
+import sendEmail from '../helpers/email';
 
 const { User } = database_models;
 
@@ -404,10 +405,213 @@ const getPinStatus = async (req: AuthenticatedRequest, res: Response): Promise<v
   }
 };
 
+// Request PIN reset - generates and sends OTP
+const requestPinReset = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { verificationMethod } = req.body;
+
+    // Validate verification method
+    if (verificationMethod !== 'email' && verificationMethod !== 'sms') {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid verification method. Must be "email" or "sms"'
+      });
+      return;
+    }
+
+    // Only email is supported for now
+    if (verificationMethod === 'sms') {
+      res.status(400).json({
+        success: false,
+        message: 'SMS verification is not yet supported. Please use email.'
+      });
+      return;
+    }
+
+    // Find user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+      return;
+    }
+
+    // Check if user has a PIN set
+    if (!user.hasPinSet) {
+      res.status(400).json({
+        success: false,
+        message: 'No PIN is set for this user. Please set up a PIN first.'
+      });
+      return;
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 15 * 60000); // 15 minutes from now
+
+    // Store OTP in database
+    await user.update({
+      pinResetOtp: otp,
+      pinResetOtpExpires: otpExpires
+    });
+
+    // Send email with OTP
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'PIN Reset Code - QuéCode',
+        type: 'code',
+        data: {
+          code: otp,
+          name: user.firstName,
+          expiryTime: '15 minutes'
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `PIN reset code has been sent to your ${verificationMethod}`,
+        data: {
+          expiresIn: 15 // minutes
+        }
+      });
+
+    } catch (emailError) {
+      console.error('Failed to send PIN reset email:', emailError);
+      
+      // Clear the OTP if email fails
+      await user.update({
+        pinResetOtp: null,
+        pinResetOtpExpires: null
+      });
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send reset code. Please try again later.'
+      });
+    }
+
+  } catch (error) {
+    console.error('Request PIN reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error while requesting PIN reset'
+    });
+  }
+};
+
+// Confirm PIN reset - verifies OTP and sets new PIN
+const confirmPinReset = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { resetToken, newPin } = req.body;
+
+    // Validate inputs
+    if (!resetToken || !newPin) {
+      res.status(400).json({
+        success: false,
+        message: 'Reset code and new PIN are required'
+      });
+      return;
+    }
+
+    // Validate new PIN format
+    if (!validatePin(newPin)) {
+      res.status(400).json({
+        success: false,
+        message: 'New PIN must be exactly 4 digits'
+      });
+      return;
+    }
+
+    // Find user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+      return;
+    }
+
+    // Check if user has a PIN set
+    if (!user.hasPinSet) {
+      res.status(400).json({
+        success: false,
+        message: 'No PIN is set for this user'
+      });
+      return;
+    }
+
+    // Check if OTP exists
+    if (!user.pinResetOtp || !user.pinResetOtpExpires) {
+      res.status(400).json({
+        success: false,
+        message: 'No reset code found. Please request a new reset code.'
+      });
+      return;
+    }
+
+    // Check if OTP has expired
+    if (user.pinResetOtpExpires < new Date()) {
+      // Clear expired OTP
+      await user.update({
+        pinResetOtp: null,
+        pinResetOtpExpires: null
+      });
+
+      res.status(400).json({
+        success: false,
+        message: 'Reset code has expired. Please request a new one.'
+      });
+      return;
+    }
+
+    // Verify OTP
+    if (user.pinResetOtp !== resetToken) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid reset code. Please check and try again.'
+      });
+      return;
+    }
+
+    // Hash the new PIN
+    const saltRounds = 10;
+    const hashedNewPin = await bcrypt.hash(newPin, saltRounds);
+
+    // Update user with new PIN and clear reset data
+    await user.update({
+      transactionPin: hashedNewPin,
+      pinResetOtp: null,
+      pinResetOtpExpires: null,
+      pinAttempts: 0, // Reset failed attempts
+      pinLockedUntil: null // Clear any lockout
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'PIN has been reset successfully'
+    });
+
+  } catch (error) {
+    console.error('Confirm PIN reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error while confirming PIN reset'
+    });
+  }
+};
+
 export default {
   setupPIN,
   verifyPIN,
   changePIN,
   resetPinAttempts,
-  getPinStatus
+  getPinStatus,
+  requestPinReset,
+  confirmPinReset
 };
