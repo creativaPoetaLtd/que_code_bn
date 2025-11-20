@@ -22,6 +22,10 @@ import role_model from "./role.model";
 import permission_model from "./permission.model";
 import rolePermission_model from "./rolePermission.model";
 import userRole_model from "./userRole.model";
+import action_model from "./action.model";
+import subAction_model from "./subAction.model";
+import actionPurchase_model from "./actionPurchase.model";
+import qrObject_model from "./qrObject.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -52,6 +56,12 @@ const Models = (sequelize: Sequelize) => {
   const Permission = permission_model(sequelize);
   const RolePermission = rolePermission_model(sequelize);
   const UserRole = userRole_model(sequelize);
+
+  // Action models
+  const Action = action_model(sequelize);
+  const SubAction = subAction_model(sequelize);
+  const ActionPurchase = actionPurchase_model(sequelize);
+  const QRObject = qrObject_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
 
@@ -117,6 +127,89 @@ const Models = (sequelize: Sequelize) => {
   Transaction.belongsTo(Category, {
     foreignKey: "categoryId",
     as: "category",
+  });
+
+  // Action associations
+  Organization.hasMany(Action, { foreignKey: "organizationId", as: "actions" });
+  Action.belongsTo(Organization, {
+    foreignKey: "organizationId",
+    as: "organization",
+  });
+
+  Action.hasMany(SubAction, { foreignKey: "actionId", as: "subActions" });
+  SubAction.belongsTo(Action, { foreignKey: "actionId", as: "action" });
+
+  Action.hasMany(ActionPurchase, {
+    foreignKey: "actionId",
+    as: "purchases",
+  });
+  ActionPurchase.belongsTo(Action, { foreignKey: "actionId", as: "action" });
+
+  SubAction.hasMany(ActionPurchase, {
+    foreignKey: "subActionId",
+    as: "purchases",
+  });
+  ActionPurchase.belongsTo(SubAction, {
+    foreignKey: "subActionId",
+    as: "subAction",
+  });
+
+  User.hasMany(ActionPurchase, { foreignKey: "buyerId", as: "actionPurchases" });
+  ActionPurchase.belongsTo(User, { foreignKey: "buyerId", as: "buyer" });
+
+  Organization.hasMany(ActionPurchase, {
+    foreignKey: "organizationId",
+    as: "actionSales",
+  });
+  ActionPurchase.belongsTo(Organization, {
+    foreignKey: "organizationId",
+    as: "seller",
+  });
+
+  Transaction.hasOne(ActionPurchase, {
+    foreignKey: "transactionId",
+    as: "actionPurchase",
+  });
+  ActionPurchase.belongsTo(Transaction, {
+    foreignKey: "transactionId",
+    as: "transaction",
+  });
+
+  ActionPurchase.hasOne(QRObject, {
+    foreignKey: "actionPurchaseId",
+    as: "qrObject",
+  });
+  QRObject.belongsTo(ActionPurchase, {
+    foreignKey: "actionPurchaseId",
+    as: "actionPurchase",
+  });
+
+  User.hasMany(QRObject, { foreignKey: "buyerId", as: "qrObjects" });
+  QRObject.belongsTo(User, { foreignKey: "buyerId", as: "buyer" });
+
+  Action.hasMany(QRObject, { foreignKey: "actionId", as: "qrObjects" });
+  QRObject.belongsTo(Action, { foreignKey: "actionId", as: "action" });
+
+  SubAction.hasMany(QRObject, {
+    foreignKey: "subActionId",
+    as: "qrObjects",
+  });
+  QRObject.belongsTo(SubAction, {
+    foreignKey: "subActionId",
+    as: "subAction",
+  });
+
+  // Transaction action links
+  Action.hasMany(Transaction, { foreignKey: "actionId", as: "transactions" });
+  Transaction.belongsTo(Action, { foreignKey: "actionId", as: "action" });
+
+  SubAction.hasMany(Transaction, {
+    foreignKey: "subActionId",
+    as: "transactions",
+  });
+  Transaction.belongsTo(SubAction, {
+    foreignKey: "subActionId",
+    as: "subAction",
   });
 
   // Payments
@@ -297,6 +390,10 @@ const Models = (sequelize: Sequelize) => {
     Permission,
     RolePermission,
     UserRole,
+    Action,
+    SubAction,
+    ActionPurchase,
+    QRObject,
   };
 };
 
