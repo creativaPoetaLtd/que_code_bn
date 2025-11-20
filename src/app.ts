@@ -36,6 +36,16 @@ app.use(express.urlencoded({ extended: true }));
 // Setup Swagger documentation
 setupSwagger(app);
 
+// Health check endpoint for deployment monitoring
+app.get("/health", (_req, res) => {
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 // Routes
 app.use("/api/v1", router);
 app.use("/api/v1/auth", authRouter);

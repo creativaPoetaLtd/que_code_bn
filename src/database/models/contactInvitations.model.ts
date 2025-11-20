@@ -29,7 +29,7 @@ const ContactInvitation_model = (sequelize: Sequelize) => {
         type: DataTypes.ENUM("pending", "accepted", "declined", "expired"),
         defaultValue: "pending",
       },
-      invitationToken: { type: DataTypes.STRING, allowNull: false },
+      invitationToken: { type: DataTypes.TEXT, allowNull: false },
       invitedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
       respondedAt: DataTypes.DATE,
       expiresAt: DataTypes.DATE,

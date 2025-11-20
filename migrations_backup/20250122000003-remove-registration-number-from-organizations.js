@@ -48,12 +48,42 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      // Add back registrationNumber column
-      await queryInterface.addColumn("Organizations", "registrationNumber", {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: "",
-      }, { transaction });
+      // Check if Organizations table exists
+      const [organizationsExists] = await queryInterface.sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'Organizations'
+        );
+      `, { transaction });
+      
+      if (!organizationsExists[0].exists) {
+        console.log("ℹ️ Organizations table doesn't exist, skipping registrationNumber restoration");
+        await transaction.commit();
+        return;
+      }
+
+      // Check if registrationNumber column already exists
+      const [registrationNumberExists] = await queryInterface.sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+          AND table_name = 'Organizations'
+          AND column_name = 'registrationNumber'
+        );
+      `, { transaction });
+      
+      if (!registrationNumberExists[0].exists) {
+        // Add back registrationNumber column
+        await queryInterface.addColumn("Organizations", "registrationNumber", {
+          type: Sequelize.STRING,
+          allowNull: false,
+          defaultValue: "",
+        }, { transaction });
+        console.log("✅ Added registrationNumber column back to Organizations table");
+      } else {
+        console.log("ℹ️ registrationNumber column already exists in Organizations table");
+      }
 
       await transaction.commit();
     } catch (error) {

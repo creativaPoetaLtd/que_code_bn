@@ -49,9 +49,45 @@ module.exports = {
         defaultValue: false,
         allowNull: false,
       },
+      // Additional fields that were being added by other migrations
+      description: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+        defaultValue: '',
+      },
+      address: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+        defaultValue: '',
+      },
+      services: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+        defaultValue: '',
+      },
+      welcomeMessage: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+        defaultValue: '',
+      },
+      showWelcomeToNewUsers: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
+      },
+      showWelcomeToExistingUsers: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+      },
+      qrCode: {
+        type: Sequelize.TEXT, // Changed from STRING to TEXT for longer QR codes
+        allowNull: true,
+      },
       categoryId: {
         type: Sequelize.UUID,
         allowNull: true,
+        // Note: Foreign key constraint will be added later after OrganizationCategories table is created
       },
       createdAt: {
         type: Sequelize.DATE,
@@ -65,9 +101,18 @@ module.exports = {
       },
     });
 
+    // Add indexes for better performance
     await queryInterface.addIndex("Organizations", ["email"], {
       name: "idx_organizations_email",
       unique: true,
+    });
+
+    await queryInterface.addIndex("Organizations", ["categoryId"], {
+      name: "idx_organizations_category",
+    });
+
+    await queryInterface.addIndex("Organizations", ["approvalStatus"], {
+      name: "idx_organizations_approval_status",
     });
   },
 

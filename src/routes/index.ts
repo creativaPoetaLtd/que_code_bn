@@ -6,12 +6,13 @@ import resetRouter from "./reset.routes";
 import transactionRouter from "./transaction.routes";
 import analyticsRouter from "./analytics.routes";
 import contactRouter from "./contact.routes";
-// import contactInvitationRouter from "./contactInvitation.routes"; // Temporarily disabled
+import contactInvitationRouter from "./contactInvitation.routes";
 import organizationCategoryRouter from "./organizationCategory.routes";
 import profileRouter from "./profile.routes";
 import groupRouter from "./group.routes";
 import notificationRouter from "./notification.routes"; // Re-enabled
 import pinRouter from "./pin.routes";
+import chatRouter from "./chat.routes";
 
 const router = express.Router();
 router.use("/organizations", orgRouter);
@@ -25,7 +26,8 @@ router.use("/transactions", transactionRouter);
 router.use("/analytics", analyticsRouter);
 
 router.use("/contacts", contactRouter);
-// router.use("/contact-invitations", contactInvitationRouter); // Temporarily disabled
+router.use("/contact-invitations", contactInvitationRouter);
 router.use("/groups", groupRouter); // Re-enabled after fixing compilation errors
 router.use("/notifications", notificationRouter); // Re-enabled
+router.use("/chats", chatRouter);
 export default router;

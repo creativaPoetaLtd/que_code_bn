@@ -11,6 +11,8 @@ import groupMember_model from "./groupMember.model";
 import chat_model from "./chat.model";
 import chatParticipant_model from "./chatParticipant.model";
 import chatMessage_model from "./chatMessage.model";
+import chatKey_model from "./chatKey.model";
+import userKey_model from "./userKey.model";
 import WalletRestriction_model from "./walletRestrictions.model";
 import Category_model from "./categories.model";
 import ExternalAccount_model from "./externalAccounts.model";
@@ -41,6 +43,8 @@ const Models = (sequelize: Sequelize) => {
   const Chat = chat_model(sequelize);
   const ChatParticipant = chatParticipant_model(sequelize);
   const ChatMessage = chatMessage_model(sequelize);
+  const ChatKey = chatKey_model(sequelize);
+  const UserKey = userKey_model(sequelize);
 
   const Notification = notification_model(sequelize);
 
@@ -143,6 +147,9 @@ const Models = (sequelize: Sequelize) => {
   User.hasMany(Group, { foreignKey: "ownerId", as: "ownedGroups" });
   Group.belongsTo(User, { foreignKey: "ownerId", as: "owner" });
 
+  User.hasMany(Group, { foreignKey: "adminId", as: "adminGroups" });
+  Group.belongsTo(User, { foreignKey: "adminId", as: "admin" });
+
   Group.hasMany(GroupMember, { foreignKey: "groupId", as: "members" });
   GroupMember.belongsTo(Group, { foreignKey: "groupId", as: "group" });
 
@@ -155,6 +162,18 @@ const Models = (sequelize: Sequelize) => {
   });
   GroupMember.belongsTo(User, { foreignKey: "invitedBy", as: "inviter" });
 
+  User.hasMany(GroupMember, {
+    foreignKey: "approvedBy",
+    as: "approvedMemberships",
+  });
+  GroupMember.belongsTo(User, { foreignKey: "approvedBy", as: "approver" });
+
+  User.hasMany(GroupMember, {
+    foreignKey: "rejectedBy",
+    as: "rejectedMemberships",
+  });
+  GroupMember.belongsTo(User, { foreignKey: "rejectedBy", as: "rejector" });
+
   // Chats
   Chat.hasMany(ChatParticipant, { foreignKey: "chatId", as: "participants" });
   ChatParticipant.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
@@ -164,6 +183,10 @@ const Models = (sequelize: Sequelize) => {
     as: "chatMemberships",
   });
   ChatParticipant.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  // Chat-Group association
+  Group.hasOne(Chat, { foreignKey: "groupId", as: "chat" });
+  Chat.belongsTo(Group, { foreignKey: "groupId", as: "group" });
 
   Chat.hasMany(ChatMessage, { foreignKey: "chatId", as: "messages" });
   ChatMessage.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
@@ -179,6 +202,17 @@ const Models = (sequelize: Sequelize) => {
     foreignKey: "transactionId",
     as: "transaction",
   });
+
+  // Chat Encryption Keys
+  Chat.hasMany(ChatKey, { foreignKey: "chatId", as: "chatKeys" });
+  ChatKey.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
+  
+  User.hasMany(ChatKey, { foreignKey: "userId", as: "chatKeys" });
+  ChatKey.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  // User Encryption Keys
+  User.hasOne(UserKey, { foreignKey: "userId", as: "encryptionKeys" });
+  UserKey.belongsTo(User, { foreignKey: "userId", as: "user" });
 
   // Notifications
   User.hasMany(Notification, { foreignKey: "userId", as: "notifications" });
@@ -250,6 +284,8 @@ const Models = (sequelize: Sequelize) => {
     Chat,
     ChatParticipant,
     ChatMessage,
+    ChatKey,
+    UserKey,
     Notification,
     Role,
     Permission,

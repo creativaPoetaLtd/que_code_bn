@@ -38,6 +38,8 @@ export interface UserModelAttributes {
   hasPinSet: boolean; // Whether user has set up their PIN
   pinAttempts: number; // Number of failed PIN attempts
   pinLockedUntil: Date | null; // Temporary lockout timestamp
+  isOnline?: boolean; // Online status
+  lastSeen?: Date; // Last seen timestamp
   pinResetOtp: string | null; // OTP for PIN reset
   pinResetOtpExpires: Date | null; // PIN reset OTP expiration
   createdAt?: Date;
@@ -149,11 +151,17 @@ export interface ChatMessageAttributes {
   content: string;
   messageType: "text" | "image" | "file" | "money";
   transactionId?: string;
+  isEncrypted: boolean;
+  encryptionIv?: string;
+  status: "sent" | "delivered" | "read";
+  deliveredAt?: Date;
+  readAt?: Date;
   createdAt?: Date;
+  updatedAt?: Date;
 }
 export type ChatMessageCreationAttributes = Omit<
   ChatMessageAttributes,
-  "id" | "createdAt"
+  "id" | "createdAt" | "updatedAt"
 >;
 
 export interface ChatParticipantAttributes {
@@ -189,10 +197,15 @@ export interface ContactInvitationAttributes {
   invitedAt: Date;
   respondedAt?: Date;
   expiresAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+  // Association properties
+  inviter?: UserModelAttributes;
+  invitee?: UserModelAttributes;
 }
 export type ContactInvitationCreationAttributes = Omit<
   ContactInvitationAttributes,
-  "id"
+  "id" | "inviter" | "invitee" | "createdAt" | "updatedAt"
 >;
 
 export interface ExternalAccountAttributes {
@@ -218,12 +231,23 @@ export interface GroupAttributes {
   description?: string;
   picture?: string;
   ownerId: string;
+  adminId?: string;
   qrCode?: string;
   accessLink?: string;
   accessToken?: string;
   isPrivate: boolean;
+  privacyType: "private" | "public" | "require_approval";
   maxMembers?: number;
   memberCount?: number;
+  hasFundraising: boolean;
+  fundraisingTarget?: number;
+  fundraisingCurrentAmount: number;
+  expirationDate?: Date;
+  expirationType: "custom_date" | "target_reached" | "deadline_reached" | "never";
+  hasAdditionalInfo: boolean;
+  additionalInfoPrompt?: string;
+  profilePictureUrl?: string;
+  profilePicturePublicId?: string;
   walletId?: string;
   lifeTime?: number;
   createdAt?: Date;
@@ -231,7 +255,7 @@ export interface GroupAttributes {
 }
 export type GroupCreationAttributes = Omit<
   GroupAttributes,
-  "id" | "createdAt" | "updatedAt" | "memberCount"
+  "id" | "createdAt" | "updatedAt" | "memberCount" | "fundraisingCurrentAmount"
 >;
 
 export interface GroupMemberAttributes {
@@ -239,13 +263,22 @@ export interface GroupMemberAttributes {
   groupId: string;
   userId: string;
   role: "owner" | "admin" | "member";
-  status: "pending" | "active" | "left" | "removed";
+  status: "pending" | "active" | "left" | "removed" | "rejected";
   invitedBy?: string;
   joinedAt?: Date;
   invitedAt?: Date;
   respondedAt?: Date;
+  invitationMessage?: string;
+  additionalInfo?: string;
+  autoApproved: boolean;
+  approvedBy?: string;
+  rejectedBy?: string;
+  rejectedAt?: Date;
+  rejectionReason?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
-export type GroupMemberCreationAttributes = Omit<GroupMemberAttributes, "id">;
+export type GroupMemberCreationAttributes = Omit<GroupMemberAttributes, "id" | "createdAt" | "updatedAt">;
 
 export interface NotificationAttributes {
   id: string;

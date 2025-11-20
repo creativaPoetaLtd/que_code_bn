@@ -49,6 +49,60 @@ export const validateGroupCreation = [
         .isLength({ min: 1 })
         .withMessage('Member ID cannot be empty'),
 
+    body('adminId')
+        .optional()
+        .isUUID()
+        .withMessage('adminId must be a valid UUID'),
+
+    body('privacyType')
+        .optional()
+        .isIn(['private', 'public', 'require_approval'])
+        .withMessage('Privacy type must be private, public, or require_approval'),
+
+    body('hasFundraising')
+        .optional()
+        .isBoolean()
+        .withMessage('hasFundraising must be a boolean'),
+
+    body('fundraisingTarget')
+        .optional()
+        .custom((value, { req }) => {
+            if (req.body.hasFundraising && !value) {
+                throw new Error('Fundraising target is required when fundraising is enabled');
+            }
+            if (value && (isNaN(value) || parseFloat(value) <= 0)) {
+                throw new Error('Fundraising target must be a positive number');
+            }
+            return true;
+        }),
+
+    body('expirationDate')
+        .optional()
+        .isISO8601()
+        .withMessage('Expiration date must be a valid date'),
+
+    body('expirationType')
+        .optional()
+        .isIn(['custom_date', 'target_reached', 'deadline_reached', 'never'])
+        .withMessage('Expiration type must be custom_date, target_reached, deadline_reached, or never'),
+
+    body('hasAdditionalInfo')
+        .optional()
+        .isBoolean()
+        .withMessage('hasAdditionalInfo must be a boolean'),
+
+    body('additionalInfoPrompt')
+        .optional()
+        .custom((value, { req }) => {
+            if (req.body.hasAdditionalInfo && !value) {
+                throw new Error('Additional info prompt is required when additional info is enabled');
+            }
+            if (value && value.length > 500) {
+                throw new Error('Additional info prompt cannot exceed 500 characters');
+            }
+            return true;
+        }),
+
     (req: Request, res: Response, next: NextFunction) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

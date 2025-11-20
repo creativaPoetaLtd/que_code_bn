@@ -2,7 +2,6 @@
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
 import { ChatMessageAttributes, ChatMessageCreationAttributes } from "../../types/model";
 
-
 class ChatMessage extends Model<
   ChatMessageAttributes,
   ChatMessageCreationAttributes
@@ -12,6 +11,14 @@ class ChatMessage extends Model<
   public senderId!: string;
   public content!: string;
   public messageType!: "text" | "image" | "file" | "money";
+  public transactionId?: string;
+  public isEncrypted!: boolean;
+  public encryptionIv?: string;
+  public status!: "sent" | "delivered" | "read";
+  public deliveredAt?: Date;
+  public readAt?: Date;
+  public createdAt!: Date;
+  public updatedAt!: Date;
 }
 
 const ChatMessage_model = (sequelize: Sequelize) => {
@@ -26,8 +33,29 @@ const ChatMessage_model = (sequelize: Sequelize) => {
         allowNull: false,
       },
       transactionId: DataTypes.UUID,
+      isEncrypted: { type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false },
+      encryptionIv: { type: DataTypes.STRING, allowNull: true },
+      status: { 
+        type: DataTypes.ENUM("sent", "delivered", "read"), 
+        defaultValue: "sent", 
+        allowNull: false 
+      },
+      deliveredAt: { type: DataTypes.DATE, allowNull: true },
+      readAt: { type: DataTypes.DATE, allowNull: true },
     },
-    { sequelize, tableName: "ChatMessages" }
+    { 
+      sequelize, 
+      tableName: "ChatMessages",
+      timestamps: true,
+      indexes: [
+        {
+          fields: ['chatId', 'createdAt']
+        },
+        {
+          fields: ['senderId']
+        }
+      ]
+    }
   );
 
   return ChatMessage;
