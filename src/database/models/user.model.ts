@@ -16,6 +16,8 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
   public hasPinSet!: boolean; // Whether user has set up their PIN
   public pinAttempts!: number; // Number of failed PIN attempts
   public pinLockedUntil!: Date | null; // Temporary lockout timestamp
+  public pinResetOtp!: string | null; // OTP for PIN reset
+  public pinResetOtpExpires!: Date | null; // PIN reset OTP expiration
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -42,6 +44,8 @@ const User_model = (sequelize: Sequelize) => {
       hasPinSet: { type: DataTypes.BOOLEAN, defaultValue: false }, // PIN setup status
       pinAttempts: { type: DataTypes.INTEGER, defaultValue: 0 }, // Failed attempts counter
       pinLockedUntil: { type: DataTypes.DATE, allowNull: true }, // Lockout timestamp
+      pinResetOtp: { type: DataTypes.STRING, allowNull: true }, // PIN reset OTP
+      pinResetOtpExpires: { type: DataTypes.DATE, allowNull: true }, // PIN reset OTP expiration
     },
     {
       sequelize,

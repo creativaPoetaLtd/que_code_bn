@@ -38,13 +38,15 @@ export interface UserModelAttributes {
   hasPinSet: boolean; // Whether user has set up their PIN
   pinAttempts: number; // Number of failed PIN attempts
   pinLockedUntil: Date | null; // Temporary lockout timestamp
+  pinResetOtp: string | null; // OTP for PIN reset
+  pinResetOtpExpires: Date | null; // PIN reset OTP expiration
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type UserCreationAttributes = Optional<
   UserModelAttributes,
-  "id" | "createdAt" | "updatedAt" | "isVerified" | "approvalStatus" | "transactionPin" | "hasPinSet" | "pinAttempts" | "pinLockedUntil"
+  "id" | "createdAt" | "updatedAt" | "isVerified" | "approvalStatus" | "transactionPin" | "hasPinSet" | "pinAttempts" | "pinLockedUntil" | "pinResetOtp" | "pinResetOtpExpires"
 > & {
   firstName: string;
   lastName: string;

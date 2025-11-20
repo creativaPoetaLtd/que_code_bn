@@ -17,6 +17,12 @@ router.put("/change", pinController.changePIN as express.RequestHandler);
 // Reset PIN attempts (admin function)
 router.post("/reset-attempts", pinController.resetPinAttempts as express.RequestHandler);
 
+// Request PIN reset - sends OTP to email
+router.post("/request-reset", pinController.requestPinReset as express.RequestHandler);
+
+// Confirm PIN reset - verifies OTP and sets new PIN
+router.post("/confirm-reset", pinController.confirmPinReset as express.RequestHandler);
+
 // Get PIN status for current user
 router.get("/status", pinController.getPinStatus as express.RequestHandler);
 

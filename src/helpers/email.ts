@@ -76,7 +76,7 @@ class EmailService {
           <div style="text-align: center;">
             <h2 style="color: #333; font-size: 22px; font-weight: bold;">Verification Code</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-              Use the following verification code to complete your action. This code will expire in 2 days. Please do not share it with anyone.
+              Use the following verification code to complete your action. This code will expire in ${data.expiryTime || '2 days'}. Please do not share it with anyone.
             </p>
             <div style="display: inline-flex; justify-content: center; align-items: center; gap: 15px; margin: 0 auto 30px;">
               ${[...data.code]
