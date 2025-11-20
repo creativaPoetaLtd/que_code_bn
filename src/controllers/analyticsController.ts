@@ -98,12 +98,21 @@ const getExpenseSummary = async (req: Request, res: Response): Promise<void> => 
 // GET /api/analytics/category-breakdown - Get expense breakdown by categories
 const getCategoryBreakdown = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, startDate, endDate } = req.query;
+    const { userId, startDate, endDate, type = 'expenses' } = req.query;
     
     if (!userId || typeof userId !== 'string') {
       res.status(400).json({
         success: false,
         message: 'User ID is required'
+      });
+      return;
+    }
+
+    // Validate type parameter
+    if (type !== 'expenses' && type !== 'income') {
+      res.status(400).json({
+        success: false,
+        message: 'Type must be either "expenses" or "income"'
       });
       return;
     }
@@ -129,13 +138,21 @@ const getCategoryBreakdown = async (req: Request, res: Response): Promise<void> 
       if (endDate) dateFilter.createdAt[Op.lte] = new Date(endDate as string);
     }
 
-    // Get expense breakdown by category
+    // Build query based on type (expenses = sent, income = received)
+    const whereClause: any = {
+      status: 'completed',
+      ...dateFilter
+    };
+
+    if (type === 'expenses') {
+      whereClause.senderWalletId = wallet.id;
+    } else {
+      whereClause.receiverWalletId = wallet.id;
+    }
+
+    // Get category breakdown
     const categoryBreakdown = await TransactionModel.findAll({
-      where: {
-        senderWalletId: wallet.id,
-        status: 'completed',
-        ...dateFilter
-      },
+      where: whereClause,
       include: [
         {
           model: Category,
