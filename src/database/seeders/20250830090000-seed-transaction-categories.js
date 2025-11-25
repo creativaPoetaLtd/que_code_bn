@@ -4,6 +4,16 @@ const { v4: uuidv4 } = require('uuid');
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    // Check if categories already exist
+    const [existingCategories] = await queryInterface.sequelize.query(
+      `SELECT name FROM "Categories" WHERE name IN ('Food', 'Transport', 'Entertainment', 'Utilities', 'Rent', 'Healthcare', 'Education', 'Shopping', 'Travel', 'Other')`
+    );
+
+    if (existingCategories && existingCategories.length > 0) {
+      console.log('✅ Categories already exist, skipping seeding');
+      return;
+    }
+
     const now = new Date();
     await queryInterface.bulkInsert('Categories', [
       {
@@ -87,6 +97,8 @@ module.exports = {
         updatedAt: now
       }
     ], {});
+
+    console.log('✅ Successfully seeded transaction categories');
   },
 
   down: async (queryInterface, Sequelize) => {
