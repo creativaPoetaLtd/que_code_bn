@@ -60,6 +60,7 @@
   },
   "dependencies": {
     "@sequelize/postgres": "^7.0.0-alpha.43",
+    "@types/pdfkit": "^0.17.3",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "axios": "^1.11.0",
@@ -80,6 +81,7 @@
     "nodemailer": "^6.9.16",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "pdfkit": "^0.17.2",
     "pg": "^8.13.0",
     "qrcode": "^1.5.4",
     "react-toastify": "^10.0.6",

@@ -9,8 +9,12 @@ import router from "./routes";
 import { SESSION_SECRET } from "./utils/keys";
 import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
+import * as path from "path";
 
 const app = express();
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Session configuration
 app.use(
@@ -25,12 +29,22 @@ app.use(
   })
 );
 
+// CORS configuration - allow credentials with specific origin
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400, // 24 hours
+};
+
 // Middleware
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(cookieParser());
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.urlencoded({ extended: true }));
 
 // Setup Swagger documentation

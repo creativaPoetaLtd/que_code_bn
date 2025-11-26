@@ -1,6 +1,7 @@
 import { Router, RequestHandler } from "express";
 import { authenticate } from "../middleware/auth.middleware";
 import * as chatController from "../controllers/chatController";
+import * as chatMoneyController from "../controllers/chatMoneyController";
 
 const router = Router();
 
@@ -18,6 +19,12 @@ router.get("/:chatId/messages", chatController.getChatMessages as RequestHandler
 
 // Send message (HTTP endpoint for non-realtime scenarios)
 router.post("/:chatId/messages", chatController.sendMessage as RequestHandler);
+
+// Send media message (images, videos, audio, documents)
+router.post("/:chatId/media", chatController.upload.single('file'), chatController.sendMediaMessage as RequestHandler);
+
+// Send money in chat
+router.post("/:chatId/send-money", chatMoneyController.sendMoneyInChat as RequestHandler);
 
 // Mark messages as read
 router.post("/:chatId/read", chatController.markMessagesAsRead as RequestHandler);
