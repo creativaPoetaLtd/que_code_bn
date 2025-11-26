@@ -280,7 +280,7 @@ export const sendMoneyInChat = async (
             amount: parseFloat(amount),
             fee: 0,
             totalAmount: parseFloat(amount) + 0,
-            currency: 'USD', // Default currency (Uganda Shillings)
+            currency: 'RWF', // Default currency (Uganda Shillings)
             referenceId: `CHAT-${chatId.substring(0, 8)}-${Date.now()}`, // Unique reference for chat transactions
             type: 'transfer',
             description: note || `Money sent via chat`,
@@ -313,7 +313,7 @@ export const sendMoneyInChat = async (
                 amount: transferAmount,
                 fee: 0,
                 totalAmount: parseFloat(amount) + 0,
-                currency: 'USD',
+                currency: 'RWF',
                 date: new Date(),
                 status: 'completed',
                 note: note
@@ -358,7 +358,7 @@ export const sendMoneyInChat = async (
         const messageContent = JSON.stringify({
             type: 'money_transfer',
             amount: transferAmount,
-            currency: 'USD',
+            currency: 'RWF',
             senderName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
             recipientName: `${recipientUser.firstName} ${recipientUser.lastName}`,
             note: note || '',
@@ -424,7 +424,7 @@ export const sendMoneyInChat = async (
                 if (p.userId === recipientId) {
                     io.to(`user:${p.userId}`).emit('money_received', {
                         amount: transferAmount,
-                        currency: 'USD',
+                        currency: 'RWF',
                         from: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
                         transactionId: transactionRecord.id,
                         referenceId: transactionRecord.referenceId,
@@ -437,13 +437,13 @@ export const sendMoneyInChat = async (
 
         res.status(201).json({
             success: true,
-            message: `Successfully sent USD ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientUser.firstName} ${recipientUser.lastName}`,
+            message: `Successfully sent RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientUser.firstName} ${recipientUser.lastName}`,
             data: {
                 transaction: {
                     id: transactionRecord.id,
                     referenceId: transactionRecord.referenceId,
                     amount: transferAmount,
-                    currency: 'USD',
+                    currency: 'RWF',
                     fee: 0,
                     totalAmount: parseFloat(amount) + 0,
                     recipientName: `${recipientUser.firstName} ${recipientUser.lastName}`,
