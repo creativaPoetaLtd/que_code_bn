@@ -97,7 +97,6 @@ export const getUserChats = async (
         }
         
         const count = await models.ChatMessage.count({ where: whereClause });
-        console.log(`Chat ${chat.id}: lastReadAt=${lastReadAt}, unreadCount=${count}`);
         return { chatId: chat.id, unreadCount: count };
       })
     );
