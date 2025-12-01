@@ -24,6 +24,7 @@ export const getUserChats = async (
         {
           model: models.Chat,
           as: "chat",
+          attributes: ['id', 'isGroup', 'groupId', 'createdAt', 'updatedAt'], // Explicitly include groupId
           include: [
             {
               model: models.ChatParticipant,
@@ -108,7 +109,9 @@ export const getUserChats = async (
 
     // Format the response
     const formattedChats = sortedChats.map(chatParticipant => {
-      const chat = chatParticipant.get("chat") as any;
+      const chatData = chatParticipant.get("chat") as any;
+      // Use plain() or toJSON() to get actual data values from Sequelize model
+      const chat = chatData.dataValues || chatData;
       const participants = chat.participants || [];
       const lastMessage = chat.messages && chat.messages.length > 0 ? chat.messages[0] : null;
 
@@ -146,6 +149,7 @@ export const getUserChats = async (
         id: chat.id,
         name: chatName,
         isGroup: chat.isGroup,
+        groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {
           content: lastMessage.content,

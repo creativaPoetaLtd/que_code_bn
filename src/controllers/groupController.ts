@@ -4,7 +4,6 @@ import { Op } from "sequelize";
 import QRCode from 'qrcode';
 import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
-import { ContactStatus } from "../types/contact";
 
 import {
     CreateGroupRequest,
@@ -61,23 +60,23 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             return;
         }
 
-        // Validate admin selection
-        if (adminId && !memberIds.includes(adminId)) {
-            res.status(400).json({ message: "Selected admin must be included in the member list" });
+        // Validate admin selection - admin can be the owner or must be in memberIds
+        if (adminId && adminId !== ownerId && !memberIds.includes(adminId)) {
+            res.status(400).json({ message: "Selected admin must be the owner or included in the member list" });
             return;
         }
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
-        // Validate admin exists in contacts if provided
-        if (adminId) {
+        // Validate admin exists in contacts if provided (only if admin is not the owner)
+        if (adminId && adminId !== ownerId) {
             const adminContact = await models.Contact.findOne({
                 where: {
                     [Op.or]: [
                         { userAId: ownerId, userBId: adminId },
                         { userAId: adminId, userBId: ownerId }
                     ],
-                    status: ContactStatus.ACCEPTED
+                    status: 'active'
                 }
             });
 
