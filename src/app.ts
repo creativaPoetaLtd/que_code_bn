@@ -28,10 +28,21 @@ app.use(
     cookie: { secure: true },
   })
 );
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
 // CORS configuration - allow credentials with specific origin
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"), false);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
