@@ -89,6 +89,15 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         const accessToken = uuidv4();
         const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
 
+        // Generate QR code before creating the group
+        let qrCodeData: string | undefined;
+        try {
+            qrCodeData = await QRCode.toDataURL(accessLink);
+            console.log('Generated QR code before group creation, length:', qrCodeData?.length);
+        } catch (qrError) {
+            console.error("Failed to generate QR code:", qrError);
+        }
+
         // Handle profile picture upload
         let profilePictureUrl: string | undefined;
         let profilePicturePublicId: string | undefined;
@@ -128,6 +137,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             adminId: adminId || ownerId, // Default admin to owner if not specified
             accessToken,
             accessLink,
+            qrCode: qrCodeData, // Include QR code in initial creation
             isPrivate,
             privacyType,
             maxMembers,
@@ -139,15 +149,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             additionalInfoPrompt: hasAdditionalInfo ? additionalInfoPrompt : undefined
         });
 
-        // Generate QR code
-        try {
-            const qrCodeData = await QRCode.toDataURL(accessLink);
-            console.log('Generated QR code, length:', qrCodeData?.length);
-            const updateResult = await group.update({ qrCode: qrCodeData });
-            console.log('QR code update result:', updateResult.qrCode ? 'Updated successfully' : 'Update failed');
-        } catch (qrError) {
-            console.error("Failed to generate or save QR code:", qrError);
-        }
+        console.log('Group created with QR code:', !!group.qrCode, 'Length:', group.qrCode?.length);
 
         // Create owner membership
         await models.GroupMember.create({
