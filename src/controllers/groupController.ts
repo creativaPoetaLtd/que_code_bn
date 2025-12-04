@@ -142,9 +142,11 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         // Generate QR code
         try {
             const qrCodeData = await QRCode.toDataURL(accessLink);
-            await group.update({ qrCode: qrCodeData });
+            console.log('Generated QR code, length:', qrCodeData?.length);
+            const updateResult = await group.update({ qrCode: qrCodeData });
+            console.log('QR code update result:', updateResult.qrCode ? 'Updated successfully' : 'Update failed');
         } catch (qrError) {
-            console.error("Failed to generate QR code:", qrError);
+            console.error("Failed to generate or save QR code:", qrError);
         }
 
         // Create owner membership
@@ -806,8 +808,12 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
             }
         });
 
-        // Only show sensitive info (QR code, access link) to members
-        const canViewSensitiveInfo = userMembership && userMembership.status === GroupMemberStatus.ACTIVE;
+        // Show QR code and access link to active members, pending members, and owners
+        const canViewSensitiveInfo = userMembership &&
+            (userMembership.status === GroupMemberStatus.ACTIVE ||
+                userMembership.status === GroupMemberStatus.PENDING ||
+                userMembership.role === GroupMemberRole.OWNER);
+        console.log('User can view sensitive info:', canViewSensitiveInfo);
 
         res.status(200).json({
             message: "Group details retrieved successfully",
@@ -820,8 +826,8 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
                 ownerId: group.ownerId,
                 adminId: group.adminId,
                 ownerName: owner ? `${owner.firstName} ${owner.lastName}` : undefined,
-                qrCode: canViewSensitiveInfo ? group.qrCode : undefined,
-                accessLink: canViewSensitiveInfo ? group.accessLink : group.accessLink,
+                qrCode: canViewSensitiveInfo ? group.qrCode : null,
+                accessLink: canViewSensitiveInfo ? group.accessLink : null,
                 isPrivate: group.isPrivate,
                 privacyType: group.privacyType,
                 maxMembers: group.maxMembers,
