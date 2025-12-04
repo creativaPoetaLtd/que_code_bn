@@ -60,7 +60,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             return;
         }
 
-        // Validate admin selection - admin can be the owner or must be in memberIds
+
         if (adminId && adminId !== ownerId && !memberIds.includes(adminId)) {
             res.status(400).json({ message: "Selected admin must be the owner or included in the member list" });
             return;
