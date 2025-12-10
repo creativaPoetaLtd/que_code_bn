@@ -155,10 +155,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         let walletId: string | undefined;
         if (hasFundraising) {
             const wallet = await models.Wallet.create({
-                groupId: group.id,
-                balance: 0,
-                currency: 'RWF',
-                isActive: true
+                groupId: group.id
             });
             walletId = wallet.id;
             await group.update({ walletId: wallet.id });
@@ -625,7 +622,7 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
             if (group && group.owner) {
                 ownerName = `${group.owner.firstName} ${group.owner.lastName}`;
             }
-            
+
             // Calculate fundraising progress if applicable
             let fundraisingProgress: number | undefined;
             let walletBalance: number | undefined;
@@ -636,7 +633,7 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                     fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
                 }
             }
-            
+
             return {
                 id: group.id,
                 name: group.name,
