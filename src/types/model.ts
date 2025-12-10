@@ -456,6 +456,7 @@ export interface WalletAttributes {
   id: string;
   userId?: string;
   organizationId?: string;
+  groupId?: string;
   balance: number;
   currency: string;
   isActive: boolean;

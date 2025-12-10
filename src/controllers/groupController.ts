@@ -151,6 +151,20 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
 
         console.log('Group created with QR code:', !!group.qrCode, 'Length:', group.qrCode?.length);
 
+        // Create wallet for fundraising groups
+        let walletId: string | undefined;
+        if (hasFundraising) {
+            const wallet = await models.Wallet.create({
+                groupId: group.id,
+                balance: 0,
+                currency: 'RWF',
+                isActive: true
+            });
+            walletId = wallet.id;
+            await group.update({ walletId: wallet.id });
+            console.log('Created fundraising wallet for group:', wallet.id);
+        }
+
         // Create owner membership
         await models.GroupMember.create({
             groupId: group.id,
@@ -590,6 +604,12 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                             model: models.User,
                             as: 'owner',
                             attributes: ['id', 'firstName', 'lastName']
+                        },
+                        {
+                            model: models.Wallet,
+                            as: 'wallet',
+                            attributes: ['id', 'balance'],
+                            required: false
                         }
                     ]
                 }
@@ -605,6 +625,18 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
             if (group && group.owner) {
                 ownerName = `${group.owner.firstName} ${group.owner.lastName}`;
             }
+            
+            // Calculate fundraising progress if applicable
+            let fundraisingProgress: number | undefined;
+            let walletBalance: number | undefined;
+            if (group.hasFundraising && group.wallet) {
+                walletBalance = parseFloat(group.wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+            
             return {
                 id: group.id,
                 name: group.name,
@@ -617,6 +649,11 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                 isPrivate: group.isPrivate,
                 maxMembers: group.maxMembers,
                 memberCount: group.memberCount,
+                hasFundraising: group.hasFundraising,
+                fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : (group.fundraisingCurrentAmount ? parseFloat(group.fundraisingCurrentAmount.toString()) : undefined),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: membership.role,
@@ -801,6 +838,20 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
         // Get owner's user record
         const owner = await models.User.findByPk(group.ownerId);
 
+        // Get wallet balance if fundraising group
+        let walletBalance: number | undefined;
+        let fundraisingProgress: number | undefined;
+        if (group.hasFundraising && group.walletId) {
+            const wallet = await models.Wallet.findByPk(group.walletId);
+            if (wallet) {
+                walletBalance = parseFloat(wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+        }
+
         // Get user's membership status
         const userMembership = await models.GroupMember.findOne({
             where: {
@@ -836,7 +887,9 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
                 memberCount: group.memberCount,
                 hasFundraising: group.hasFundraising,
                 fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
-                fundraisingCurrentAmount: parseFloat(group.fundraisingCurrentAmount.toString()),
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : parseFloat(group.fundraisingCurrentAmount.toString()),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
                 expirationDate: group.expirationDate?.toISOString(),
                 expirationType: group.expirationType,
                 hasAdditionalInfo: group.hasAdditionalInfo,
