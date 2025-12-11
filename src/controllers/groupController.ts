@@ -1,10 +1,9 @@
 import { Response, NextFunction, Application } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import QRCode from 'qrcode';
 import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
-import { ContactStatus } from "../types/contact";
 
 import {
     CreateGroupRequest,
@@ -61,23 +60,23 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             return;
         }
 
-        // Validate admin selection
-        if (adminId && !memberIds.includes(adminId)) {
-            res.status(400).json({ message: "Selected admin must be included in the member list" });
+
+        if (adminId && adminId !== ownerId && !memberIds.includes(adminId)) {
+            res.status(400).json({ message: "Selected admin must be the owner or included in the member list" });
             return;
         }
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
-        // Validate admin exists in contacts if provided
-        if (adminId) {
+        // Validate admin exists in contacts if provided (only if admin is not the owner)
+        if (adminId && adminId !== ownerId) {
             const adminContact = await models.Contact.findOne({
                 where: {
                     [Op.or]: [
                         { userAId: ownerId, userBId: adminId },
                         { userAId: adminId, userBId: ownerId }
                     ],
-                    status: ContactStatus.ACCEPTED
+                    status: 'active'
                 }
             });
 
@@ -89,6 +88,15 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
 
         const accessToken = uuidv4();
         const accessLink = `${process.env.FRONTEND_URL}/groups/join?token=${accessToken}`;
+
+        // Generate QR code before creating the group
+        let qrCodeData: string | undefined;
+        try {
+            qrCodeData = await QRCode.toDataURL(accessLink);
+            console.log('Generated QR code before group creation, length:', qrCodeData?.length);
+        } catch (qrError) {
+            console.error("Failed to generate QR code:", qrError);
+        }
 
         // Handle profile picture upload
         let profilePictureUrl: string | undefined;
@@ -129,6 +137,7 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             adminId: adminId || ownerId, // Default admin to owner if not specified
             accessToken,
             accessLink,
+            qrCode: qrCodeData, // Include QR code in initial creation
             isPrivate,
             privacyType,
             maxMembers,
@@ -140,12 +149,17 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             additionalInfoPrompt: hasAdditionalInfo ? additionalInfoPrompt : undefined
         });
 
-        // Generate QR code
-        try {
-            const qrCodeData = await QRCode.toDataURL(accessLink);
-            await group.update({ qrCode: qrCodeData });
-        } catch (qrError) {
-            console.error("Failed to generate QR code:", qrError);
+        console.log('Group created with QR code:', !!group.qrCode, 'Length:', group.qrCode?.length);
+
+        // Create wallet for fundraising groups
+        let walletId: string | undefined;
+        if (hasFundraising) {
+            const wallet = await models.Wallet.create({
+                groupId: group.id
+            });
+            walletId = wallet.id;
+            await group.update({ walletId: wallet.id });
+            console.log('Created fundraising wallet for group:', wallet.id);
         }
 
         // Create owner membership
@@ -587,6 +601,12 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                             model: models.User,
                             as: 'owner',
                             attributes: ['id', 'firstName', 'lastName']
+                        },
+                        {
+                            model: models.Wallet,
+                            as: 'wallet',
+                            attributes: ['id', 'balance'],
+                            required: false
                         }
                     ]
                 }
@@ -602,6 +622,18 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
             if (group && group.owner) {
                 ownerName = `${group.owner.firstName} ${group.owner.lastName}`;
             }
+
+            // Calculate fundraising progress if applicable
+            let fundraisingProgress: number | undefined;
+            let walletBalance: number | undefined;
+            if (group.hasFundraising && group.wallet) {
+                walletBalance = parseFloat(group.wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+
             return {
                 id: group.id,
                 name: group.name,
@@ -614,6 +646,11 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                 isPrivate: group.isPrivate,
                 maxMembers: group.maxMembers,
                 memberCount: group.memberCount,
+                hasFundraising: group.hasFundraising,
+                fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : (group.fundraisingCurrentAmount ? parseFloat(group.fundraisingCurrentAmount.toString()) : undefined),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: membership.role,
@@ -798,6 +835,20 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
         // Get owner's user record
         const owner = await models.User.findByPk(group.ownerId);
 
+        // Get wallet balance if fundraising group
+        let walletBalance: number | undefined;
+        let fundraisingProgress: number | undefined;
+        if (group.hasFundraising && group.walletId) {
+            const wallet = await models.Wallet.findByPk(group.walletId);
+            if (wallet) {
+                walletBalance = parseFloat(wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+        }
+
         // Get user's membership status
         const userMembership = await models.GroupMember.findOne({
             where: {
@@ -807,8 +858,12 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
             }
         });
 
-        // Only show sensitive info (QR code, access link) to members
-        const canViewSensitiveInfo = userMembership && userMembership.status === GroupMemberStatus.ACTIVE;
+        // Show QR code and access link to active members, pending members, and owners
+        const canViewSensitiveInfo = userMembership &&
+            (userMembership.status === GroupMemberStatus.ACTIVE ||
+                userMembership.status === GroupMemberStatus.PENDING ||
+                userMembership.role === GroupMemberRole.OWNER);
+        console.log('User can view sensitive info:', canViewSensitiveInfo);
 
         res.status(200).json({
             message: "Group details retrieved successfully",
@@ -817,13 +872,25 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
                 name: group.name,
                 description: group.description,
                 picture: group.picture,
+                profilePictureUrl: group.profilePictureUrl,
                 ownerId: group.ownerId,
+                adminId: group.adminId,
                 ownerName: owner ? `${owner.firstName} ${owner.lastName}` : undefined,
-                qrCode: canViewSensitiveInfo ? group.qrCode : undefined,
-                accessLink: canViewSensitiveInfo ? group.accessLink : undefined,
+                qrCode: canViewSensitiveInfo ? group.qrCode : null,
+                accessLink: canViewSensitiveInfo ? group.accessLink : null,
                 isPrivate: group.isPrivate,
+                privacyType: group.privacyType,
                 maxMembers: group.maxMembers,
                 memberCount: group.memberCount,
+                hasFundraising: group.hasFundraising,
+                fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : parseFloat(group.fundraisingCurrentAmount.toString()),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
+                expirationDate: group.expirationDate?.toISOString(),
+                expirationType: group.expirationType,
+                hasAdditionalInfo: group.hasAdditionalInfo,
+                additionalInfoPrompt: group.additionalInfoPrompt,
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: userMembership?.role,
@@ -1355,13 +1422,13 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
             where: {
                 groupId,
                 status: GroupMemberStatus.PENDING,
-                invitedBy: { [Op.col]: 'userId' } // Self-invited requests
+                [Op.and]: literal('"GroupMember"."invitedBy" = "GroupMember"."userId"') // Self-invited requests
             },
             include: [
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ],
             limit: Number(limit),
@@ -1376,8 +1443,6 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
                 userId: r.userId,
                 userName: `${r.user.firstName} ${r.user.lastName}`,
                 userEmail: r.user.email,
-                useruserId: r.user.userId,
-                userPicture: r.user.picture,
                 requestedAt: r.invitedAt
             };
         });

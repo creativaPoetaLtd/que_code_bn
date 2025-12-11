@@ -24,6 +24,7 @@ export const getUserChats = async (
         {
           model: models.Chat,
           as: "chat",
+          attributes: ['id', 'isGroup', 'groupId', 'createdAt', 'updatedAt'], // Explicitly include groupId
           include: [
             {
               model: models.ChatParticipant,
@@ -81,9 +82,36 @@ export const getUserChats = async (
       return new Date(bLatestMessage.createdAt).getTime() - new Date(aLatestMessage.createdAt).getTime();
     });
 
+    // Calculate unread counts for all chats in parallel
+    const unreadCounts = await Promise.all(
+      sortedChats.map(async (chatParticipant) => {
+        const chat = chatParticipant.get("chat") as any;
+        const lastReadAt = (chatParticipant as any).lastReadAt;
+        
+        const whereClause: any = {
+          chatId: chat.id,
+          senderId: { [Op.ne]: userId }
+        };
+        
+        if (lastReadAt) {
+          whereClause.createdAt = { [Op.gt]: lastReadAt };
+        }
+        
+        const count = await models.ChatMessage.count({ where: whereClause });
+        return { chatId: chat.id, unreadCount: count };
+      })
+    );
+
+    const unreadCountMap = unreadCounts.reduce((acc, { chatId, unreadCount }) => {
+      acc[chatId] = unreadCount;
+      return acc;
+    }, {} as Record<string, number>);
+
     // Format the response
     const formattedChats = sortedChats.map(chatParticipant => {
-      const chat = chatParticipant.get("chat") as any;
+      const chatData = chatParticipant.get("chat") as any;
+      // Use plain() or toJSON() to get actual data values from Sequelize model
+      const chat = chatData.dataValues || chatData;
       const participants = chat.participants || [];
       const lastMessage = chat.messages && chat.messages.length > 0 ? chat.messages[0] : null;
 
@@ -114,13 +142,14 @@ export const getUserChats = async (
         isOnline = participants.filter((p: any) => p.user?.isOnline).length;
       }
 
-      // Count unread messages
-      const unreadCount = 0; // We'll implement this based on lastReadAt
+      // Get unread count from the calculated map
+      const unreadCount = unreadCountMap[chat.id] || 0;
 
       return {
         id: chat.id,
         name: chatName,
         isGroup: chat.isGroup,
+        groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {
           content: lastMessage.content,

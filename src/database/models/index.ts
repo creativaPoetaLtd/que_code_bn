@@ -75,6 +75,12 @@ const Models = (sequelize: Sequelize) => {
     as: "organization",
   });
 
+  Group.hasOne(Wallet, { foreignKey: "groupId", as: "wallet" });
+  Wallet.belongsTo(Group, {
+    foreignKey: "groupId",
+    as: "group",
+  });
+
   Wallet.hasMany(WalletRestriction, {
     foreignKey: "walletId",
     as: "restrictions",
