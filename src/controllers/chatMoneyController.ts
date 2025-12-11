@@ -67,17 +67,28 @@ export const sendMoneyInChat = async (
             return;
         }
 
-        // Get chat details to find recipient
+        // Get chat details to find recipient or group
         const chat = await models.Chat.findByPk(chatId, {
-            include: [{
-                model: models.ChatParticipant,
-                as: 'participants',
-                include: [{
-                    model: models.User,
-                    as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email']
-                }]
-            }],
+            include: [
+                {
+                    model: models.ChatParticipant,
+                    as: 'participants',
+                    include: [{
+                        model: models.User,
+                        as: 'user',
+                        attributes: ['id', 'firstName', 'lastName', 'email']
+                    }]
+                },
+                {
+                    model: models.Group,
+                    as: 'group',
+                    include: [{
+                        model: models.Wallet,
+                        as: 'wallet',
+                        attributes: ['id', 'balance', 'isActive']
+                    }]
+                }
+            ],
             transaction: dbTransaction
         });
 
@@ -90,31 +101,74 @@ export const sendMoneyInChat = async (
             return;
         }
 
-        // For group chats, don't allow money transfer
+        let recipientId: string | undefined;
+        let recipientUser: any;
+        let recipientWallet: any;
+        let isGroupFundraising = false;
+        let groupDetails: any;
+
+        // Handle group chats with fundraising
         if (chat.isGroup) {
-            await dbTransaction.rollback();
-            res.status(400).json({
-                success: false,
-                message: "Money can only be sent in direct messages, not in group chats"
-            });
-            return;
+            const group = (chat as any).group;
+            
+            if (!group) {
+                await dbTransaction.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Group details not found for this chat"
+                });
+                return;
+            }
+
+            // Check if group has fundraising enabled
+            if (!group.hasFundraising) {
+                await dbTransaction.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "This group does not accept donations. Money can only be sent to fundraising groups."
+                });
+                return;
+            }
+
+            // Check if group has a wallet
+            if (!group.wallet) {
+                await dbTransaction.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Group wallet not found. Please contact support."
+                });
+                return;
+            }
+
+            if (!group.wallet.isActive) {
+                await dbTransaction.rollback();
+                res.status(400).json({
+                    success: false,
+                    message: "Group wallet is inactive"
+                });
+                return;
+            }
+
+            isGroupFundraising = true;
+            groupDetails = group;
+            recipientWallet = group.wallet;
+        } else {
+            // For direct messages, find recipient (the other participant)
+            const participants = (chat as any).participants as any[];
+            const recipientParticipant = participants.find((p: any) => p.userId !== userId);
+
+            if (!recipientParticipant) {
+                await dbTransaction.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Recipient not found in chat"
+                });
+                return;
+            }
+
+            recipientId = recipientParticipant.userId;
+            recipientUser = recipientParticipant.get('user') as any;
         }
-
-        // Find recipient (the other participant)
-        const participants = (chat as any).participants as any[];
-        const recipientParticipant = participants.find((p: any) => p.userId !== userId);
-
-        if (!recipientParticipant) {
-            await dbTransaction.rollback();
-            res.status(404).json({
-                success: false,
-                message: "Recipient not found in chat"
-            });
-            return;
-        }
-
-        const recipientId = recipientParticipant.userId;
-        const recipientUser = recipientParticipant.get('user') as any;
 
         // Get authenticated user for PIN verification
         const authenticatedUser = await models.User.findByPk(userId, {
@@ -203,18 +257,12 @@ export const sendMoneyInChat = async (
         // Check for duplicate transactions in the last 30 seconds
         const thirtySecondsAgo = new Date(Date.now() - 30000);
 
-        const [senderWallet, receiverWallet] = await Promise.all([
-            models.Wallet.findOne({
-                where: { userId, isActive: true },
-                lock: dbTransaction.LOCK.UPDATE,
-                transaction: dbTransaction
-            }),
-            models.Wallet.findOne({
-                where: { userId: recipientId, isActive: true },
-                lock: dbTransaction.LOCK.UPDATE,
-                transaction: dbTransaction
-            })
-        ]);
+        // Get sender wallet
+        const senderWallet = await models.Wallet.findOne({
+            where: { userId, isActive: true },
+            lock: dbTransaction.LOCK.UPDATE,
+            transaction: dbTransaction
+        });
 
         if (!senderWallet) {
             await dbTransaction.rollback();
@@ -225,20 +273,35 @@ export const sendMoneyInChat = async (
             return;
         }
 
-        if (!receiverWallet) {
-            await dbTransaction.rollback();
-            res.status(404).json({
-                success: false,
-                message: "Recipient wallet not found or inactive"
+        // Get or verify receiver wallet based on chat type
+        if (!isGroupFundraising) {
+            recipientWallet = await models.Wallet.findOne({
+                where: { userId: recipientId, isActive: true },
+                lock: dbTransaction.LOCK.UPDATE,
+                transaction: dbTransaction
             });
-            return;
+
+            if (!recipientWallet) {
+                await dbTransaction.rollback();
+                res.status(404).json({
+                    success: false,
+                    message: "Recipient wallet not found or inactive"
+                });
+                return;
+            }
+        } else {
+            // For group wallets, lock for update
+            recipientWallet = await models.Wallet.findByPk(recipientWallet.id, {
+                lock: dbTransaction.LOCK.UPDATE,
+                transaction: dbTransaction
+            });
         }
 
         // Check for duplicate recent transaction
         const recentTransaction = await models.Transaction.findOne({
             where: {
                 senderWalletId: senderWallet.id,
-                receiverWalletId: receiverWallet.id,
+                receiverWalletId: recipientWallet.id,
                 amount: parseFloat(amount),
                 createdAt: {
                     [Op.gte]: thirtySecondsAgo
@@ -262,28 +325,34 @@ export const sendMoneyInChat = async (
         const fee = 0; // No fee for now
         const totalAmount = transferAmount + fee;
 
-        console.log('Transfer details:', { transferAmount, fee, totalAmount, amount });
+        console.log('Transfer details:', { transferAmount, fee, totalAmount, amount, isGroupFundraising });
 
         if (senderWallet.balance < totalAmount) {
             await dbTransaction.rollback();
             res.status(400).json({
                 success: false,
-                message: `Insufficient balance. You have $${senderWallet.balance}, but need $${totalAmount}`
+                message: `Insufficient balance. You have ${senderWallet.balance} RWF, but need ${totalAmount} RWF`
             });
             return;
         }
 
+        // Determine transaction type and description
+        const transactionType = isGroupFundraising ? 'donation' : 'transfer';
+        const description = note || (isGroupFundraising 
+            ? `Donation to ${groupDetails.name}` 
+            : `Money sent via chat`);
+
         // Create transaction record
         const transactionRecord = await models.Transaction.create({
             senderWalletId: senderWallet.id,
-            receiverWalletId: receiverWallet.id,
+            receiverWalletId: recipientWallet.id,
             amount: parseFloat(amount),
             fee: 0,
             totalAmount: parseFloat(amount) + 0,
-            currency: 'RWF', // Default currency (Uganda Shillings)
-            referenceId: `CHAT-${chatId.substring(0, 8)}-${Date.now()}`, // Unique reference for chat transactions
-            type: 'transfer',
-            description: note || `Money sent via chat`,
+            currency: 'RWF',
+            referenceId: `CHAT-${chatId.substring(0, 8)}-${Date.now()}`,
+            type: transactionType,
+            description: description,
             status: 'completed'
         } as any, { transaction: dbTransaction });
 
@@ -292,9 +361,28 @@ export const sendMoneyInChat = async (
             balance: parseFloat(senderWallet.balance.toString()) - totalAmount
         }, { transaction: dbTransaction });
 
-        await receiverWallet.update({
-            balance: parseFloat(receiverWallet.balance.toString()) + transferAmount
+        await recipientWallet.update({
+            balance: parseFloat(recipientWallet.balance.toString()) + transferAmount
         }, { transaction: dbTransaction });
+
+        // If it's a group donation, update the group's fundraising progress
+        if (isGroupFundraising && groupDetails) {
+            const newBalance = parseFloat(recipientWallet.balance.toString()) + transferAmount;
+            
+            // Check if fundraising target has been reached
+            if (groupDetails.fundraisingTarget && newBalance >= parseFloat(groupDetails.fundraisingTarget.toString())) {
+                // Optionally update group expiration if expirationType is 'target_reached'
+                if (groupDetails.expirationType === 'target_reached') {
+                    await models.Group.update(
+                        { expirationDate: new Date() },
+                        { 
+                            where: { id: groupDetails.id },
+                            transaction: dbTransaction 
+                        }
+                    );
+                }
+            }
+        }
 
         console.log('Wallets updated successfully');
 
@@ -305,18 +393,33 @@ export const sendMoneyInChat = async (
         try {
             console.log('Starting PDF receipt generation...');
 
+            const recipientName = isGroupFundraising 
+                ? groupDetails.name 
+                : `${recipientUser.firstName} ${recipientUser.lastName}`;
+
+            const newBalance = parseFloat(recipientWallet.balance.toString());
+            const fundraisingProgress = isGroupFundraising && groupDetails.fundraisingTarget
+                ? Math.min((newBalance / parseFloat(groupDetails.fundraisingTarget.toString())) * 100, 100)
+                : undefined;
+
             const receiptData = {
                 transactionId: transactionRecord.id,
                 referenceId: transactionRecord.referenceId,
                 senderName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
-                recipientName: `${recipientUser.firstName} ${recipientUser.lastName}`,
+                recipientName: recipientName,
                 amount: transferAmount,
                 fee: 0,
                 totalAmount: parseFloat(amount) + 0,
                 currency: 'RWF',
                 date: new Date(),
                 status: 'completed',
-                note: note
+                note: note,
+                isGroupDonation: isGroupFundraising,
+                groupName: isGroupFundraising ? groupDetails.name : undefined,
+                fundraisingTarget: isGroupFundraising && groupDetails.fundraisingTarget 
+                    ? parseFloat(groupDetails.fundraisingTarget.toString()) 
+                    : undefined,
+                currentProgress: isGroupFundraising ? newBalance : undefined
             };
 
             console.log('Receipt data prepared:', { ...receiptData, transactionId: receiptData.transactionId.substring(0, 8) });
@@ -355,12 +458,18 @@ export const sendMoneyInChat = async (
         console.log('Preparing message content...');
 
         // Create well-structured message content
+        const recipientName = isGroupFundraising 
+            ? groupDetails.name 
+            : `${recipientUser.firstName} ${recipientUser.lastName}`;
+
         const messageContent = JSON.stringify({
-            type: 'money_transfer',
+            type: isGroupFundraising ? 'group_donation' : 'money_transfer',
             amount: transferAmount,
             currency: 'RWF',
             senderName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
-            recipientName: `${recipientUser.firstName} ${recipientUser.lastName}`,
+            recipientName: recipientName,
+            groupId: isGroupFundraising ? groupDetails.id : undefined,
+            groupName: isGroupFundraising ? groupDetails.name : undefined,
             note: note || '',
             transactionId: transactionRecord.id,
             referenceId: transactionRecord.referenceId,
@@ -414,18 +523,22 @@ export const sendMoneyInChat = async (
                 id: broadcastMessage.id,
                 messageType: broadcastMessage.messageType,
                 contentLength: broadcastMessage.content?.length,
-                contentPreview: broadcastMessage.content?.substring(0, 100)
+                contentPreview: broadcastMessage.content?.substring(0, 100),
+                isGroupDonation: isGroupFundraising
             });
 
             for (const p of participants) {
                 io.to(`user:${p.userId}`).emit('new_message', broadcastMessage);
 
-                // Send money notification to recipient
-                if (p.userId === recipientId) {
-                    io.to(`user:${p.userId}`).emit('money_received', {
+                // Send notification to recipient (for DMs) or all group members (for groups)
+                if (isGroupFundraising || p.userId === recipientId) {
+                    const notificationEvent = isGroupFundraising ? 'group_donation_received' : 'money_received';
+                    io.to(`user:${p.userId}`).emit(notificationEvent, {
                         amount: transferAmount,
                         currency: 'RWF',
                         from: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
+                        groupId: isGroupFundraising ? groupDetails.id : undefined,
+                        groupName: isGroupFundraising ? groupDetails.name : undefined,
                         transactionId: transactionRecord.id,
                         referenceId: transactionRecord.referenceId,
                         receiptUrl: receiptUrl || '',
@@ -433,11 +546,37 @@ export const sendMoneyInChat = async (
                     });
                 }
             }
+
+            // Emit fundraising progress update for group donations
+            if (isGroupFundraising) {
+                const newBalance = parseFloat(recipientWallet.balance.toString());
+                const progress = groupDetails.fundraisingTarget 
+                    ? Math.min((newBalance / parseFloat(groupDetails.fundraisingTarget.toString())) * 100, 100)
+                    : 0;
+
+                io.to(`group:${groupDetails.id}`).emit('fundraising_progress_update', {
+                    groupId: groupDetails.id,
+                    groupName: groupDetails.name,
+                    currentAmount: newBalance,
+                    targetAmount: groupDetails.fundraisingTarget ? parseFloat(groupDetails.fundraisingTarget.toString()) : 0,
+                    progress: progress,
+                    donorName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
+                    donationAmount: transferAmount
+                });
+            }
         }
+
+        const recipientDisplayName = isGroupFundraising 
+            ? groupDetails.name 
+            : `${recipientUser.firstName} ${recipientUser.lastName}`;
+
+        const successMessage = isGroupFundraising
+            ? `Successfully donated RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`
+            : `Successfully sent RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`;
 
         res.status(201).json({
             success: true,
-            message: `Successfully sent RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientUser.firstName} ${recipientUser.lastName}`,
+            message: successMessage,
             data: {
                 transaction: {
                     id: transactionRecord.id,
@@ -446,7 +585,10 @@ export const sendMoneyInChat = async (
                     currency: 'RWF',
                     fee: 0,
                     totalAmount: parseFloat(amount) + 0,
-                    recipientName: `${recipientUser.firstName} ${recipientUser.lastName}`,
+                    type: transactionType,
+                    recipientName: recipientDisplayName,
+                    isGroupDonation: isGroupFundraising,
+                    groupId: isGroupFundraising ? groupDetails.id : undefined,
                     status: 'completed',
                     timestamp: new Date().toISOString()
                 },
@@ -456,7 +598,17 @@ export const sendMoneyInChat = async (
                     downloadUrl: `/api/transactions/receipt/${transactionRecord.id}`
                 },
                 message: messageWithSender,
-                newBalance: parseFloat(senderWallet.balance.toString()) - totalAmount
+                newBalance: parseFloat(senderWallet.balance.toString()) - totalAmount,
+                ...(isGroupFundraising && groupDetails.fundraisingTarget && {
+                    fundraisingProgress: {
+                        currentAmount: parseFloat(recipientWallet.balance.toString()),
+                        targetAmount: parseFloat(groupDetails.fundraisingTarget.toString()),
+                        progress: Math.min(
+                            (parseFloat(recipientWallet.balance.toString()) / parseFloat(groupDetails.fundraisingTarget.toString())) * 100,
+                            100
+                        )
+                    }
+                })
             }
         });
 

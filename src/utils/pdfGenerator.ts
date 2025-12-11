@@ -13,6 +13,10 @@ interface TransactionReceiptData {
     date: Date;
     status: string;
     note?: string;
+    isGroupDonation?: boolean;
+    groupName?: string;
+    fundraisingTarget?: number;
+    currentProgress?: number;
 }
 
 export class PDFGenerator {
@@ -35,15 +39,27 @@ export class PDFGenerator {
                 doc.on('error', reject);
 
                 // Header
+                const headerColor = data.isGroupDonation ? '#2563eb' : '#10b981';
+                const headerTitle = data.isGroupDonation ? 'DONATION RECEIPT' : 'TRANSACTION RECEIPT';
+                
                 doc.fontSize(24)
                     .font('Helvetica-Bold')
-                    .fillColor('#2563eb')
-                    .text('TRANSACTION RECEIPT', { align: 'center' });
+                    .fillColor(headerColor)
+                    .text(headerTitle, { align: 'center' });
 
                 doc.moveDown(0.5);
                 doc.fontSize(10)
                     .fillColor('#666')
-                    .text('Official Payment Confirmation', { align: 'center' });
+                    .text(data.isGroupDonation ? 'Official Donation Confirmation' : 'Official Payment Confirmation', { align: 'center' });
+
+                // Group fundraising badge (if applicable)
+                if (data.isGroupDonation && data.groupName) {
+                    doc.moveDown(0.3);
+                    doc.fontSize(11)
+                        .font('Helvetica-Bold')
+                        .fillColor('#2563eb')
+                        .text(`Group Fundraiser: ${data.groupName}`, { align: 'center' });
+                }
 
                 // Line separator
                 doc.moveDown(1);
@@ -144,12 +160,84 @@ export class PDFGenerator {
                 yPos += 20;
                 doc.font('Helvetica')
                     .fillColor('#6b7280')
-                    .text('To (Recipient):', leftColumn, yPos);
+                    .text(data.isGroupDonation ? 'To (Beneficiary):' : 'To (Recipient):', leftColumn, yPos);
                 doc.font('Helvetica-Bold')
                     .fillColor('#1f2937')
                     .text(data.recipientName, rightColumn, yPos);
 
                 doc.y = yPos + 30;
+
+                // Fundraising Progress Section (for group donations)
+                if (data.isGroupDonation && data.fundraisingTarget && data.currentProgress !== undefined) {
+                    doc.fontSize(12)
+                        .font('Helvetica-Bold')
+                        .fillColor('#1f2937')
+                        .text('FUNDRAISING PROGRESS', leftColumn);
+
+                    doc.moveDown(0.5);
+                    doc.strokeColor('#e5e7eb')
+                        .lineWidth(0.5)
+                        .moveTo(50, doc.y)
+                        .lineTo(545, doc.y)
+                        .stroke();
+
+                    doc.moveDown(1);
+                    yPos = doc.y;
+
+                    const progressPercentage = data.fundraisingTarget > 0 
+                        ? Math.min((data.currentProgress / data.fundraisingTarget) * 100, 100) 
+                        : 0;
+
+                    doc.fontSize(10)
+                        .font('Helvetica')
+                        .fillColor('#6b7280')
+                        .text('Current Amount:', leftColumn, yPos);
+                    doc.font('Helvetica-Bold')
+                        .fillColor('#10b981')
+                        .text(`${data.currency} ${data.currentProgress.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, rightColumn, yPos);
+
+                    yPos += 20;
+                    doc.font('Helvetica')
+                        .fillColor('#6b7280')
+                        .text('Target Amount:', leftColumn, yPos);
+                    doc.font('Helvetica-Bold')
+                        .fillColor('#1f2937')
+                        .text(`${data.currency} ${data.fundraisingTarget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, rightColumn, yPos);
+
+                    yPos += 20;
+                    doc.font('Helvetica')
+                        .fillColor('#6b7280')
+                        .text('Progress:', leftColumn, yPos);
+                    doc.font('Helvetica-Bold')
+                        .fillColor(progressPercentage >= 100 ? '#10b981' : '#2563eb')
+                        .text(`${progressPercentage.toFixed(1)}%`, rightColumn, yPos);
+
+                    // Progress bar visualization
+                    yPos += 25;
+                    const barWidth = 495;
+                    const barHeight = 20;
+                    const filledWidth = (barWidth * progressPercentage) / 100;
+
+                    // Background bar
+                    doc.fillColor('#e5e7eb')
+                        .rect(leftColumn, yPos, barWidth, barHeight)
+                        .fill();
+
+                    // Filled portion
+                    if (filledWidth > 0) {
+                        doc.fillColor(progressPercentage >= 100 ? '#10b981' : '#2563eb')
+                            .rect(leftColumn, yPos, filledWidth, barHeight)
+                            .fill();
+                    }
+
+                    // Percentage text on bar
+                    doc.fontSize(9)
+                        .font('Helvetica-Bold')
+                        .fillColor('#ffffff')
+                        .text(`${progressPercentage.toFixed(1)}%`, leftColumn, yPos + 5, { width: barWidth, align: 'center' });
+
+                    doc.y = yPos + 35;
+                }
 
                 // Payment Details Section
                 doc.fontSize(12)
@@ -170,7 +258,7 @@ export class PDFGenerator {
                 doc.fontSize(10)
                     .font('Helvetica')
                     .fillColor('#6b7280')
-                    .text('Transfer Amount:', leftColumn, yPos);
+                    .text(data.isGroupDonation ? 'Donation Amount:' : 'Transfer Amount:', leftColumn, yPos);
                 doc.font('Helvetica-Bold')
                     .fillColor('#1f2937')
                     .text(`${data.currency} ${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, rightColumn, yPos);

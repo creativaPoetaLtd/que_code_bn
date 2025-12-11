@@ -1,6 +1,6 @@
 import { Response, NextFunction, Application } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import QRCode from 'qrcode';
 import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
@@ -150,6 +150,17 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         });
 
         console.log('Group created with QR code:', !!group.qrCode, 'Length:', group.qrCode?.length);
+
+        // Create wallet for fundraising groups
+        let walletId: string | undefined;
+        if (hasFundraising) {
+            const wallet = await models.Wallet.create({
+                groupId: group.id
+            });
+            walletId = wallet.id;
+            await group.update({ walletId: wallet.id });
+            console.log('Created fundraising wallet for group:', wallet.id);
+        }
 
         // Create owner membership
         await models.GroupMember.create({
@@ -590,6 +601,12 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                             model: models.User,
                             as: 'owner',
                             attributes: ['id', 'firstName', 'lastName']
+                        },
+                        {
+                            model: models.Wallet,
+                            as: 'wallet',
+                            attributes: ['id', 'balance'],
+                            required: false
                         }
                     ]
                 }
@@ -605,6 +622,18 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
             if (group && group.owner) {
                 ownerName = `${group.owner.firstName} ${group.owner.lastName}`;
             }
+
+            // Calculate fundraising progress if applicable
+            let fundraisingProgress: number | undefined;
+            let walletBalance: number | undefined;
+            if (group.hasFundraising && group.wallet) {
+                walletBalance = parseFloat(group.wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+
             return {
                 id: group.id,
                 name: group.name,
@@ -617,6 +646,11 @@ const getUserGroups = async (req: AuthenticatedRequest, res: Response, next: Nex
                 isPrivate: group.isPrivate,
                 maxMembers: group.maxMembers,
                 memberCount: group.memberCount,
+                hasFundraising: group.hasFundraising,
+                fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : (group.fundraisingCurrentAmount ? parseFloat(group.fundraisingCurrentAmount.toString()) : undefined),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 userRole: membership.role,
@@ -801,6 +835,20 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
         // Get owner's user record
         const owner = await models.User.findByPk(group.ownerId);
 
+        // Get wallet balance if fundraising group
+        let walletBalance: number | undefined;
+        let fundraisingProgress: number | undefined;
+        if (group.hasFundraising && group.walletId) {
+            const wallet = await models.Wallet.findByPk(group.walletId);
+            if (wallet) {
+                walletBalance = parseFloat(wallet.balance.toString());
+                if (group.fundraisingTarget) {
+                    const target = parseFloat(group.fundraisingTarget.toString());
+                    fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
+                }
+            }
+        }
+
         // Get user's membership status
         const userMembership = await models.GroupMember.findOne({
             where: {
@@ -836,7 +884,9 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
                 memberCount: group.memberCount,
                 hasFundraising: group.hasFundraising,
                 fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
-                fundraisingCurrentAmount: parseFloat(group.fundraisingCurrentAmount.toString()),
+                fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : parseFloat(group.fundraisingCurrentAmount.toString()),
+                fundraisingProgress: fundraisingProgress,
+                walletId: group.walletId,
                 expirationDate: group.expirationDate?.toISOString(),
                 expirationType: group.expirationType,
                 hasAdditionalInfo: group.hasAdditionalInfo,
@@ -1372,13 +1422,13 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
             where: {
                 groupId,
                 status: GroupMemberStatus.PENDING,
-                invitedBy: { [Op.col]: 'userId' } // Self-invited requests
+                [Op.and]: literal('"GroupMember"."invitedBy" = "GroupMember"."userId"') // Self-invited requests
             },
             include: [
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ],
             limit: Number(limit),
@@ -1393,8 +1443,6 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
                 userId: r.userId,
                 userName: `${r.user.firstName} ${r.user.lastName}`,
                 userEmail: r.user.email,
-                useruserId: r.user.userId,
-                userPicture: r.user.picture,
                 requestedAt: r.invitedAt
             };
         });
