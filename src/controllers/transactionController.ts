@@ -147,7 +147,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
       if (!isValidPin) {
         // Failed verification - increment attempts
         const newAttempts = (authenticatedUser!.pinAttempts || 0) + 1;
-        const maxAttempts = 5;
+        const maxAttempts = 3;
         const lockoutMinutes = 15;
 
         let updateData: any = { pinAttempts: newAttempts };
@@ -159,9 +159,26 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
 
           await authenticatedUser!.update(updateData);
 
+          // Send account blocked email notification
+          try {
+            const sendEmailFn = require('../helpers/email').default;
+            await sendEmailFn({
+              to: authenticatedUser!.email,
+              subject: 'Account Locked - PIN Reset Required',
+              type: 'account_blocked',
+              data: {
+                name: authenticatedUser!.firstName,
+                lockoutMinutes: lockoutMinutes.toString(),
+                resetUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings/security?tab=pin-reset`
+              }
+            });
+          } catch (emailError) {
+            console.error('Failed to send account blocked email:', emailError);
+          }
+
           res.status(429).json({
             success: false,
-            message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
+            message: `Account locked due to too many failed PIN attempts. Please reset your PIN to regain access.`,
             attemptsRemaining: 0,
             lockedUntil: lockedUntil,
             remainingMinutes: lockoutMinutes
@@ -172,7 +189,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
           const attemptsRemaining = maxAttempts - newAttempts;
           res.status(400).json({
             success: false,
-            message: `Invalid PIN. ${attemptsRemaining} attempts remaining.`,
+            message: `Invalid PIN. ${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} remaining. Account will be locked after ${maxAttempts} failed attempts.`,
             attemptsRemaining: attemptsRemaining
           });
         }
@@ -625,12 +642,40 @@ const getTransactionHistory = async (req: Request, res: Response): Promise<void>
         {
           model: Wallet,
           as: 'senderWallet',
-          attributes: ['id', 'userId', 'currency']
+          attributes: ['id', 'userId', 'organizationId', 'currency'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'firstName', 'lastName', 'email'],
+              required: false
+            },
+            {
+              model: Organization,
+              as: 'organization',
+              attributes: ['id', 'name', 'email'],
+              required: false
+            }
+          ]
         },
         {
           model: Wallet,
           as: 'receiverWallet',
-          attributes: ['id', 'userId', 'currency']
+          attributes: ['id', 'userId', 'organizationId', 'currency'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'firstName', 'lastName', 'email'],
+              required: false
+            },
+            {
+              model: Organization,
+              as: 'organization',
+              attributes: ['id', 'name', 'email'],
+              required: false
+            }
+          ]
         }
       ]
     });
@@ -672,12 +717,40 @@ const getTransactionDetails = async (req: Request, res: Response): Promise<void>
         {
           model: Wallet,
           as: 'senderWallet',
-          attributes: ['id', 'userId', 'currency']
+          attributes: ['id', 'userId', 'organizationId', 'currency'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'firstName', 'lastName', 'email'],
+              required: false
+            },
+            {
+              model: Organization,
+              as: 'organization',
+              attributes: ['id', 'name', 'email'],
+              required: false
+            }
+          ]
         },
         {
           model: Wallet,
           as: 'receiverWallet',
-          attributes: ['id', 'userId', 'currency']
+          attributes: ['id', 'userId', 'organizationId', 'currency'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'firstName', 'lastName', 'email'],
+              required: false
+            },
+            {
+              model: Organization,
+              as: 'organization',
+              attributes: ['id', 'name', 'email'],
+              required: false
+            }
+          ]
         }
       ]
     });
