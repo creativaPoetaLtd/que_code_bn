@@ -1,6 +1,6 @@
 import { Response, NextFunction, Application } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import QRCode from 'qrcode';
 import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
@@ -1422,13 +1422,13 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
             where: {
                 groupId,
                 status: GroupMemberStatus.PENDING,
-                invitedBy: { [Op.col]: 'userId' } // Self-invited requests
+                [Op.and]: literal('"GroupMember"."invitedBy" = "GroupMember"."userId"') // Self-invited requests
             },
             include: [
                 {
                     model: models.User,
                     as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'userId']
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ],
             limit: Number(limit),
@@ -1443,8 +1443,6 @@ const getJoinRequests = async (req: AuthenticatedRequest, res: Response, next: N
                 userId: r.userId,
                 userName: `${r.user.firstName} ${r.user.lastName}`,
                 userEmail: r.user.email,
-                useruserId: r.user.userId,
-                userPicture: r.user.picture,
                 requestedAt: r.invitedAt
             };
         });
