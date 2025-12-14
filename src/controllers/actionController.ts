@@ -87,10 +87,11 @@ const createActionStepA = async (
     // Handle cover image upload to Cloudinary
     let coverImageUrl: string | null = coverImage || null;
 
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files?.coverImage?.[0]) {
+    // Check for file in req.file (when using .single()) or req.files (when using .fields())
+    const coverFile = (req as any).file || (req.files as { [fieldname: string]: Express.Multer.File[] })?.coverImage?.[0];
+    
+    if (coverFile) {
       try {
-        const coverFile = files.coverImage[0];
 
         // Upload cover image to Cloudinary
         let uploadResult: any;
@@ -644,8 +645,10 @@ const updateAction = async (req: Request, res: Response): Promise<void> => {
     const updateData: any = { ...otherFields };
 
     // Handle cover image upload to Cloudinary if file is provided
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files?.coverImage?.[0]) {
+    // Check for file in req.file (when using .single()) or req.files (when using .fields())
+    const coverFile = (req as any).file || (req.files as { [fieldname: string]: Express.Multer.File[] })?.coverImage?.[0];
+    
+    if (coverFile) {
       try {
         // Delete old cover image from Cloudinary if it exists
         if (action.coverImage && action.coverImage.includes('cloudinary')) {
@@ -663,8 +666,6 @@ const updateAction = async (req: Request, res: Response): Promise<void> => {
             // Continue with upload even if deletion fails
           }
         }
-
-        const coverFile = files.coverImage[0];
 
         // Upload new cover image to Cloudinary
         let uploadResult: any;
@@ -706,10 +707,13 @@ const updateAction = async (req: Request, res: Response): Promise<void> => {
         });
         return;
       }
-    } else if (coverImage !== undefined) {
-      // If coverImage is provided as URL string (not file), use it directly
-      updateData.coverImage = coverImage || null;
+    } else if (coverImage !== undefined && coverImage !== null && coverImage !== '') {
+      // If coverImage is provided as a valid URL string (not file), use it directly
+      // Only update if it's a non-empty string to preserve existing image when not changed
+      updateData.coverImage = coverImage;
     }
+    // If coverImage is undefined, null, or empty string, don't include it in updateData
+    // This preserves the existing cover image in the database
 
     const updatedAction = await insert_function<ActionModelAttributes>(
       "Action",

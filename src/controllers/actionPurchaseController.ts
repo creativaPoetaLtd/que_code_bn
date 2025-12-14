@@ -388,6 +388,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           : null,
         usedAt: null,
         qrCodeData,
+        coverImage: action.coverImage || null,
       };
 
       qrObject = await insert_function<QRObjectModelAttributes>(
@@ -515,13 +516,50 @@ const validateQRObject = async (req: Request, res: Response): Promise<void> => {
   try {
     const { qrObjectId } = req.params;
 
-    const qrObject = await read_function<QRObjectModelAttributes>(
+    // First, try to find QR object by ID (qrObjectId)
+    let qrObject: any = await read_function<QRObjectModelAttributes>(
       "QRObject",
       "findOne",
       {
         where: { id: qrObjectId },
+        include: [
+          {
+            model: database_models.User,
+            as: "buyer",
+            attributes: ["id", "firstName", "lastName", "email"],
+          },
+          {
+            model: database_models.ActionPurchase,
+            as: "actionPurchase",
+            attributes: ["id", "buyerData"],
+          },
+        ],
       }
     );
+
+    // If not found by ID, try to find by actionPurchaseId
+    // (QR code contains actionPurchaseId, so we need to look it up)
+    if (!qrObject) {
+      qrObject = await read_function<QRObjectModelAttributes>(
+        "QRObject",
+        "findOne",
+        {
+          where: { actionPurchaseId: qrObjectId },
+          include: [
+            {
+              model: database_models.User,
+              as: "buyer",
+              attributes: ["id", "firstName", "lastName", "email"],
+            },
+            {
+              model: database_models.ActionPurchase,
+              as: "actionPurchase",
+              attributes: ["id", "buyerData"],
+            },
+          ],
+        }
+      );
+    }
 
     if (!qrObject) {
       res.status(404).json({
@@ -548,7 +586,7 @@ const validateQRObject = async (req: Request, res: Response): Promise<void> => {
         "QRObject",
         "update",
         { status: "expired" },
-        { where: { id: qrObjectId } }
+        { where: { id: qrObject.id } }
       );
 
       res.status(400).json({
@@ -559,10 +597,46 @@ const validateQRObject = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Convert to plain object if it's a Sequelize instance
+    const qrObjectPlain: any = qrObject.get ? qrObject.get({ plain: true }) : qrObject;
+
+    // Format response with buyer information
+    const responseData: any = {
+      ...qrObjectPlain,
+    };
+
+    // Add buyer/owner name from multiple sources
+    if (qrObjectPlain.buyer) {
+      const buyer = qrObjectPlain.buyer.get ? qrObjectPlain.buyer.get({ plain: true }) : qrObjectPlain.buyer;
+      const fullName = `${buyer.firstName || ""} ${buyer.lastName || ""}`.trim();
+      if (fullName) {
+        responseData.buyer = {
+          ...buyer,
+          fullName,
+          name: fullName,
+        };
+      }
+    }
+
+    // Also check buyerData from actionPurchase
+    if (qrObjectPlain.actionPurchase?.buyerData) {
+      const actionPurchase = qrObjectPlain.actionPurchase.get 
+        ? qrObjectPlain.actionPurchase.get({ plain: true }) 
+        : qrObjectPlain.actionPurchase;
+      const buyerData = actionPurchase.buyerData;
+      if (buyerData && (buyerData.name || buyerData.ownerName || buyerData.fullName)) {
+        if (!responseData.metadata) {
+          responseData.metadata = { ...qrObjectPlain.metadata };
+        }
+        responseData.metadata.buyerName = buyerData.name || buyerData.ownerName || buyerData.fullName;
+        responseData.metadata.ownerName = buyerData.name || buyerData.ownerName || buyerData.fullName;
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "QR object is valid",
-      data: qrObject,
+      data: responseData,
     });
   } catch (error: any) {
     console.error("Error in validateQRObject:", error);
@@ -579,13 +653,26 @@ const useQRObject = async (req: Request, res: Response): Promise<void> => {
   try {
     const { qrObjectId } = req.params;
 
-    const qrObject = await read_function<QRObjectModelAttributes>(
+    // First, try to find QR object by ID (qrObjectId)
+    let qrObject = await read_function<QRObjectModelAttributes>(
       "QRObject",
       "findOne",
       {
         where: { id: qrObjectId },
       }
     );
+
+    // If not found by ID, try to find by actionPurchaseId
+    // (QR code contains actionPurchaseId, so we need to look it up)
+    if (!qrObject) {
+      qrObject = await read_function<QRObjectModelAttributes>(
+        "QRObject",
+        "findOne",
+        {
+          where: { actionPurchaseId: qrObjectId },
+        }
+      );
+    }
 
     if (!qrObject) {
       res.status(404).json({
@@ -610,7 +697,7 @@ const useQRObject = async (req: Request, res: Response): Promise<void> => {
         status: "used",
         usedAt: new Date(),
       },
-      { where: { id: qrObjectId } }
+      { where: { id: qrObject.id } }
     );
 
     res.status(200).json({

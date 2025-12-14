@@ -593,6 +593,7 @@ export interface QRObjectModelAttributes {
   validUntil: Date | null;
   usedAt: Date | null;
   qrCodeData: string;
+  coverImage: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

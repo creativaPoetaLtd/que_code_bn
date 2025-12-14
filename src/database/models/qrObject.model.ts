@@ -24,6 +24,7 @@ class QRObject extends Model<QRObjectModelAttributes, QRObjectCreationAttributes
   public validUntil!: Date | null;
   public usedAt!: Date | null;
   public qrCodeData!: string; // Base64 QR code data URL
+  public coverImage!: string | null; // Cover image URL from the action
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -94,6 +95,7 @@ const QRObject_model = (sequelize: Sequelize) => {
       validUntil: { type: DataTypes.DATE, allowNull: true },
       usedAt: { type: DataTypes.DATE, allowNull: true },
       qrCodeData: { type: DataTypes.TEXT, allowNull: false },
+      coverImage: { type: DataTypes.STRING, allowNull: true },
     },
     {
       sequelize,
