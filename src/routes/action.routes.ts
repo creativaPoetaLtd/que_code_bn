@@ -2,12 +2,40 @@ import express from "express";
 import actionController from "../controllers/actionController";
 import actionPurchaseController from "../controllers/actionPurchaseController";
 import actionDisplayController from "../controllers/actionDisplayController";
+import { actionCoverImageUpload } from "../middleware/multer";
 
 const actionRouter = express.Router();
+
+// Error handling middleware for multer
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof Error) {
+    if (err.message.includes('File type')) {
+      return res.status(400).json({
+        message: "Invalid file type",
+        error: err.message
+      });
+    }
+    if ((err as any).code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        message: "File too large",
+        error: "File size must be less than 10MB"
+      });
+    }
+    if ((err as any).code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        message: "Too many files",
+        error: "Maximum 1 file allowed (cover image)"
+      });
+    }
+  }
+  next(err);
+};
 
 // Wizard Steps (Organization-specific)
 actionRouter.post(
   "/organizations/:organizationId/actions/wizard/step-a",
+  actionCoverImageUpload.single("coverImage"),
+  handleMulterError,
   actionController.createActionStepA
 );
 actionRouter.put(
@@ -57,7 +85,12 @@ actionRouter.get(
   actionController.getOrganizationActions
 );
 actionRouter.get("/actions/:actionId", actionController.getActionById);
-actionRouter.put("/actions/:actionId", actionController.updateAction);
+actionRouter.put(
+  "/actions/:actionId",
+  actionCoverImageUpload.single("coverImage"),
+  handleMulterError,
+  actionController.updateAction
+);
 actionRouter.delete("/actions/:actionId", actionController.deleteAction);
 
 // Sub-Actions

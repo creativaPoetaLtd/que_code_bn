@@ -7,6 +7,7 @@ import {
   SubActionModelAttributes,
 } from "../types/model";
 import { Op } from "sequelize";
+import cloudinary from "../helpers/cloudinary";
 
 // Helper to generate slug from name
 const generateSlug = (name: string): string => {
@@ -30,7 +31,7 @@ const createActionStepA = async (
       name,
       slug,
       displayLayout,
-      coverImage,
+      coverImage, // Can be URL if provided directly, or will be uploaded from file
       shortDescription,
       description,
       dedicatedQrCode,
@@ -83,13 +84,65 @@ const createActionStepA = async (
       return;
     }
 
+    // Handle cover image upload to Cloudinary
+    let coverImageUrl: string | null = coverImage || null;
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (files?.coverImage?.[0]) {
+      try {
+        const coverFile = files.coverImage[0];
+
+        // Upload cover image to Cloudinary
+        let uploadResult: any;
+        if ((coverFile as any).buffer && (coverFile as any).buffer.length > 0) {
+          // Upload from buffer
+          uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: 'actions/cover-images',
+                transformation: [
+                  { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+                  { quality: 'auto', format: 'auto' }
+                ]
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            stream.end((coverFile as any).buffer);
+          });
+        } else if ((coverFile as any).path) {
+          // Upload from file path
+          uploadResult = await cloudinary.uploader.upload((coverFile as any).path, {
+            folder: 'actions/cover-images',
+            transformation: [
+              { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+              { quality: 'auto', format: 'auto' }
+            ]
+          });
+        } else {
+          throw new Error('Empty file');
+        }
+
+        coverImageUrl = uploadResult.secure_url;
+      } catch (uploadError: any) {
+        console.error("Error uploading cover image to Cloudinary:", uploadError);
+        res.status(500).json({
+          message: "Failed to upload cover image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
+    }
+
     const actionData: ActionCreationAttributes = {
       organizationId,
       type,
       name,
       slug: actionSlug,
       displayLayout: displayLayout || "card",
-      coverImage: coverImage || null,
+      coverImage: coverImageUrl,
       shortDescription: shortDescription || null,
       description: description || null,
       currency: "RWF",
@@ -575,6 +628,7 @@ const getActionBySlug = async (req: Request, res: Response): Promise<void> => {
 const updateAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { actionId } = req.params;
+    const { coverImage, ...otherFields } = req.body;
 
     const action = await read_function<ActionModelAttributes>(
       "Action",
@@ -587,10 +641,80 @@ const updateAction = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const updateData: any = { ...otherFields };
+
+    // Handle cover image upload to Cloudinary if file is provided
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (files?.coverImage?.[0]) {
+      try {
+        // Delete old cover image from Cloudinary if it exists
+        if (action.coverImage && action.coverImage.includes('cloudinary')) {
+          try {
+            // Extract publicId from Cloudinary URL
+            // URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{publicId}.{ext}
+            const urlMatch = action.coverImage.match(/\/upload\/(.+)$/);
+            if (urlMatch && urlMatch[1]) {
+              // Remove file extension to get publicId
+              const publicId = urlMatch[1].replace(/\.[^/.]+$/, '');
+              await cloudinary.uploader.destroy(publicId);
+            }
+          } catch (deleteError) {
+            console.warn("Could not delete old cover image:", deleteError);
+            // Continue with upload even if deletion fails
+          }
+        }
+
+        const coverFile = files.coverImage[0];
+
+        // Upload new cover image to Cloudinary
+        let uploadResult: any;
+        if ((coverFile as any).buffer && (coverFile as any).buffer.length > 0) {
+          uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: 'actions/cover-images',
+                transformation: [
+                  { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+                  { quality: 'auto', format: 'auto' }
+                ]
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            stream.end((coverFile as any).buffer);
+          });
+        } else if ((coverFile as any).path) {
+          uploadResult = await cloudinary.uploader.upload((coverFile as any).path, {
+            folder: 'actions/cover-images',
+            transformation: [
+              { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+              { quality: 'auto', format: 'auto' }
+            ]
+          });
+        } else {
+          throw new Error('Empty file');
+        }
+
+        updateData.coverImage = uploadResult.secure_url;
+      } catch (uploadError: any) {
+        console.error("Error uploading cover image to Cloudinary:", uploadError);
+        res.status(500).json({
+          message: "Failed to upload cover image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
+    } else if (coverImage !== undefined) {
+      // If coverImage is provided as URL string (not file), use it directly
+      updateData.coverImage = coverImage || null;
+    }
+
     const updatedAction = await insert_function<ActionModelAttributes>(
       "Action",
       "update",
-      req.body,
+      updateData,
       { where: { id: actionId } }
     );
 
