@@ -85,26 +85,67 @@ const create_organization = async (
     // Validate categoryId if provided
     if (actualCategoryId) {
       try {
+        console.log(`Validating category with ID: ${actualCategoryId}`);
         const category = await read_function<any>(
           "Category",
           "findOne",
           { where: { id: actualCategoryId } }
         );
 
+        console.log(`Category lookup result:`, category ? "Found" : "Not found");
+        
         if (!category) {
+          // Try to find all categories to help with debugging
+          const allCategories = await read_function<any[]>(
+            "Category",
+            "findAll",
+            { attributes: ["id", "name", "isActive"] }
+          );
+          
+          console.log(`Available categories:`, allCategories);
+          
           res.status(400).json({ 
             message: "Invalid organization category",
             providedCategoryId: actualCategoryId,
-            availableCategories: "Use one of the valid category IDs from /api/organization-categories/"
+            availableCategories: Array.isArray(allCategories) 
+              ? allCategories.map((c: any) => {
+                  const plain = isSequelizeInstance(c) ? c.get({ plain: true }) : c;
+                  return { id: plain.id, name: plain.name, isActive: plain.isActive };
+                })
+              : "Unable to fetch categories",
+            hint: "Make sure the category ID exists and is active"
           });
           return;
         }
-      } catch (error) {
+
+        // Check if category is active
+        const plainCategory = isSequelizeInstance(category)
+          ? category.get({ plain: true })
+          : category;
+        
+        if (plainCategory.isActive === false) {
+          res.status(400).json({ 
+            message: "Organization category is not active",
+            providedCategoryId: actualCategoryId,
+            categoryName: plainCategory.name,
+            hint: "Please select an active category"
+          });
+          return;
+        }
+
+        console.log(`Category validated successfully: ${plainCategory.name} (ID: ${plainCategory.id})`);
+      } catch (error: any) {
         console.error('Category validation error:', error);
+        console.error('Error details:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
         res.status(400).json({ 
-          message: "Invalid category ID format",
+          message: "Error validating category ID",
           providedCategoryId: actualCategoryId,
-          error: "Category ID must be a valid UUID"
+          error: error.message || "Category ID validation failed",
+          hint: "Please check the category ID format and ensure it exists in the database"
         });
         return;
       }
@@ -148,43 +189,124 @@ const create_organization = async (
       categoryId: actualCategoryId || undefined,
     };
 
-    const newOrg: any = await insert_function<OrganizationModelAttributes>(
-      "Organization",
-      "create",
-      orgData
-    );
+    let newOrg: any;
+    try {
+      newOrg = await insert_function<OrganizationModelAttributes>(
+        "Organization",
+        "create",
+        orgData
+      );
+    } catch (dbError: any) {
+      console.error("Error creating organization in database:", dbError);
+      // Check for specific database errors
+      if (dbError.name === "SequelizeUniqueConstraintError") {
+        res.status(400).json({
+          message: "Organization with this email already exists",
+          field: dbError.errors?.[0]?.path || "email",
+        });
+        return;
+      }
+      if (dbError.name === "SequelizeForeignKeyConstraintError") {
+        res.status(400).json({
+          message: "Invalid organization category",
+          error: "The provided category does not exist",
+        });
+        return;
+      }
+      if (dbError.name === "SequelizeValidationError") {
+        res.status(400).json({
+          message: "Validation error",
+          errors: dbError.errors?.map((e: any) => ({
+            field: e.path,
+            message: e.message,
+          })),
+        });
+        return;
+      }
+      throw dbError; // Re-throw to be caught by outer catch
+    }
+
+    // Extract organization ID (handle both Sequelize instances and plain objects)
+    const orgId = isSequelizeInstance(newOrg)
+      ? newOrg.get("id")
+      : newOrg.id;
 
     // Generate QR Code for organization profile
-    const orgProfileLink = `${process.env.FRONTEND_URL}/welcome/${newOrg.id}`;
-    const qrCodeData = await QRCode.toDataURL(orgProfileLink);
+    let qrCodeData: string;
+    try {
+      const orgProfileLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/welcome/${orgId}`;
+      qrCodeData = await QRCode.toDataURL(orgProfileLink);
+    } catch (qrError) {
+      console.error("Error generating QR code:", qrError);
+      // If QR code generation fails, we should still create the profile with a placeholder
+      // or rollback the organization creation
+      // For now, let's use a placeholder
+      qrCodeData = `placeholder-qr-${orgId}`;
+    }
 
     // Create profile for the new organization
-    const profileData: ProfileCreationAttributes = {
-      type: "organization",
-      organizationId: newOrg.id,
-      qrCode: qrCodeData,
-    };
+    try {
+      const profileData: ProfileCreationAttributes = {
+        type: "organization",
+        organizationId: orgId,
+        qrCode: qrCodeData,
+      };
 
-    await insert_function<ProfileModelAttributes>(
-      "Profile",
-      "create",
-      profileData
-    );
+      await insert_function<ProfileModelAttributes>(
+        "Profile",
+        "create",
+        profileData
+      );
+    } catch (profileError: any) {
+      console.error("Error creating profile for organization:", profileError);
+      // If profile creation fails, we should rollback organization creation
+      // For now, log the error and continue (organization is already created)
+      // In production, you might want to delete the organization here
+      if (profileError.name === "SequelizeUniqueConstraintError") {
+        // QR code collision (unlikely but possible)
+        console.error("QR code collision detected, attempting to regenerate...");
+        try {
+          const orgProfileLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/welcome/${orgId}?t=${Date.now()}`;
+          const newQrCodeData = await QRCode.toDataURL(orgProfileLink);
+          await insert_function<ProfileModelAttributes>(
+            "Profile",
+            "create",
+            {
+              type: "organization",
+              organizationId: orgId,
+              qrCode: newQrCodeData,
+            }
+          );
+        } catch (retryError) {
+          console.error("Failed to create profile after retry:", retryError);
+          throw new Error("Failed to create organization profile");
+        }
+      } else {
+        throw profileError;
+      }
+    }
 
     // Create wallet for the new organization
     try {
       const walletData: WalletCreationAttributes = {
-        organizationId: newOrg.id,
+        organizationId: orgId,
       };
 
       await insert_function("Wallet", "create", walletData);
     } catch (walletError) {
       console.error("Error creating wallet for organization:", walletError);
+      // Wallet creation failure shouldn't fail the entire registration
+      // but we should log it
     }
+
+    // Extract email from organization (handle both Sequelize instances and plain objects)
+    const orgEmail = isSequelizeInstance(newOrg)
+      ? newOrg.get("email")
+      : newOrg.email;
 
     // Generate verification token (valid for 2 days)
     const verificationToken = jwt.sign(
-      { email: newOrg.email, id: newOrg.id, type: "organization" },
+      { email: orgEmail, id: orgId, type: "organization" },
       JWT_SECRET,
       { expiresIn: "2d", algorithm: "HS256" }
     );
@@ -225,9 +347,20 @@ const create_organization = async (
       data: orgWithoutPassword,
     });
   } catch (error: any) {
-    console.error("Organization registration error:", error.message);
+    console.error("Organization registration error:", error);
+    console.error("Error stack:", error.stack);
+    
+    // Provide more detailed error information
+    const errorMessage = error.message || "Unknown error";
+    const isDevelopment = process.env.NODE_ENV !== "production";
+    
     res.status(500).json({
       message: "An error occurred while registering the organization",
+      ...(isDevelopment && {
+        error: errorMessage,
+        details: error.errors || error.details,
+        stack: error.stack,
+      }),
     });
   }
 };
