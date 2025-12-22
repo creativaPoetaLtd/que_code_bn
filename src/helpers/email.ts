@@ -5,18 +5,18 @@ export interface EmailOptions {
   to: string;
   subject: string;
   type:
-    | "code"
-    | "success"
-    | "notification"
-    | "contact_invitation"
-    | "invitation_response"
-    | "group_invitation"
-    | "group_join_request"
-    | "join_request_response"
-    | "email_verification"
-    | "group_creation_notification"
-    | "fundraising_target_reached"
-    | "group_expiring_soon";
+  | "code"
+  | "success"
+  | "notification"
+  | "contact_invitation"
+  | "invitation_response"
+  | "group_invitation"
+  | "group_join_request"
+  | "join_request_response"
+  | "email_verification"
+  | "group_creation_notification"
+  | "fundraising_target_reached"
+  | "group_expiring_soon";
   data: { [key: string]: string | undefined };
 }
 
@@ -83,8 +83,8 @@ class EmailService {
             </p>
             <div style="display: inline-flex; justify-content: center; align-items: center; gap: 15px; margin: 0 auto 30px;">
               ${[...data.code]
-                .map(
-                  (digit) => `
+            .map(
+              (digit) => `
                     <div style="
                       width: 50px;
                       height: 50px;
@@ -99,17 +99,16 @@ class EmailService {
                       ${digit}
                     </div>
                   `
-                )
-                .join("")}
+            )
+            .join("")}
             </div>
-            ${
-              data.verificationUrl
-                ? `
+            ${data.verificationUrl
+            ? `
             <h2>or use the following link to verify your account</h2>
             <p>Click the link below:</p>
             <a href="${data.verificationUrl}" style="color: #00B512; text-decoration: none; background-color: #00B512; padding: 10px 20px; border-radius: 5px; color: #fff;">Verify my account</a>`
-                : ""
-            }
+            : ""
+          }
       </div>
     `;
       case "email_verification":
@@ -204,20 +203,17 @@ class EmailService {
         const invitationBgColor = isAccepted ? "#28a745" : "#dc3545";
         return `
           <div style="text-align: center;">
-            <h2 style="color: ${invitationBgColor}; font-size: 22px; font-weight: bold;">Invitation ${
-          isAccepted ? "Accepted" : "Declined"
-        }</h2>
+            <h2 style="color: ${invitationBgColor}; font-size: 22px; font-weight: bold;">Invitation ${isAccepted ? "Accepted" : "Declined"
+          }</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-              <strong>${data.responderName}</strong> has <strong>${
-          data.actionText
-        }</strong> your contact invitation.
+              <strong>${data.responderName}</strong> has <strong>${data.actionText
+          }</strong> your contact invitation.
             </p>
             
-            ${
-              isAccepted
-                ? '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">You can now view them in your contacts list and start connecting!</p>'
-                : '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">Don\'t worry, you can always try reaching out through other means.</p>'
-            }
+            ${isAccepted
+            ? '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">You can now view them in your contacts list and start connecting!</p>'
+            : '<p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">Don\'t worry, you can always try reaching out through other means.</p>'
+          }
           </div>
         `;
       case "group_invitation":
@@ -225,11 +221,9 @@ class EmailService {
     <div style="text-align: center;">
       <h2 style="color: #333; font-size: 22px; font-weight: bold;">You're Invited to Join a Group!</h2>
       <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-        <strong>${
-          data.inviterName
-        }</strong> has invited you to join the group <strong>${
-          data.groupName
-        }</strong>.
+        <strong>${data.inviterName
+          }</strong> has invited you to join the group <strong>${data.groupName
+          }</strong>.
       </p>
       <p style="color: #666; font-size: 16px; margin-bottom: 20px;">
         ${data.groupDescription || "No group description provided."}
@@ -261,12 +255,10 @@ class EmailService {
       </div>
 
       <p>If the buttons don't work, use these links:</p>
-      <p><strong>Accept:</strong> <a href="${
-        data.acceptUrl
-      }" style="color: #00B512;">${data.acceptUrl}</a></p>
-      <p><strong>Decline:</strong> <a href="${
-        data.rejectUrl
-      }" style="color: #dc3545;">${data.rejectUrl}</a></p>
+      <p><strong>Accept:</strong> <a href="${data.acceptUrl
+          }" style="color: #00B512;">${data.acceptUrl}</a></p>
+      <p><strong>Decline:</strong> <a href="${data.rejectUrl
+          }" style="color: #dc3545;">${data.rejectUrl}</a></p>
     </div>
   `;
       case "group_join_request":
@@ -313,24 +305,20 @@ class EmailService {
         return `
         <div style="text-align: center;">
             <h2 style="color: ${bgColor}; font-size: 22px; font-weight: bold;">
-                Join Request ${isApproved ? "Approved" : "Rejected"}
+                ${isApproved ? "✓ Join Request Approved" : "✗ Join Request Declined"}
             </h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-                <strong>${data.responderName}</strong> has <strong>${
-          data.action
-        }</strong> your request to join 
+                <strong>${data.responderName}</strong> has <strong>${data.actionText}</strong> for 
                 <strong>${data.groupName}</strong>.
             </p>
             
-            ${
-              isApproved
-                ? `
+            ${isApproved
+            ? `
                 <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-                    ${data.message}
+                    ${data.message || "You can now access the group and participate in conversations."}
                 </p>
-                ${
-                  data.groupLink
-                    ? `
+                ${data.groupLink
+              ? `
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="${data.groupLink}" style="
                         display: inline-block;
@@ -342,23 +330,22 @@ class EmailService {
                         text-align: center;
                         background: #28a745;
                         color: white;
-                    ">Go to Group</a>
+                    ">Open Group</a>
                 </div>
                 <p>Or copy and paste this URL into your browser:</p>
                 <p><a href="${data.groupLink}" style="color: #00B512;">${data.groupLink}</a></p>
                 `
-                    : ""
-                }
-            `
-                : `
-                <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-                    ${data.message}
-                </p>
-            `
+              : ""
             }
+                `
+            : `
+                <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+                    ${data.message || "Feel free to request to join again if you wish."}
+                </p>
+                `
+          }
         </div>
-    `;
-
+        `;
       case "group_creation_notification":
         return `
         <div style="text-align: center;">
@@ -504,29 +491,24 @@ class EmailService {
       ">
         <div style="background-color: #00B512; color: #ffffff; padding: 20px;">
           <img 
-            src="${
-              process.env.EMAIL_LOGO_URL ||
-              "https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png"
-            }" 
+            src="${process.env.EMAIL_LOGO_URL ||
+      "https://res.cloudinary.com/daognkuqr/image/upload/v1735213214/lrbpfjaspdl0lafdw7tx.png"
+      }" 
             alt="Company Logo" 
             style="max-width: 120px; margin: 0 auto 10px; display: block;"
           >
-          <h1 style="font-size: 26px; margin: 0;">${
-            process.env.EMAIL_COMPANY_NAME || "QiewCode"
-          }</h1>
+          <h1 style="font-size: 26px; margin: 0;">${process.env.EMAIL_COMPANY_NAME || "QiewCode"
+      }</h1>
         </div>
         <div style="padding: 30px 20px;">
           ${this.generateEmailTemplate(type, data)}
         </div>
         <div style="background-color: #f9f9f9; padding: 20px; color: #666; font-size: 14px;">
-          <p>${
-            process.env.EMAIL_FOOTER_TEXT || "Thank you for choosing us!"
-          }</p>
-          <p>Need help? Contact us at <a href="mailto:${
-            process.env.EMAIL_SUPPORT
-          }" style="color: #00B512; text-decoration: none;">${
-      process.env.EMAIL_SUPPORT || "support@qiewcode.com"
-    }</a></p>
+          <p>${process.env.EMAIL_FOOTER_TEXT || "Thank you for choosing us!"
+      }</p>
+          <p>Need help? Contact us at <a href="mailto:${process.env.EMAIL_SUPPORT
+      }" style="color: #00B512; text-decoration: none;">${process.env.EMAIL_SUPPORT || "support@qiewcode.com"
+      }</a></p>
         </div>
       </div>
     `;
