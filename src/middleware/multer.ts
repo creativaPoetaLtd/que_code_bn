@@ -49,5 +49,26 @@ const fileUpload = multer({
 	},
 });
 
-export { organizationFileUpload };
+// Configure multer for action cover image uploads
+const actionCoverImageUpload = multer({
+	storage: multer.diskStorage({}),
+	limits: {
+		fileSize: 10 * 1024 * 1024, // 10MB limit
+		files: 1, // Only cover image
+	},
+	fileFilter: (_req, file, callback) => {
+		const ext = path.extname(file.originalname).toLowerCase();
+		
+		// Allow only images for cover
+		const allowedImageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.jfif', '.tif'];
+		
+		if (!allowedImageExts.includes(ext)) {
+			return callback(new Error(`File type ${ext} is not allowed. Allowed types: ${allowedImageExts.join(', ')}`));
+		}
+		
+		callback(null, true);
+	},
+});
+
+export { organizationFileUpload, actionCoverImageUpload };
 export default fileUpload;

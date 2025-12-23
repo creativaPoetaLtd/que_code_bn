@@ -23,7 +23,11 @@ type ModelTypes =
   | "Role"
   | "Permission"
   | "RolePermission"
-  | "UserRole";
+  | "UserRole"
+  | "Action"
+  | "SubAction"
+  | "ActionPurchase"
+  | "QRObject";
 // Updated MethodTypes to include "findByPk"
 type MethodTypes =
   | "findAll"
