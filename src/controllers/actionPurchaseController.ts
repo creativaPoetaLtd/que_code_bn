@@ -157,7 +157,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
 
     // Check user quota
     if (action.availability.userQuota) {
-      const userPurchases = await read_function<ActionPurchaseModelAttributes>(
+      const userPurchases = await read_function<ActionPurchaseModelAttributes[]>(
         "ActionPurchase",
         "findAll",
         {
@@ -169,8 +169,8 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         }
       );
 
-      const totalPurchased = userPurchases.reduce(
-        (sum, p) => sum + p.quantity,
+      const totalPurchased = (userPurchases || []).reduce(
+        (sum: number, p: ActionPurchaseModelAttributes) => sum + p.quantity,
         0
       );
 
@@ -275,8 +275,6 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           senderWalletId: buyerWallet.id,
           receiverWalletId: organizationWallet.id,
           amount: totalAmount,
-          fee: 0,
-          totalAmount: totalAmount,
           currency: action.currency,
           status: "completed",
           type: "payment",
@@ -294,8 +292,6 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           senderWalletId: buyerWallet.id,
           receiverWalletId: organizationWallet.id,
           amount: 0,
-          fee: 0,
-          totalAmount: 0,
           currency: action.currency,
           status: "completed",
           type: action.type === "donation" ? "donation" : "payment",

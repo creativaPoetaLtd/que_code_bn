@@ -147,6 +147,7 @@ const createActionStepA = async (
       shortDescription: shortDescription || null,
       description: description || null,
       currency: "RWF",
+      taxProfileId: null,
       pricing: { mode: "fixed", amount: 0 },
       availability: {},
       visibility: { mode: "public" },
