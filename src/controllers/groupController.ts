@@ -502,13 +502,18 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
             additionalInfo
         });
 
-        // Notify group owner with approve/decline actions
+        // If auto-approved (public group), increment member count
+        if (isAutoApproved) {
+            await models.Group.increment('memberCount', { where: { id: group.id } });
+        }
+
+        // Notify group owner ONLY for private groups requiring approval
         const [user, owner] = await Promise.all([
             models.User.findByPk(userId),
             models.User.findByPk(group.ownerId)
         ]);
 
-        if (user && owner) {
+        if (user && owner && !isAutoApproved) {
             // In-app notification
             await createAndSendNotification(req.app, {
                 type: NotificationType.GROUP_JOIN_REQUEST,
@@ -519,7 +524,8 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
                     requestId: membership.id,
                     userId: user.id,
                     userName: `${user.firstName} ${user.lastName}`,
-                    message: `${user.firstName} wants to join your group`,
+                    message: `${user.firstName} ${user.lastName} wants to join your group "${group.name}"`,
+                    title: "Group Join Request",
                     actions: [
                         {
                             type: 'approve',
@@ -551,13 +557,15 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
         }
 
         res.status(200).json({
-            message: "Join request sent. Waiting for owner approval.",
+            message: isAutoApproved
+                ? `Successfully joined ${group.name}`
+                : "Join request sent. Waiting for owner approval.",
             data: {
                 requestId: membership.id,
                 groupId: group.id,
                 groupName: group.name,
                 status: membership.status,
-                requiresApproval: true
+                requiresApproval: !isAutoApproved
             }
         });
     } catch (error) {
@@ -1357,7 +1365,7 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
                     userEmail: user.email,
                     groupName: group.name,
                     approveUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=approve`,
-                    rejectUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=reject`
+                    declineUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=decline`
                 }
             });
 
@@ -1371,7 +1379,20 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
                     requestId: membership.id,
                     userId: user.id,
                     userName: `${user.firstName} ${user.lastName}`,
-                    message: `${user.firstName} wants to join your group ${group.name}`
+                    message: `${user.firstName} ${user.lastName} wants to join your group "${group.name}"`,
+                    title: "Group Join Request",
+                    actions: [
+                        {
+                            type: 'approve',
+                            label: 'Approve',
+                            url: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=approve`
+                        },
+                        {
+                            type: 'decline',
+                            label: 'Decline',
+                            url: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=decline`
+                        }
+                    ]
                 }
             });
         }
@@ -1549,18 +1570,21 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
         try {
             const requester = await models.User.findByPk(requesterId);
             const group = await models.Group.findByPk(groupId);
+            const respondingUser = await models.User.findByPk(userId);
 
-            if (requester && group) {
+            if (requester && group && respondingUser) {
                 await sendEmail({
                     to: requester.email,
-                    subject: `Group Join Request ${action === 'approve' ? 'Approved' : 'Declined'}`,
+                    subject: `Group Join Request ${action === 'approve' ? 'Approved' : 'Declined'} - ${group.name}`,
                     type: 'join_request_response',
                     data: {
                         groupName: group.name,
+                        responderName: `${respondingUser.firstName} ${respondingUser.lastName}`,
                         action: action === 'approve' ? 'approved' : 'declined',
+                        actionText: action === 'approve' ? 'approved your request to join' : 'declined your request to join',
                         message: action === 'approve'
-                            ? `You can now access the group and participate`
-                            : `You can request to join again if you wish`,
+                            ? `You can now access the group and participate in conversations`
+                            : `Feel free to request to join again if you wish`,
                         groupLink: action === 'approve'
                             ? `${process.env.FRONTEND_URL}/groups/${groupId}`
                             : undefined
