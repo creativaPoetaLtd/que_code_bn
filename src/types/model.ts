@@ -395,6 +395,10 @@ export interface TransactionAttributes {
   description?: string;
   hasAccount?: boolean;
   senderNames?: string;
+  // Action-related fields (optional for backward compatibility)
+  actionPurchaseId?: string;
+  actionId?: string;
+  subActionId?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -479,4 +483,122 @@ export interface WalletRestrictionAttributes {
 export type WalletRestrictionCreationAttributes = Omit<
   WalletRestrictionAttributes,
   "id" | "createdAt" | "updatedAt"
+>;
+
+// Action-related types
+export interface ActionModelAttributes {
+  id: string;
+  organizationId: string;
+  type:
+    | "ticket"
+    | "transport"
+    | "service"
+    | "subscription"
+    | "payment"
+    | "donation"
+    | "vote"
+    | "booking"
+    | "license"
+    | "membership"
+    | "rental"
+    | "group";
+  name: string;
+  slug: string;
+  displayLayout: "mosaic" | "list" | "icons" | "card";
+  coverImage: string | null;
+  shortDescription: string | null;
+  description: string | null;
+  currency: string;
+  taxProfileId: string | null;
+  pricing: any; // JSON
+  availability: any; // JSON
+  visibility: any; // JSON
+  buyerFields: any; // JSON
+  fulfillment: any; // JSON
+  policy: any; // JSON
+  webhooks: any; // JSON
+  customFields: any; // JSON
+  status: "draft" | "published" | "archived";
+  dedicatedQrCode: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type ActionCreationAttributes = Omit<
+  ActionModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+export interface SubActionModelAttributes {
+  id: string;
+  actionId: string;
+  name: string;
+  description: string | null;
+  price: number;
+  stock: number | null;
+  stockReserved: number;
+  variants: any; // JSON
+  metadata: any; // JSON
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SubActionCreationAttributes = Omit<
+  SubActionModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+export interface ActionPurchaseModelAttributes {
+  id: string;
+  actionId: string;
+  subActionId: string | null;
+  buyerId: string;
+  organizationId: string;
+  transactionId: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  currency: string;
+  buyerData: any; // JSON
+  status: "pending" | "completed" | "cancelled" | "refunded";
+  qrObjectId: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type ActionPurchaseCreationAttributes = Omit<
+  ActionPurchaseModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+export interface QRObjectModelAttributes {
+  id: string;
+  buyerId: string;
+  actionId: string;
+  actionPurchaseId: string;
+  subActionId: string | null;
+  type:
+    | "eticket"
+    | "badge"
+    | "license"
+    | "membership"
+    | "booking"
+    | "transport"
+    | "subscription";
+  metadata: any; // JSON
+  status: "valid" | "used" | "expired" | "revoked";
+  issuedAt: Date;
+  validUntil: Date | null;
+  usedAt: Date | null;
+  qrCodeData: string;
+  coverImage: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type QRObjectCreationAttributes = Omit<
+  QRObjectModelAttributes,
+  "id" | "createdAt" | "updatedAt" | "issuedAt"
 >;

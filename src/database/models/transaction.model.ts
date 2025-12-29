@@ -69,6 +69,31 @@ const Transaction_model = (sequelize: Sequelize) => {
       description: DataTypes.STRING,
       hasAccount: { type: DataTypes.BOOLEAN, defaultValue: true },
       senderNames: DataTypes.STRING,
+      // Action-related fields (optional for backward compatibility)
+      actionPurchaseId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "ActionPurchases",
+          key: "id",
+        },
+      },
+      actionId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "Actions",
+          key: "id",
+        },
+      },
+      subActionId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "SubActions",
+          key: "id",
+        },
+      },
     },
     { sequelize, tableName: "Transactions" }
   );
