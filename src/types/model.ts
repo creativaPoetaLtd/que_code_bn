@@ -42,6 +42,7 @@ export interface UserModelAttributes {
   lastSeen?: Date; // Last seen timestamp
   pinResetOtp: string | null; // OTP for PIN reset
   pinResetOtpExpires: Date | null; // PIN reset OTP expiration
+  fcmToken?: string | null; // Firebase Cloud Messaging token
   createdAt?: Date;
   updatedAt?: Date;
 }

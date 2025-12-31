@@ -4,6 +4,7 @@ import Models from "../database/models";
 import { Op } from "sequelize";
 import { sequelizeConnection } from "../database/config/db.config";
 import ChatService from "../services/chatService";
+import PushNotificationService from "../services/pushNotificationService";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -441,6 +442,7 @@ export const sendMessage = async (
     const { content, messageType = "text", transactionId } = req.body;
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const chatService = ChatService.getInstance();
+    const pushService = new PushNotificationService(models);
 
     // Verify user is participant in the chat
     const participant = await models.ChatParticipant.findOne({
@@ -467,6 +469,34 @@ export const sendMessage = async (
       models,
       io
     );
+
+    // Send push notifications to other participants
+    const otherParticipants = await models.ChatParticipant.findAll({
+      where: { 
+        chatId, 
+        userId: { [Op.ne]: userId } 
+      },
+      include: [{
+        model: models.User,
+        as: 'user',
+        attributes: ['firstName', 'lastName']
+      }]
+    });
+
+    const sender = await models.User.findByPk(userId, {
+      attributes: ['firstName', 'lastName']
+    });
+    const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Someone';
+
+    // Send notifications to offline users
+    for (const participant of otherParticipants) {
+      await pushService.sendChatMessage(
+        participant.userId,
+        senderName,
+        content,
+        chatId
+      );
+    }
 
     res.status(201).json({
       success: true,
