@@ -15,6 +15,8 @@ import pinRouter from "./pin.routes";
 import chatRouter from "./chat.routes";
 import actionRouter from "./action.routes";
 
+import fcmRouter from "./fcm.routes";
+
 const router = express.Router();
 router.use("/organizations", orgRouter);
 router.use("/organization-categories", organizationCategoryRouter);
@@ -31,5 +33,6 @@ router.use("/contact-invitations", contactInvitationRouter);
 router.use("/groups", groupRouter); // Re-enabled after fixing compilation errors
 router.use("/notifications", notificationRouter); // Re-enabled
 router.use("/chats", chatRouter);
+router.use("/fcm", fcmRouter);
 router.use("", actionRouter); // Action routes (includes /actions, /organizations/:id/actions, etc.)
 export default router;

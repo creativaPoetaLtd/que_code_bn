@@ -11,7 +11,12 @@ import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
 import * as path from "path";
 
+import FirebaseService from './services/firebaseService';
+
 const app = express();
+
+// Initialize Firebase
+FirebaseService.getInstance().initialize();
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
