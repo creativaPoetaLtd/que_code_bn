@@ -1,18 +1,27 @@
 // routes/auth.ts
-import express from 'express';
-import passport from '../auth/passport';
-import jwt from 'jsonwebtoken';
+import express from "express";
+import passport from "../auth/passport";
+import jwt from "jsonwebtoken";
+import login from "../auth/login";
 
 const router = express.Router();
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+// Login endpoint
+router.post("/login", login.login_user);
+
+// Google OAuth endpoints
 router.get(
-  '/google/callback',
-  passport.authenticate('google', { scope: ['profile', 'email'] }),
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { scope: ["profile", "email"] }),
   (req, res) => {
     const token = jwt.sign(
       { id: (req.user as any).id, email: (req.user as any).email },
-      process.env.JWT_SECRET || 'your_jwt_secret',
-      { expiresIn: '1h', algorithm: 'HS256' }
+      process.env.JWT_SECRET || "your_jwt_secret",
+      { expiresIn: "1h", algorithm: "HS256" }
     );
     res.send(`
       <script>

@@ -305,7 +305,7 @@ const Models = (sequelize: Sequelize) => {
   // Chat Encryption Keys
   Chat.hasMany(ChatKey, { foreignKey: "chatId", as: "chatKeys" });
   ChatKey.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
-  
+
   User.hasMany(ChatKey, { foreignKey: "userId", as: "chatKeys" });
   ChatKey.belongsTo(User, { foreignKey: "userId", as: "user" });
 
@@ -364,6 +364,25 @@ const Models = (sequelize: Sequelize) => {
     through: UserRole,
     foreignKey: "roleId",
     as: "users",
+  });
+
+  // Direct associations for UserRole and RolePermission tables
+  User.hasMany(UserRole, { foreignKey: "userId", as: "userRoles" });
+  UserRole.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  Role.hasMany(UserRole, { foreignKey: "roleId", as: "userRoles" });
+  UserRole.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+
+  Role.hasMany(RolePermission, { foreignKey: "roleId", as: "rolePermissions" });
+  RolePermission.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+
+  Permission.hasMany(RolePermission, {
+    foreignKey: "permissionId",
+    as: "rolePermissions",
+  });
+  RolePermission.belongsTo(Permission, {
+    foreignKey: "permissionId",
+    as: "permission",
   });
 
   return {

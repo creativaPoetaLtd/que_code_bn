@@ -10,7 +10,7 @@ export interface OrganizationModelAttributes {
   ownerEmail: string;
   contactPhone: string;
   tinNumber: string;
-  
+
   password: string;
   approvalStatus: boolean;
   categoryId?: string;
@@ -49,7 +49,17 @@ export interface UserModelAttributes {
 
 export type UserCreationAttributes = Optional<
   UserModelAttributes,
-  "id" | "createdAt" | "updatedAt" | "isVerified" | "approvalStatus" | "transactionPin" | "hasPinSet" | "pinAttempts" | "pinLockedUntil" | "pinResetOtp" | "pinResetOtpExpires"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "isVerified"
+  | "approvalStatus"
+  | "transactionPin"
+  | "hasPinSet"
+  | "pinAttempts"
+  | "pinLockedUntil"
+  | "pinResetOtp"
+  | "pinResetOtpExpires"
 > & {
   firstName: string;
   lastName: string;
@@ -150,7 +160,14 @@ export interface ChatMessageAttributes {
   chatId: string;
   senderId: string;
   content: string;
-  messageType: "text" | "image" | "file" | "money" | "audio" | "video" | "document";
+  messageType:
+    | "text"
+    | "image"
+    | "file"
+    | "money"
+    | "audio"
+    | "video"
+    | "document";
   transactionId?: string;
   isEncrypted: boolean;
   encryptionIv?: string;
@@ -252,7 +269,11 @@ export interface GroupAttributes {
   fundraisingTarget?: number;
   fundraisingCurrentAmount: number;
   expirationDate?: Date;
-  expirationType: "custom_date" | "target_reached" | "deadline_reached" | "never";
+  expirationType:
+    | "custom_date"
+    | "target_reached"
+    | "deadline_reached"
+    | "never";
   hasAdditionalInfo: boolean;
   additionalInfoPrompt?: string;
   profilePictureUrl?: string;
@@ -287,7 +308,10 @@ export interface GroupMemberAttributes {
   createdAt?: Date;
   updatedAt?: Date;
 }
-export type GroupMemberCreationAttributes = Omit<GroupMemberAttributes, "id" | "createdAt" | "updatedAt">;
+export type GroupMemberCreationAttributes = Omit<
+  GroupMemberAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 export interface NotificationAttributes {
   id: string;
