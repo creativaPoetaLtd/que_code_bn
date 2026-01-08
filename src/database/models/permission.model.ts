@@ -1,7 +1,9 @@
 // permission.model.ts
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
-import { PermissionAttributes, PermissionCreationAttributes } from "../../types/model";
-
+import {
+  PermissionAttributes,
+  PermissionCreationAttributes,
+} from "../../types/model";
 
 class Permission extends Model<
   PermissionAttributes,
@@ -9,6 +11,7 @@ class Permission extends Model<
 > {
   public id!: string;
   public name!: string;
+  public description!: string;
 }
 const Permission_model = (sequelize: Sequelize) => {
   Permission.init(
