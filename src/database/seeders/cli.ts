@@ -1,13 +1,16 @@
 #!/usr/bin/env ts-node
-require("dotenv").config();
+import "dotenv/config";
 
 import { Sequelize } from "sequelize";
 import { runPendingSeeds, undoAllSeeds } from "./runner";
 
-const sequelize = new Sequelize(process.env.DATABASE_URL || process.env.DB_DEV_URL || "", {
-  dialect: "postgres",
-  logging: false,
-});
+const sequelize = new Sequelize(
+  process.env.DATABASE_URL || process.env.DB_PROD_URL || process.env.DB_DEV_URL || "",
+  {
+    dialect: "postgres",
+    logging: false,
+  }
+);
 
 async function main() {
   const command = process.argv[2];
