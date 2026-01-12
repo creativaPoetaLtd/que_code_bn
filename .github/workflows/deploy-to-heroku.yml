@@ -107,31 +107,6 @@ jobs:
       - name: Wait for deployment to stabilize
         run: sleep 30
 
-      - name: Install pnpm on Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
-        run: |
-          heroku run "npm install -g pnpm" --app $HEROKU_APP_NAME
-
-      - name: Run database migrations
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
-        run: |
-          echo "Running database migrations..."
-          heroku run "pnpm run migrate" --app $HEROKU_APP_NAME
-          echo "✅ Database migrations completed"
-
-      - name: Run pending seeds
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
-        run: |
-          echo "Running pending seeds..."
-          heroku run "pnpm run seed" --app $HEROKU_APP_NAME
-          echo "✅ Seed execution completed"
-
       - name: Verify deployment health
         run: |
           echo "Checking application health..."
