@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 import "dotenv/config";
 
 import { Sequelize } from "sequelize";
