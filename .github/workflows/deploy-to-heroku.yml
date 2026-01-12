@@ -113,7 +113,7 @@ jobs:
           HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
         run: |
           echo "Running database migrations..."
-          heroku run "npm run migrate" --app $HEROKU_APP_NAME
+          heroku run "pnpm run migrate" --app $HEROKU_APP_NAME
           echo "✅ Database migrations completed"
 
       - name: Run pending seeds
@@ -122,7 +122,7 @@ jobs:
           HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
         run: |
           echo "Running pending seeds..."
-          heroku run "npm run seed" --app $HEROKU_APP_NAME
+          heroku run "pnpm run seed" --app $HEROKU_APP_NAME
           echo "✅ Seed execution completed"
 
       - name: Verify deployment health
