@@ -1,7 +1,10 @@
 // routes/admin.routes.ts
 import express from "express";
 import adminController from "../controllers/adminController";
-import { requireAdmin, requirePermission } from "../middleware/admin.auth.middleware";
+import {
+  requireAdmin,
+  requirePermission,
+} from "../middleware/admin.auth.middleware";
 
 const router = express.Router();
 
@@ -38,5 +41,11 @@ router.get("/permissions", adminController.getAllPermissions);
 router.post("/permissions", adminController.createPermission);
 router.put("/permissions/:id", adminController.updatePermission);
 router.delete("/permissions/:id", adminController.deletePermission);
+
+// ============================================
+// Transaction Management Routes
+// ============================================
+router.get("/transactions", adminController.getAllTransactions);
+router.get("/transactions/:id", adminController.getTransactionById);
 
 export default router;

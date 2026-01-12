@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import Models from "../database/models";
-import { Op } from "sequelize";
+import { Op, fn, col } from "sequelize";
 
 // Get all users with their roles
 export const getAllUsers = async (req: Request, res: Response) => {
@@ -805,6 +805,236 @@ export const getRoleWithPermissions = async (req: Request, res: Response) => {
   }
 };
 
+// Get all transactions (admin view)
+export const getAllTransactions = async (req: Request, res: Response) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search = "",
+      status = "all",
+      type = "all",
+      startDate,
+      endDate,
+    } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const whereClause: any = {};
+
+    // Filter by status
+    if (status !== "all") {
+      whereClause.status = status;
+    }
+
+    // Filter by type
+    if (type !== "all") {
+      whereClause.type = type;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      whereClause.createdAt = {};
+      if (startDate) {
+        whereClause.createdAt[Op.gte] = new Date(startDate as string);
+      }
+      if (endDate) {
+        whereClause.createdAt[Op.lte] = new Date(endDate as string);
+      }
+    }
+
+    // Search by reference ID or description
+    if (search) {
+      whereClause[Op.or] = [
+        { referenceId: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+        { externalSenderName: { [Op.iLike]: `%${search}%` } },
+        { senderNames: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const { count, rows: transactions } =
+      await models.Transaction.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: models.Wallet,
+            as: "senderWallet",
+            attributes: ["id", "balance", "currency"],
+            include: [
+              {
+                model: models.User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email", "phone"],
+              },
+              {
+                model: models.Organization,
+                as: "organization",
+                attributes: ["id", "name", "email"],
+              },
+            ],
+          },
+          {
+            model: models.Wallet,
+            as: "receiverWallet",
+            attributes: ["id", "balance", "currency"],
+            include: [
+              {
+                model: models.User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email", "phone"],
+              },
+              {
+                model: models.Organization,
+                as: "organization",
+                attributes: ["id", "name", "email"],
+              },
+            ],
+          },
+          {
+            model: models.Category,
+            as: "category",
+            attributes: ["id", "name"],
+          },
+          {
+            model: models.ActionPurchase,
+            as: "actionPurchase",
+            attributes: ["id", "quantity", "totalAmount"],
+            include: [
+              {
+                model: models.Action,
+                as: "action",
+                attributes: ["id", "name", "type"],
+              },
+              {
+                model: models.SubAction,
+                as: "subAction",
+                attributes: ["id", "name", "price"],
+              },
+            ],
+          },
+        ],
+        limit: Number(limit),
+        offset,
+        order: [["createdAt", "DESC"]],
+      });
+
+    // Calculate statistics
+    const stats = await models.Transaction.findAll({
+      attributes: [
+        [fn("COUNT", col("id")), "total"],
+        [fn("SUM", col("amount")), "totalAmount"],
+        "status",
+        "type",
+      ],
+      group: ["status", "type"],
+      raw: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: transactions,
+      statistics: stats,
+      pagination: {
+        total: count,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(count / Number(limit)),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching transactions",
+      error: error.message,
+    });
+  }
+};
+
+// Get transaction by ID (admin view with full details)
+export const getTransactionById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const transaction = await models.Transaction.findByPk(id, {
+      include: [
+        {
+          model: models.Wallet,
+          as: "senderWallet",
+          include: [
+            {
+              model: models.User,
+              as: "user",
+              attributes: {
+                exclude: ["password", "transactionPin", "otp", "pinResetOtp"],
+              },
+            },
+            {
+              model: models.Organization,
+              as: "organization",
+            },
+          ],
+        },
+        {
+          model: models.Wallet,
+          as: "receiverWallet",
+          include: [
+            {
+              model: models.User,
+              as: "user",
+              attributes: {
+                exclude: ["password", "transactionPin", "otp", "pinResetOtp"],
+              },
+            },
+            {
+              model: models.Organization,
+              as: "organization",
+            },
+          ],
+        },
+        {
+          model: models.Category,
+          as: "category",
+        },
+        {
+          model: models.ActionPurchase,
+          as: "actionPurchase",
+          include: [
+            {
+              model: models.Action,
+              as: "action",
+            },
+            {
+              model: models.SubAction,
+              as: "subAction",
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: transaction,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching transaction",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   getAllUsers,
   getUserById,
@@ -822,4 +1052,6 @@ export default {
   updatePermission,
   deletePermission,
   getRoleWithPermissions,
+  getAllTransactions,
+  getTransactionById,
 };
