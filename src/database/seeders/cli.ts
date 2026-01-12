@@ -4,11 +4,22 @@ import "dotenv/config";
 import { Sequelize } from "sequelize";
 import { runPendingSeeds, undoAllSeeds } from "./runner";
 
+const dialectOptions =
+  process.env.DB_HOSTED_MODE === "hosted" || process.env.NODE_ENV === "production"
+    ? {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false,
+        },
+      }
+    : {};
+
 const sequelize = new Sequelize(
   process.env.DATABASE_URL || process.env.DB_PROD_URL || process.env.DB_DEV_URL || "",
   {
     dialect: "postgres",
     logging: false,
+    dialectOptions,
   }
 );
 
