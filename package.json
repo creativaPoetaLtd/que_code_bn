@@ -7,7 +7,7 @@
     "dev:nodemon": "nodemon",
     "dev:clean": "pkill -f 'ts-node-dev' || true && pnpm run dev",
     "dev:verbose": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --require dotenv/config --poll --rs --clear src/index.ts",
-    "build": "tsc",
+    "build": "tsc && cp src/database/seeders/*.js dist/database/seeders/ 2>/dev/null || true",
     "start": "node --require dotenv/config dist/index.js",
     "heroku-postbuild": "pnpm run build",
     "drop-all-tables": "psql -U your_username -d your_database_name -c \"SELECT 'DROP TABLE IF EXISTS \"' || tablename || '\" CASCADE;' FROM pg_tables WHERE schemaname = 'public'\" | psql -U your_username -d your_database_name",
