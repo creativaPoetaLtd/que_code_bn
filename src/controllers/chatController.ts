@@ -4,7 +4,6 @@ import Models from "../database/models";
 import { Op } from "sequelize";
 import { sequelizeConnection } from "../database/config/db.config";
 import ChatService from "../services/chatService";
-import PushNotificationService from "../services/pushNotificationService";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -72,14 +71,14 @@ export const getUserChats = async (
     const sortedChats = chats.sort((a, b) => {
       const aChat = a.get("chat") as any;
       const bChat = b.get("chat") as any;
-      
+
       const aLatestMessage = aChat.messages && aChat.messages.length > 0 ? aChat.messages[0] : null;
       const bLatestMessage = bChat.messages && bChat.messages.length > 0 ? bChat.messages[0] : null;
-      
+
       if (!aLatestMessage && !bLatestMessage) return 0;
       if (!aLatestMessage) return 1;
       if (!bLatestMessage) return -1;
-      
+
       return new Date(bLatestMessage.createdAt).getTime() - new Date(aLatestMessage.createdAt).getTime();
     });
 
@@ -88,16 +87,16 @@ export const getUserChats = async (
       sortedChats.map(async (chatParticipant) => {
         const chat = chatParticipant.get("chat") as any;
         const lastReadAt = (chatParticipant as any).lastReadAt;
-        
+
         const whereClause: any = {
           chatId: chat.id,
           senderId: { [Op.ne]: userId }
         };
-        
+
         if (lastReadAt) {
           whereClause.createdAt = { [Op.gt]: lastReadAt };
         }
-        
+
         const count = await models.ChatMessage.count({ where: whereClause });
         return { chatId: chat.id, unreadCount: count };
       })
@@ -156,8 +155,8 @@ export const getUserChats = async (
           content: lastMessage.content,
           messageType: lastMessage.messageType,
           createdAt: lastMessage.createdAt,
-          sender: lastMessage.sender ? 
-            `${lastMessage.sender.firstName || ''} ${lastMessage.sender.lastName || ''}`.trim() || "Unknown" : 
+          sender: lastMessage.sender ?
+            `${lastMessage.sender.firstName || ''} ${lastMessage.sender.lastName || ''}`.trim() || "Unknown" :
             "Unknown"
         } : null,
         unreadCount,
@@ -205,7 +204,7 @@ export const getChatMessages = async (
 
     // Get read receipts for display
     const readReceipts = await models.ChatParticipant.findAll({
-      where: { 
+      where: {
         chatId,
         lastReadAt: {
           [Op.not]: null as any
@@ -239,7 +238,7 @@ export const getChatMessages = async (
       duration: message.duration,
       sender: {
         id: message.senderId,
-        name: message.sender ? 
+        name: message.sender ?
           `${message.sender.firstName || ''} ${message.sender.lastName || ''}`.trim() || "Unknown" :
           "Unknown",
         avatar: message.sender?.profile?.profileImage
@@ -248,8 +247,8 @@ export const getChatMessages = async (
         .filter(receipt => new Date(receipt.lastReadAt!) >= new Date(message.createdAt))
         .map(receipt => ({
           userId: receipt.userId,
-          name: receipt.get("user") ? 
-            `${(receipt.get("user") as any).firstName || ''} ${(receipt.get("user") as any).lastName || ''}`.trim() || "Unknown" : 
+          name: receipt.get("user") ?
+            `${(receipt.get("user") as any).firstName || ''} ${(receipt.get("user") as any).lastName || ''}`.trim() || "Unknown" :
             "Unknown",
           readAt: receipt.lastReadAt
         }))
@@ -340,7 +339,7 @@ export const createOrGetDMChat = async (
         const participantCount = await models.ChatParticipant.count({
           where: { chatId }
         });
-        
+
         if (participantCount === 2) {
           existingChat = await models.Chat.findByPk(chatId);
           break;
@@ -388,7 +387,7 @@ export const createOrGetDMChat = async (
 
     // Create new DM chat
     const transaction = await sequelizeConnection.transaction();
-    
+
     try {
       const newChat = await models.Chat.create(
         {
@@ -442,7 +441,6 @@ export const sendMessage = async (
     const { content, messageType = "text", transactionId } = req.body;
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const chatService = ChatService.getInstance();
-    const pushService = new PushNotificationService(models);
 
     // Verify user is participant in the chat
     const participant = await models.ChatParticipant.findOne({
@@ -472,9 +470,9 @@ export const sendMessage = async (
 
     // Send push notifications to other participants
     const otherParticipants = await models.ChatParticipant.findAll({
-      where: { 
-        chatId, 
-        userId: { [Op.ne]: userId } 
+      where: {
+        chatId,
+        userId: { [Op.ne]: userId }
       },
       include: [{
         model: models.User,
@@ -488,15 +486,7 @@ export const sendMessage = async (
     });
     const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Someone';
 
-    // Send notifications to offline users
-    for (const participant of otherParticipants) {
-      await pushService.sendChatMessage(
-        participant.userId,
-        senderName,
-        content,
-        chatId
-      );
-    }
+
 
     res.status(201).json({
       success: true,
@@ -607,7 +597,7 @@ export const sendMediaMessage = async (
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
       }
-      
+
       res.status(403).json({
         success: false,
         message: "You are not authorized to send messages to this chat"
@@ -655,12 +645,12 @@ export const sendMediaMessage = async (
 
   } catch (error) {
     console.error("Error sending media message:", error);
-    
+
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    
+
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Failed to send media message"
@@ -705,8 +695,8 @@ export const getChatParticipantsStatus = async (
 
     const participantsStatus = participants.map(p => ({
       userId: p.userId,
-      name: p.get("user") ? 
-        `${(p.get("user") as any).firstName} ${(p.get("user") as any).lastName}` : 
+      name: p.get("user") ?
+        `${(p.get("user") as any).firstName} ${(p.get("user") as any).lastName}` :
         "Unknown",
       isOnline: (p.get("user") as any)?.isOnline || false,
       lastSeen: (p.get("user") as any)?.lastSeen
@@ -849,8 +839,8 @@ export const joinGroupChat = async (
 
     // Check if user is a member of the group
     const groupMember = await models.GroupMember.findOne({
-      where: { 
-        groupId, 
+      where: {
+        groupId,
         userId,
         status: 'active' // Only active members can join chat
       }
@@ -882,7 +872,7 @@ export const joinGroupChat = async (
     // If no chat exists, create one
     if (!chat) {
       const transaction = await sequelizeConnection.transaction();
-      
+
       try {
         // Create the chat
         chat = await models.Chat.create({
