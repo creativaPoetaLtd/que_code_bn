@@ -11,7 +11,10 @@ import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
 import * as path from "path";
 
+
 const app = express();
+
+
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -30,6 +33,7 @@ app.use(
 );
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

@@ -20,6 +20,7 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
   public lastSeen!: Date | null; // Last seen timestamp
   public pinResetOtp!: string | null; // OTP for PIN reset
   public pinResetOtpExpires!: Date | null; // PIN reset OTP expiration
+  public fcmToken!: string | null; // Firebase Cloud Messaging token
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -50,6 +51,7 @@ const User_model = (sequelize: Sequelize) => {
       lastSeen: { type: DataTypes.DATE, allowNull: true }, // Last seen timestamp
       pinResetOtp: { type: DataTypes.STRING, allowNull: true }, // PIN reset OTP
       pinResetOtpExpires: { type: DataTypes.DATE, allowNull: true }, // PIN reset OTP expiration
+      fcmToken: { type: DataTypes.TEXT, allowNull: true }, // FCM token
     },
     {
       sequelize,

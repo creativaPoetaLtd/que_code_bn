@@ -15,8 +15,8 @@ export function sendNotification(
   const io = app.get("io");
   if (!io) return;
 
-  // For single recipient (userId as socket room)
-  io.to(payload.recipientId).emit("notification", payload);
+  // For single recipient (userId as socket room) - user rooms are prefixed with 'user_'
+  io.to(`user_${payload.recipientId}`).emit("notification", payload);
 }
 
 /**
@@ -29,7 +29,7 @@ export function sendBulkNotification(
   const io = app.get("io");
   if (!io) return;
   payloads.forEach((payload) => {
-    io.to(payload.recipientId).emit("notification", payload);
+    io.to(`user_${payload.recipientId}`).emit("notification", payload);
   });
 }
 

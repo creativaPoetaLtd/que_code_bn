@@ -9,7 +9,7 @@
 	  "esModuleInterop": true,
 	  "strict": true,
 	  "forceConsistentCasingInFileNames": true,
-	  "types": []
+	  "types": ["node"]
 	},
 	"exclude": [
 		"node_modules",

@@ -1,12 +1,13 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Request, Response } from "express";
-import { read_function, insert_function } from "../utils/db_methods";
+import { insert_function } from "../utils/db_methods";
 import {
   UserModelAttributes,
   OrganizationModelAttributes,
 } from "../types/model";
 import sendEmail from "../helpers/email.simple";
+import Models from "../database/models";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -29,14 +30,29 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
     const [user, organization] = await Promise.all([
-      read_function<UserModelAttributes>("User", "findOne", {
+      models.User.findOne({
         where: { email: email.toLowerCase() },
         attributes: {
           exclude: ["createdAt", "updatedAt"],
         },
+        include: [
+          {
+            model: models.UserRole,
+            as: "userRoles",
+            include: [
+              {
+                model: models.Role,
+                as: "role",
+                attributes: ["id", "name", "description"],
+              },
+            ],
+          },
+        ],
       }),
-      read_function<OrganizationModelAttributes>("Organization", "findOne", {
+      models.Organization.findOne({
         where: { email: email.toLowerCase() },
         attributes: {
           exclude: ["createdAt", "updatedAt"],
@@ -51,12 +67,18 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       res.status(404).json({ message: "Account not found" });
       return;
     }
-    const isPasswordValid = await bcrypt.compare(password, account.password);
+
+    // Convert to plain object early
+    const accountPlain: any = account.toJSON ? account.toJSON() : account;
+
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      accountPlain.password
+    );
     if (!isPasswordValid) {
       res.status(401).json({ message: "Invalid credentials" });
       return;
     }
-
 
     if (user && !user.isVerified) {
       try {
@@ -66,36 +88,39 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
           "User",
           "update",
           { otp, otpExpires },
-          { where: { id: user.id } }
+          { where: { id: accountPlain.id } }
         );
         const verificationToken = jwt.sign(
-          { email: user.email, id: user.id },
+          { email: accountPlain.email, id: accountPlain.id },
           JWT_SECRET,
           { expiresIn: "2d", algorithm: "HS256" }
         );
 
-        const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"
-          }/auth/verify?token=${verificationToken}&otp=${otp}`;
+        const verificationUrl = `${
+          process.env.FRONTEND_URL || "http://localhost:3000"
+        }/auth/verify?token=${verificationToken}&otp=${otp}`;
         await sendEmail({
-          to: user.email,
+          to: accountPlain.email,
           subject: "Account Verification Required - New OTP Sent",
           type: "email_verification",
           data: {
             verificationUrl,
-            name: `${user.firstName} ${user.lastName}`,
+            name: `${accountPlain.firstName} ${accountPlain.lastName}`,
             otp,
           },
         });
 
         res.status(403).json({
-          message: "Account not verified. A new verification email with OTP has been sent to your email address. Please verify your email before logging in.",
+          message:
+            "Account not verified. A new verification email with OTP has been sent to your email address. Please verify your email before logging in.",
           requiresVerification: true,
           otpResent: true,
         });
         return;
       } catch (otpError: any) {
         res.status(403).json({
-          message: "Account not verified. Please verify your email before logging in. Failed to resend verification email - please try again later.",
+          message:
+            "Account not verified. Please verify your email before logging in. Failed to resend verification email - please try again later.",
           requiresVerification: true,
           otpResent: false,
         });
@@ -103,25 +128,52 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // Get clean user data with role - use get() with plain option
+    const userPlain: any = user ? user.get({ plain: true }) : null;
+    const orgPlain: any = organization
+      ? organization.get({ plain: true })
+      : null;
+    const accountData = userPlain || orgPlain;
+
     const tokenPayload = {
-      id: account.id,
-      email: account.email,
-      name: user ? `${user.firstName} ${user.lastName}` : organization?.name,
+      id: accountData.id,
+      email: accountData.email,
+      name: user
+        ? `${accountData.firstName} ${accountData.lastName}`
+        : accountData.name,
       accountType: accountType,
+      role: (userPlain && userPlain.userRoles?.[0]?.role?.name) || "user",
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, {
       expiresIn: "1d",
       algorithm: "HS256",
     });
-    const { password: _, ...accountWithoutPassword } = account;
 
+    // Remove sensitive data
+    const {
+      password: _,
+      transactionPin: __,
+      pinResetOtp: ___,
+      ...accountWithoutPassword
+    } = accountData;
+
+    // Extract role information for user accounts
+    const roleData =
+      userPlain && userPlain.userRoles?.[0]?.role
+        ? {
+            roleId: userPlain.userRoles[0].role.id,
+            roleName: userPlain.userRoles[0].role.name,
+            roleDescription: userPlain.userRoles[0].role.description,
+          }
+        : null;
 
     res.status(200).json({
       message: "Login successful",
       user: accountWithoutPassword,
       token,
       accountType,
+      role: roleData,
     });
   } catch (error: any) {
     res.status(500).json({

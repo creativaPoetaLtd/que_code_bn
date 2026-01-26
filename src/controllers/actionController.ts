@@ -243,12 +243,12 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       name,
       description: description || null,
       price: parseFloat(price),
-      stock: stock !== undefined ? parseInt(stock) : null,
+      stock: stock !== undefined && stock !== null ? parseInt(stock) : null,
       stockReserved: 0,
       variants: variants || {},
       metadata: metadata || {},
       isActive: true,
-      sortOrder: sortOrder || 0,
+      sortOrder: sortOrder !== undefined && sortOrder !== null ? parseInt(sortOrder) : 0,
     };
 
     const newSubAction = await insert_function<SubActionModelAttributes>(

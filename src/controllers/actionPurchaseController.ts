@@ -275,13 +275,15 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           senderWalletId: buyerWallet.id,
           receiverWalletId: organizationWallet.id,
           amount: totalAmount,
+          fee: 0,
+          totalAmount: totalAmount,
           currency: action.currency,
           status: "completed",
           type: "payment",
           description: `${action.name}${subAction ? ` - ${subAction.name}` : ""} x${quantity}`,
           actionId: action.id,
           subActionId: subActionId || null,
-        },
+        } as any,
         { transaction: dbTransaction }
       );
     } else {
@@ -292,13 +294,15 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           senderWalletId: buyerWallet.id,
           receiverWalletId: organizationWallet.id,
           amount: 0,
+          fee: 0,
+          totalAmount: 0,
           currency: action.currency,
           status: "completed",
           type: action.type === "donation" ? "donation" : "payment",
           description: `${action.name}${subAction ? ` - ${subAction.name}` : ""} x${quantity}`,
           actionId: action.id,
           subActionId: subActionId || null,
-        },
+        } as any,
         { transaction: dbTransaction }
       );
     }
