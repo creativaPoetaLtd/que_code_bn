@@ -4,13 +4,13 @@ import { Op } from 'sequelize';
 import * as bcrypt from 'bcrypt';
 import database_models from '../database/config/db.config';
 
-const { 
-  Wallet, 
-  Transaction: TransactionModel, 
-  Category, 
+const {
+  Wallet,
+  Transaction: TransactionModel,
+  Category,
   WalletRestriction,
   User,
-  Organization 
+  Organization
 } = database_models;
 
 // Helper function to calculate fee
@@ -19,14 +19,14 @@ const calculateFee = (amount: number): number => {
   const fee = amount * feePercentage;
   const minFee = 5;
   const maxFee = 1000;
-  
+
   return Math.min(Math.max(fee, minFee), maxFee);
 };
 
 // Transfer money between users and/or organizations
 const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const transaction = await TransactionModel.sequelize?.transaction();
-  
+
   try {
     const {
       senderUserId,
@@ -44,7 +44,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     // Validation - must have either user or organization for sender and receiver
     const hasSender = senderUserId || senderOrganizationId;
     const hasReceiver = receiverUserId || receiverOrganizationId;
-    
+
     if (!hasSender || !hasReceiver || !amount) {
       res.status(400).json({
         success: false,
@@ -55,7 +55,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
 
     // Cannot send to self
     if ((senderUserId && receiverUserId && senderUserId === receiverUserId) ||
-        (senderOrganizationId && receiverOrganizationId && senderOrganizationId === receiverOrganizationId)) {
+      (senderOrganizationId && receiverOrganizationId && senderOrganizationId === receiverOrganizationId)) {
       res.status(400).json({
         success: false,
         message: 'Cannot transfer to yourself'
@@ -73,7 +73,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
 
     // SECURITY FIX: Authenticated user must be the sender
     const authenticatedUserId = req.user.id;
-    
+
     // For user-to-user transfers, authenticated user must be the sender
     if (senderUserId && senderUserId !== authenticatedUserId) {
       res.status(403).json({
@@ -82,10 +82,10 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
       });
       return;
     }
-    
+
     // For organization transfers, we need to check if user is authorized for that organization
     // TODO: Add organization authorization check
-    
+
     // PIN check for authenticated user senders (organizations don't require PIN)
     if (senderUserId) {
       const authenticatedUser = await User.findByPk(authenticatedUserId);
@@ -128,7 +128,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
 
       // Get the authenticated user (we already verified they exist and have PIN set)
       const authenticatedUser = await User.findByPk(authenticatedUserId);
-      
+
       // Check if user is currently locked out
       if (authenticatedUser!.pinLockedUntil && authenticatedUser!.pinLockedUntil > new Date()) {
         const remainingTime = Math.ceil((authenticatedUser!.pinLockedUntil.getTime() - Date.now()) / 60000);
@@ -143,7 +143,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
 
       // Verify PIN for authenticated user
       const isValidPin = await bcrypt.compare(pin, authenticatedUser!.transactionPin!);
-      
+
       if (!isValidPin) {
         // Failed verification - increment attempts
         const newAttempts = (authenticatedUser!.pinAttempts || 0) + 1;
@@ -206,16 +206,16 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     // Check for duplicate transactions in the last 30 seconds
     const now = new Date();
     const thirtySecondsAgo = new Date(now.getTime() - 30000);
-    
+
     // Build wallet search conditions for sender and receiver
-    const senderWhere = senderUserId 
+    const senderWhere = senderUserId
       ? { userId: senderUserId, isActive: true }
       : { organizationId: senderOrganizationId, isActive: true };
-    
-    const receiverWhere = receiverUserId 
+
+    const receiverWhere = receiverUserId
       ? { userId: receiverUserId, isActive: true }
       : { organizationId: receiverOrganizationId, isActive: true };
-    
+
     // First find the wallets to get their IDs
     const [checkSenderWallet, checkReceiverWallet] = await Promise.all([
       Wallet.findOne({ where: senderWhere }),
@@ -308,10 +308,10 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     });
 
     // Calculate total restricted amount
-    const totalRestrictedAmount = restrictions.reduce((sum, restriction) => 
+    const totalRestrictedAmount = restrictions.reduce((sum, restriction) =>
       sum + parseFloat(restriction.amount.toString()), 0
     );
-    
+
     // Calculate available unrestricted amount
     const totalBalance = parseFloat(senderWallet.balance.toString());
     // Prevent negative unrestricted amount when restrictions exceed total balance
@@ -329,9 +329,9 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
         });
         return;
       }
-    // If spending on a specific category, check constraints
+      // If spending on a specific category, check constraints
     } else if (categoryId) {
-      const matchingRestriction = restrictions.find(restriction => 
+      const matchingRestriction = restrictions.find(restriction =>
         restriction.categoryId === categoryId
       );
 
@@ -410,7 +410,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     // Store original balances before updates for response
     const originalSenderBalance = parseFloat(senderWallet.balance.toString());
     const originalReceiverBalance = parseFloat(receiverWallet.balance.toString());
-    
+
     // Update wallet balances
     await senderWallet.update({
       balance: originalSenderBalance - totalAmount
@@ -475,7 +475,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     // Update wallet restrictions for sender based on spending source
     // Do NOT reduce restricted funds when sending to a user (unrestricted-only rule)
     if (categoryId && !receiverUserId) {
-      const matchingRestriction = restrictions.find(restriction => 
+      const matchingRestriction = restrictions.find(restriction =>
         restriction.categoryId === categoryId
       );
 
@@ -529,7 +529,7 @@ const transferMoney = async (req: AuthenticatedRequest, res: Response): Promise<
     if (transaction) {
       await transaction.rollback();
     }
-    
+
     console.error('Transfer error:', error);
     res.status(500).json({
       success: false,
@@ -585,7 +585,7 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
 const getTransactionHistory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { walletId } = req.params;
-    
+
     // Validate walletId
     if (!walletId || walletId === 'undefined' || walletId === 'null') {
       res.status(400).json({
@@ -594,18 +594,18 @@ const getTransactionHistory = async (req: Request, res: Response): Promise<void>
       });
       return;
     }
-    
-    const { 
-      page = 1, 
-      limit = 10, 
-      type, 
+
+    const {
+      page = 1,
+      limit = 10,
+      type,
       status,
       startDate,
-      endDate 
+      endDate
     } = req.query;
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
+
     // Build where clause
     const whereClause: any = {
       [Op.or]: [
@@ -956,7 +956,7 @@ const getWalletBalanceBreakdown = async (req: Request, res: Response): Promise<v
     });
 
     const totalBalance = parseFloat(wallet.balance.toString());
-    const totalRestrictedAmount = restrictions.reduce((sum, restriction) => 
+    const totalRestrictedAmount = restrictions.reduce((sum, restriction) =>
       sum + parseFloat(restriction.amount.toString()), 0
     );
     const availableUnrestrictedAmount = totalBalance - totalRestrictedAmount;
@@ -987,6 +987,107 @@ const getWalletBalanceBreakdown = async (req: Request, res: Response): Promise<v
   }
 };
 
+// Get recent send recipients for authenticated user
+const getRecentSends = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const authenticatedUserId = req.user.id;
+    const { limit = 15 } = req.query;
+
+    // Get authenticated user's wallet
+    const userWallet = await Wallet.findOne({
+      where: { userId: authenticatedUserId, isActive: true }
+    });
+
+    if (!userWallet) {
+      res.status(404).json({
+        success: false,
+        message: 'User wallet not found'
+      });
+      return;
+    }
+
+    // Get all completed transactions where user is the sender
+    const transactions = await TransactionModel.findAll({
+      where: {
+        senderWalletId: userWallet.id,
+        status: 'completed',
+        type: {
+          [Op.in]: ['transfer', 'payment', 'donation']
+        }
+      },
+      include: [
+        {
+          model: Wallet,
+          as: 'receiverWallet',
+          attributes: ['id', 'userId', 'organizationId', 'currency'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'firstName', 'lastName', 'email', 'phone'],
+              required: false
+            },
+            {
+              model: Organization,
+              as: 'organization',
+              attributes: ['id', 'name', 'email', 'contactPhone'],
+              required: false
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Group transactions by receiver and get the most recent one for each
+    const receiverMap = new Map();
+
+    for (const transaction of transactions) {
+      const receiverWallet = (transaction as any).receiverWallet;
+      if (!receiverWallet) continue;
+
+      const receiverId = receiverWallet.userId || receiverWallet.organizationId;
+      if (!receiverId) continue;
+
+      // Only keep the first (most recent) transaction for each receiver
+      if (!receiverMap.has(receiverId)) {
+        const receiver = receiverWallet.user || receiverWallet.organization;
+        if (!receiver) continue;
+
+        receiverMap.set(receiverId, {
+          receiverId,
+          receiverType: receiverWallet.userId ? 'user' : 'organization',
+          receiverName: receiverWallet.userId
+            ? `${receiver.firstName} ${receiver.lastName}`
+            : receiver.name,
+          receiverPhone: receiverWallet.userId ? receiver.phone : receiver.contactPhone || null,
+          receiverEmail: receiver.email || null,
+          lastTransactionId: transaction.id,
+          lastTransactionDate: (transaction as any).createdAt,
+          lastTransactionAmount: parseFloat(transaction.amount.toString()),
+          lastTransactionDescription: (transaction as any).description || null,
+          lastTransactionType: transaction.type
+        });
+      }
+    }
+
+    // Convert map to array and limit results
+    const recentSends = Array.from(receiverMap.values()).slice(0, parseInt(limit as string));
+
+    res.status(200).json({
+      success: true,
+      data: recentSends
+    });
+
+  } catch (error) {
+    console.error('Get recent sends error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 export default {
   transferMoney,
   getWalletBalance,
@@ -996,5 +1097,6 @@ export default {
   getTransactionDetails,
   getTransactionCategories,
   getWalletRestrictions,
-  getWalletBalanceBreakdown
+  getWalletBalanceBreakdown,
+  getRecentSends
 };
