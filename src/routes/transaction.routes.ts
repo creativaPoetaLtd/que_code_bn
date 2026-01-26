@@ -6,6 +6,9 @@ import { authenticate } from "../middleware/auth.middleware";
 const router = express.Router();
 router.use(authenticate);
 
+// Get recent send recipients for authenticated user
+router.get("/recent-sends", transactionController.getRecentSends as express.RequestHandler);
+
 // Transfer money between users
 router.post("/transfer", transactionController.transferMoney as express.RequestHandler);
 

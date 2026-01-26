@@ -44,7 +44,7 @@ export async function getUserContacts(
         contactData.userAId === userId ? contactData.userBId : contactData.userAId;
 
       const otherUser = await models.User.findByPk(otherUserId, {
-        attributes: ["id", "firstName", "lastName", "email"],
+        attributes: ["id", "firstName", "lastName", "email", "phone"],
       });
 
       return {
@@ -83,7 +83,7 @@ export async function getContactById(
     contactData.userAId === userId ? contactData.userBId : contactData.userAId;
 
   const otherUser = await models.User.findByPk(otherUserId, {
-    attributes: ["id", "firstName", "lastName", "email"],
+    attributes: ["id", "firstName", "lastName", "email", "phone"],
   });
 
   return {
