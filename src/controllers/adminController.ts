@@ -1,9 +1,9 @@
-import { Request, Response } from "express";
+import { Request, Response, RequestHandler } from "express";
 import Models from "../database/models";
 import { Op, fn, col } from "sequelize";
 
 // Get all users with their roles
-export const getAllUsers = async (req: Request, res: Response) => {
+export const getAllUsers: RequestHandler = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10, search = "", status = "all" } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
@@ -73,7 +73,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 };
 
 // Get user by ID
-export const getUserById = async (req: Request, res: Response) => {
+export const getUserById: RequestHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -132,7 +132,7 @@ export const getUserById = async (req: Request, res: Response) => {
 };
 
 // Update user status (approve/reject, verify)
-export const updateUserStatus = async (req: Request, res: Response) => {
+export const updateUserStatus: RequestHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { approvalStatus, isVerified } = req.body;
@@ -172,7 +172,7 @@ export const updateUserStatus = async (req: Request, res: Response) => {
 };
 
 // Assign role to user
-export const assignUserRole = async (req: Request, res: Response) => {
+export const assignUserRole: RequestHandler = async (req: Request, res: Response) => {
   try {
     const { userId, roleId } = req.body;
 
@@ -229,7 +229,7 @@ export const assignUserRole = async (req: Request, res: Response) => {
 };
 
 // Delete user
-export const deleteUser = async (req: Request, res: Response) => {
+export const deleteUser: RequestHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -259,7 +259,7 @@ export const deleteUser = async (req: Request, res: Response) => {
 };
 
 // Get all roles
-export const getAllRoles = async (req: Request, res: Response) => {
+export const getAllRoles: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const roles = await models.Role.findAll({
@@ -292,7 +292,7 @@ export const getAllRoles = async (req: Request, res: Response) => {
 };
 
 // Get all permissions
-export const getAllPermissions = async (req: Request, res: Response) => {
+export const getAllPermissions: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const permissions = await models.Permission.findAll({
@@ -313,14 +313,14 @@ export const getAllPermissions = async (req: Request, res: Response) => {
 };
 
 // Create new user
-export const createUser = async (req: Request, res: Response) => {
+export const createUser: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { email, phone, firstName, lastName, password, roleId } = req.body;
 
     // Validate required fields
     if (!email || !phone || !firstName || !lastName || !password) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Missing required fields",
       });
@@ -334,7 +334,7 @@ export const createUser = async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         message: "User with this email or phone already exists",
       });
@@ -384,7 +384,7 @@ export const createUser = async (req: Request, res: Response) => {
 };
 
 // Update user
-export const updateUser = async (req: Request, res: Response) => {
+export const updateUser: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -393,7 +393,7 @@ export const updateUser = async (req: Request, res: Response) => {
 
     const user = await models.User.findByPk(id);
     if (!user) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "User not found",
       });
@@ -402,10 +402,10 @@ export const updateUser = async (req: Request, res: Response) => {
     // Check email/phone uniqueness if changed
     if (email || phone) {
       const whereConditions: any[] = [];
-      if (email && email !== user.email) {
+      if (email && email !== user!.email) {
         whereConditions.push({ email });
       }
-      if (phone && phone !== user.phone) {
+      if (phone && phone !== user!.phone) {
         whereConditions.push({ phone });
       }
 
@@ -418,7 +418,7 @@ export const updateUser = async (req: Request, res: Response) => {
         });
 
         if (existingUser) {
-          return res.status(409).json({
+          res.status(409).json({
             success: false,
             message: "Email or phone already in use",
           });
@@ -426,7 +426,7 @@ export const updateUser = async (req: Request, res: Response) => {
       }
     }
 
-    await user.update({
+    await user!.update({
       ...(email && { email }),
       ...(phone && { phone }),
       ...(firstName && { firstName }),
@@ -450,13 +450,13 @@ export const updateUser = async (req: Request, res: Response) => {
 };
 
 // Create new role
-export const createRole = async (req: Request, res: Response) => {
+export const createRole: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { name, description, permissionIds } = req.body;
 
     if (!name) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Role name is required",
       });
@@ -468,7 +468,7 @@ export const createRole = async (req: Request, res: Response) => {
     });
 
     if (existingRole) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         message: "Role with this name already exists",
       });
@@ -504,7 +504,7 @@ export const createRole = async (req: Request, res: Response) => {
 };
 
 // Update role
-export const updateRole = async (req: Request, res: Response) => {
+export const updateRole: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -512,7 +512,7 @@ export const updateRole = async (req: Request, res: Response) => {
 
     const role = await models.Role.findByPk(id);
     if (!role) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Role not found",
       });
@@ -520,28 +520,28 @@ export const updateRole = async (req: Request, res: Response) => {
 
     // Prevent editing system roles
     const systemRoles = ["super_admin", "admin", "user"];
-    if (systemRoles.includes(role.name)) {
-      return res.status(403).json({
+    if (systemRoles.includes(role!.name)) {
+      res.status(403).json({
         success: false,
         message: "Cannot edit system roles",
       });
     }
 
     // Check name uniqueness if changed
-    if (name && name !== role.name) {
+    if (name && name !== role!.name) {
       const existingRole = await models.Role.findOne({
         where: { name },
       });
 
       if (existingRole) {
-        return res.status(409).json({
+        res.status(409).json({
           success: false,
           message: "Role name already exists",
         });
       }
     }
 
-    await role.update({
+    await role!.update({
       ...(name && { name }),
       ...(description !== undefined && { description }),
     });
@@ -576,14 +576,14 @@ export const updateRole = async (req: Request, res: Response) => {
 };
 
 // Delete role
-export const deleteRole = async (req: Request, res: Response) => {
+export const deleteRole: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
 
     const role = await models.Role.findByPk(id);
     if (!role) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Role not found",
       });
@@ -591,8 +591,8 @@ export const deleteRole = async (req: Request, res: Response) => {
 
     // Prevent deleting system roles
     const systemRoles = ["super_admin", "admin", "user"];
-    if (systemRoles.includes(role.name)) {
-      return res.status(403).json({
+    if (systemRoles.includes(role!.name)) {
+      res.status(403).json({
         success: false,
         message: "Cannot delete system roles",
       });
@@ -604,7 +604,7 @@ export const deleteRole = async (req: Request, res: Response) => {
     });
 
     if (userRoleCount > 0) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         message: `Cannot delete role. It is assigned to ${userRoleCount} user(s)`,
       });
@@ -616,7 +616,7 @@ export const deleteRole = async (req: Request, res: Response) => {
     });
 
     // Delete role
-    await role.destroy();
+    await role!.destroy();
 
     res.status(200).json({
       success: true,
@@ -632,13 +632,13 @@ export const deleteRole = async (req: Request, res: Response) => {
 };
 
 // Create new permission
-export const createPermission = async (req: Request, res: Response) => {
+export const createPermission: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { name, description } = req.body;
 
     if (!name) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Permission name is required",
       });
@@ -650,7 +650,7 @@ export const createPermission = async (req: Request, res: Response) => {
     });
 
     if (existingPermission) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         message: "Permission with this name already exists",
       });
@@ -676,7 +676,7 @@ export const createPermission = async (req: Request, res: Response) => {
 };
 
 // Update permission
-export const updatePermission = async (req: Request, res: Response) => {
+export const updatePermission: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -684,27 +684,27 @@ export const updatePermission = async (req: Request, res: Response) => {
 
     const permission = await models.Permission.findByPk(id);
     if (!permission) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Permission not found",
       });
     }
 
     // Check name uniqueness if changed
-    if (name && name !== permission.name) {
+    if (name && name !== permission!.name) {
       const existingPermission = await models.Permission.findOne({
         where: { name },
       });
 
       if (existingPermission) {
-        return res.status(409).json({
+        res.status(409).json({
           success: false,
           message: "Permission name already exists",
         });
       }
     }
 
-    await permission.update({
+    await permission!.update({
       ...(name && { name }),
       ...(description !== undefined && { description }),
     });
@@ -724,14 +724,14 @@ export const updatePermission = async (req: Request, res: Response) => {
 };
 
 // Delete permission
-export const deletePermission = async (req: Request, res: Response) => {
+export const deletePermission: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
 
     const permission = await models.Permission.findByPk(id);
     if (!permission) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Permission not found",
       });
@@ -743,13 +743,13 @@ export const deletePermission = async (req: Request, res: Response) => {
     });
 
     if (rolePermissionCount > 0) {
-      return res.status(409).json({
+      res.status(409).json({
         success: false,
         message: `Cannot delete permission. It is assigned to ${rolePermissionCount} role(s)`,
       });
     }
 
-    await permission.destroy();
+    await permission!.destroy();
 
     res.status(200).json({
       success: true,
@@ -765,7 +765,7 @@ export const deletePermission = async (req: Request, res: Response) => {
 };
 
 // Get role with permissions
-export const getRoleWithPermissions = async (req: Request, res: Response) => {
+export const getRoleWithPermissions: RequestHandler = async (req: Request, res: Response) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -786,7 +786,7 @@ export const getRoleWithPermissions = async (req: Request, res: Response) => {
     });
 
     if (!role) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Role not found",
       });

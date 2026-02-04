@@ -8,6 +8,7 @@ import {
 } from "../types/model";
 import { Op } from "sequelize";
 import cloudinary from "../helpers/cloudinary";
+import QRCode from "qrcode";
 
 // Helper to generate slug from name
 const generateSlug = (name: string): string => {
@@ -158,6 +159,7 @@ const createActionStepA = async (
       customFields: {},
       status: "draft",
       dedicatedQrCode: dedicatedQrCode || null,
+      dedicatedQrCodeData: null,
     };
 
     const newAction = await insert_function<ActionModelAttributes>(
@@ -166,10 +168,39 @@ const createActionStepA = async (
       actionData
     );
 
-    res.status(201).json({
-      message: "Action created successfully (Step A)",
-      data: newAction,
-    });
+    // Generate QR code for the action
+    try {
+      const actionQrLink = `${process.env.FRONTEND_URL || 'https://app.quecode.ai'}/action/${newAction.id}`;
+      const qrCodeData = await QRCode.toDataURL(actionQrLink);
+      
+      // Update the action with the generated QR code
+      await insert_function<ActionModelAttributes>(
+        "Action",
+        "update",
+        { dedicatedQrCodeData: qrCodeData },
+        { where: { id: newAction.id } }
+      );
+
+      // Fetch the updated action to return
+      const updatedAction = await read_function<ActionModelAttributes>(
+        "Action",
+        "findOne",
+        { where: { id: newAction.id } }
+      );
+
+      res.status(201).json({
+        message: "Action created successfully (Step A)",
+        data: updatedAction,
+      });
+    } catch (qrError: any) {
+      console.error("Error generating QR code for action:", qrError);
+      // Still return the action even if QR code generation fails
+      res.status(201).json({
+        message: "Action created successfully (Step A) - QR code generation failed",
+        data: newAction,
+        qrError: qrError.message,
+      });
+    }
   } catch (error: any) {
     console.error("Error in createActionStepA:", error);
     res.status(500).json({
@@ -228,7 +259,7 @@ const updateActionStepB = async (
 const createSubAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { actionId } = req.params;
-    const { name, description, price, stock, variants, metadata, sortOrder } =
+    const { name, description, price, stock, variants, metadata, sortOrder, coverImage } =
       req.body;
 
     if (!name || price === undefined) {
@@ -236,6 +267,58 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
         message: "Name and price are required",
       });
       return;
+    }
+
+    // Handle cover image upload to Cloudinary
+    let coverImageUrl: string | null = coverImage || null;
+
+    // Check for file in req.file (when using .single()) or req.files (when using .fields())
+    const coverFile = (req as any).file || (req.files as { [fieldname: string]: Express.Multer.File[] })?.coverImage?.[0];
+    
+    if (coverFile) {
+      try {
+        // Upload cover image to Cloudinary
+        let uploadResult: any;
+        if ((coverFile as any).buffer && (coverFile as any).buffer.length > 0) {
+          // Upload from buffer
+          uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: 'subactions/cover-images',
+                transformation: [
+                  { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+                  { quality: 'auto', format: 'auto' }
+                ]
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            stream.end((coverFile as any).buffer);
+          });
+        } else if ((coverFile as any).path) {
+          // Upload from file path
+          uploadResult = await cloudinary.uploader.upload((coverFile as any).path, {
+            folder: 'subactions/cover-images',
+            transformation: [
+              { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+              { quality: 'auto', format: 'auto' }
+            ]
+          });
+        } else {
+          throw new Error('Empty file');
+        }
+
+        coverImageUrl = uploadResult.secure_url;
+      } catch (uploadError: any) {
+        console.error("Error uploading cover image to Cloudinary:", uploadError);
+        res.status(500).json({
+          message: "Failed to upload cover image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
     }
 
     const subActionData: SubActionCreationAttributes = {
@@ -249,6 +332,8 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       metadata: metadata || {},
       isActive: true,
       sortOrder: sortOrder !== undefined && sortOrder !== null ? parseInt(sortOrder) : 0,
+      coverImage: coverImageUrl,
+      dedicatedQrCodeData: null,
     };
 
     const newSubAction = await insert_function<SubActionModelAttributes>(
@@ -257,10 +342,39 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       subActionData
     );
 
-    res.status(201).json({
-      message: "Sub-action created successfully",
-      data: newSubAction,
-    });
+    // Generate QR code for the sub-action
+    try {
+      const subActionQrLink = `${process.env.FRONTEND_URL || 'https://app.quecode.ai'}/action/${actionId}/subactions/${newSubAction.id}`;
+      const qrCodeData = await QRCode.toDataURL(subActionQrLink);
+      
+      // Update the sub-action with the generated QR code
+      await insert_function<SubActionModelAttributes>(
+        "SubAction",
+        "update",
+        { dedicatedQrCodeData: qrCodeData },
+        { where: { id: newSubAction.id } }
+      );
+
+      // Fetch the updated sub-action to return
+      const updatedSubAction = await read_function<SubActionModelAttributes>(
+        "SubAction",
+        "findOne",
+        { where: { id: newSubAction.id } }
+      );
+
+      res.status(201).json({
+        message: "Sub-action created successfully",
+        data: updatedSubAction,
+      });
+    } catch (qrError: any) {
+      console.error("Error generating QR code for sub-action:", qrError);
+      // Still return the sub-action even if QR code generation fails
+      res.status(201).json({
+        message: "Sub-action created successfully - QR code generation failed",
+        data: newSubAction,
+        qrError: qrError.message,
+      });
+    }
   } catch (error: any) {
     console.error("Error in createSubAction:", error);
     res.status(500).json({

@@ -44,6 +44,8 @@ actionRouter.put(
 );
 actionRouter.post(
   "/actions/:actionId/sub-actions",
+  actionCoverImageUpload.single("coverImage"),
+  handleMulterError,
   actionController.createSubAction
 );
 actionRouter.put(

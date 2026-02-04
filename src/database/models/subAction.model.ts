@@ -19,6 +19,8 @@ class SubAction extends Model<
   public metadata!: any; // JSON: type-specific data (seat, row, class, etc.)
   public isActive!: boolean;
   public sortOrder!: number;
+  public coverImage!: string | null; // Cover image URL
+  public dedicatedQrCodeData!: string | null; // Base64 QR code data URL
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -69,6 +71,16 @@ const SubAction_model = (sequelize: Sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
+      },
+      coverImage: { 
+        type: DataTypes.TEXT, 
+        allowNull: true,
+        comment: "Cover image URL for the sub-action"
+      },
+      dedicatedQrCodeData: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Base64 QR code data URL for the sub-action"
       },
     },
     {
