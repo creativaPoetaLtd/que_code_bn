@@ -25,7 +25,13 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      // Revert back to VARCHAR(255) if needed
+      // First, truncate any qrCode values longer than 255 characters
+      await queryInterface.sequelize.query(
+        `UPDATE "Groups" SET "qrCode" = LEFT("qrCode", 255) WHERE LENGTH("qrCode") > 255`,
+        { transaction }
+      );
+
+      // Then revert back to VARCHAR(255)
       await queryInterface.changeColumn('Groups', 'qrCode', {
         type: Sequelize.STRING,
         allowNull: true,

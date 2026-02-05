@@ -7,6 +7,11 @@ import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../utils/keys";
 import { Op } from "sequelize";
 import ChatService from "../services/chatService";
+import { 
+  notifyChatMessageReceived, 
+  notifyChatGroupChatCreated, 
+  notifyChatDeleted 
+} from "../utils/notificationHelpers";
 
 interface SocketWithAuth extends Socket {
   userId?: string;
@@ -204,7 +209,8 @@ class SocketManager {
         data.content,
         data.messageType,
         models,
-        this.io
+        this.io,
+        this.app
       );
 
       // Get message with sender info
@@ -237,8 +243,7 @@ class SocketManager {
         sender: messageWithSender?.get("sender")
       });
 
-      // Send push notification to offline participants
-      await this.notifyOfflineParticipants(data.chatId, socket.userId, data.content);
+      // Note: Notifications are now sent from chatService.sendMessage
 
     } catch (error) {
       console.error("Error sending message:", error);
@@ -537,6 +542,11 @@ class SocketManager {
       socket.join(`chat_${chat.id}`);
 
       // Notify all participants about the new group chat
+      const sender = await models.User.findByPk(socket.userId, {
+        attributes: ['firstName', 'lastName']
+      });
+      const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Someone';
+
       allParticipants.forEach(participantId => {
         this.io.to(`user_${participantId}`).emit("new_group_chat", {
           chatId: chat.id,
@@ -545,6 +555,19 @@ class SocketManager {
           createdBy: socket.userId,
           createdAt: chat.createdAt
         });
+
+        // Send notification to other participants (not the creator)
+        if (participantId !== socket.userId) {
+          notifyChatGroupChatCreated(
+            this.app,
+            participantId,
+            chat.id,
+            '', // groupId will be from the Group model if exists
+            data.groupName || 'New Group Chat',
+            socket.userId,
+            senderName
+          );
+        }
       });
 
       socket.emit("group_chat_created", {

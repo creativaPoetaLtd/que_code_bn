@@ -7,6 +7,11 @@ import { Op } from "sequelize";
 import { createContact } from "../utils/contactService";
 import { createAndSendNotification } from "../utils/notificationService";
 import { NotificationType } from "../utils/notificationConfig";
+import { 
+  notifyContactInvitationSent, 
+  notifyContactRequestAccepted, 
+  notifyContactRequestRejected 
+} from "../utils/notificationHelpers";
 import sendEmail from "../helpers/email";
 
 // Generate a secure invitation token

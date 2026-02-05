@@ -172,6 +172,26 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // Drop foreign key constraints from Transactions if it exists
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "Transactions" DROP CONSTRAINT IF EXISTS "Transactions_actionId_fkey";`,
+        { transaction }
+      );
+
+      // Drop foreign key constraints from dependent tables if they exist
+      const tables = await queryInterface.sequelize.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('QRObjects', 'ActionPurchases', 'SubActions');`,
+        { transaction, type: queryInterface.sequelize.QueryTypes.SELECT }
+      );
+
+      for (const table of tables) {
+        await queryInterface.sequelize.query(
+          `ALTER TABLE "${table.table_name}" DROP CONSTRAINT IF EXISTS "${table.table_name}_actionId_fkey";`,
+          { transaction }
+        );
+      }
+
+      // Now we can safely drop the Actions table
       await queryInterface.dropTable("Actions", { transaction });
       await queryInterface.sequelize.query(
         'DROP TYPE IF EXISTS "enum_Actions_type";',

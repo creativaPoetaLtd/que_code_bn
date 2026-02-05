@@ -465,7 +465,8 @@ export const sendMessage = async (
       content,
       messageType,
       models,
-      io
+      io,
+      req.app // Pass Express app for notifications
     );
 
     // Send push notifications to other participants
@@ -615,7 +616,8 @@ export const sendMediaMessage = async (
       file,
       caption || '',
       models,
-      io
+      io,
+      req.app // Pass Express app for notifications
     );
 
     // Clean up temporary file after upload

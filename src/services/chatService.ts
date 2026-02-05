@@ -5,6 +5,8 @@ import { Op } from "sequelize";
 import MessageEncryption from "./messageEncryption.service";
 import bcrypt from "bcryptjs";
 import { uploadChatMedia } from "./mediaUploadService";
+import { Application } from "express";
+import { notifyChatMessageReceived } from "../utils/notificationHelpers";
 
 export class ChatService {
   private static instance: ChatService;
@@ -167,7 +169,7 @@ export class ChatService {
   }
 
   // Send encrypted message
-  async sendMessage(senderId: string, chatId: string, content: string, messageType: string, models: any, io?: any) {
+  async sendMessage(senderId: string, chatId: string, content: string, messageType: string, models: any, io?: any, app?: Application) {
     try {
       // Get chat key for encryption
       let chatKeyRecord = await models.ChatKey.findOne({
@@ -220,11 +222,34 @@ export class ChatService {
         }]
       });
 
+      // Get chat details to determine if it's a group chat
+      const chat = await models.Chat.findByPk(chatId, {
+        include: [{
+          model: models.Group,
+          as: 'group',
+          attributes: ['name']
+        }]
+      });
+
+      const isGroupChat = chat?.isGroup || false;
+      const chatName = isGroupChat && chat?.get('group') 
+        ? (chat.get('group') as any).name 
+        : undefined;
+
+      // Get sender details
+      const sender = messageWithSender.get('sender') as any;
+      const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Someone';
+
       // Broadcast to chat participants via Socket.IO
       if (io) {
         const participants = await models.ChatParticipant.findAll({
           where: { chatId },
-          attributes: ['userId']
+          attributes: ['userId'],
+          include: [{
+            model: models.User,
+            as: 'user',
+            attributes: ['id', 'firstName', 'lastName']
+          }]
         });
 
         // TEMPORARY: Send unencrypted message to all participants
@@ -233,6 +258,22 @@ export class ChatService {
             ...messageWithSender.toJSON(),
             content: encryptedContent // This is actually unencrypted content now
           });
+
+          // Send notification to other participants (not the sender)
+          if (participant.userId !== senderId && app) {
+            await notifyChatMessageReceived(
+              app,
+              participant.userId,
+              chatId,
+              message.id,
+              senderId,
+              senderName,
+              content,
+              messageType,
+              isGroupChat,
+              chatName
+            );
+          }
         }
 
         // Update message delivery status
@@ -258,7 +299,8 @@ export class ChatService {
     file: Express.Multer.File,
     caption: string = '',
     models: any,
-    io?: any
+    io?: any,
+    app?: Application
   ) {
     try {
       // Upload media to Cloudinary
@@ -339,6 +381,24 @@ export class ChatService {
         }]
       });
 
+      // Get chat details to determine if it's a group chat
+      const chat = await models.Chat.findByPk(chatId, {
+        include: [{
+          model: models.Group,
+          as: 'group',
+          attributes: ['name']
+        }]
+      });
+
+      const isGroupChat = chat?.isGroup || false;
+      const chatName = isGroupChat && chat?.get('group') 
+        ? (chat.get('group') as any).name 
+        : undefined;
+
+      // Get sender details
+      const sender = messageWithSender.get('sender') as any;
+      const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Someone';
+
       // Broadcast to chat participants via Socket.IO
       if (io) {
         const participants = await models.ChatParticipant.findAll({
@@ -350,6 +410,24 @@ export class ChatService {
 
         for (const participant of participants) {
           io.to(`user:${participant.userId}`).emit('new_message', broadcastMessage);
+
+          // Send notification to other participants (not the sender)
+          if (participant.userId !== senderId && app) {
+            await notifyChatMessageReceived(
+              app,
+              participant.userId,
+              chatId,
+              message.id,
+              senderId,
+              senderName,
+              caption || `Sent a ${mediaType}`,
+              messageType,
+              isGroupChat,
+              chatName,
+              url,
+              thumbnailUrl
+            );
+          }
         }
 
         // Update message delivery status

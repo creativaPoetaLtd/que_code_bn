@@ -386,6 +386,7 @@ const Models = (sequelize: Sequelize) => {
   });
 
   return {
+    sequelize, // Add sequelize instance
     User,
     Organization,
     Profile,

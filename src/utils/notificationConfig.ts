@@ -13,6 +13,12 @@ export enum NotificationType {
   MEMBER_REMOVED_FROM_GROUP = "MEMBER_REMOVED_FROM_GROUP",
   GROUP_DELETED = "GROUP_DELETED",
   GROUP_INVITATION_SENT = "GROUP_INVITATION_SENT",
+  GROUP_INVITATION_ACCEPTED = "GROUP_INVITATION_ACCEPTED",
+  GROUP_INVITATION_REJECTED = "GROUP_INVITATION_REJECTED",
+  GROUP_MEMBER_ADDED = "GROUP_MEMBER_ADDED",
+  GROUP_MEMBER_REMOVED = "GROUP_MEMBER_REMOVED",
+  GROUP_MEMBER_ROLE_CHANGED = "GROUP_MEMBER_ROLE_CHANGED",
+  GROUP_UPDATED = "GROUP_UPDATED",
   
   // Contact-related notifications
   CONTACT_INVITATION_SENT = "CONTACT_INVITATION_SENT",
@@ -23,6 +29,20 @@ export enum NotificationType {
   CONTACT_BLOCKED = "CONTACT_BLOCKED",
   CONTACT_UNBLOCKED = "CONTACT_UNBLOCKED",
   CONTACT_REMOVED = "CONTACT_REMOVED",
+  
+  // Chat-related notifications
+  CHAT_MESSAGE_RECEIVED = "CHAT_MESSAGE_RECEIVED",
+  CHAT_MESSAGE_TEXT = "CHAT_MESSAGE_TEXT",
+  CHAT_MESSAGE_IMAGE = "CHAT_MESSAGE_IMAGE",
+  CHAT_MESSAGE_VIDEO = "CHAT_MESSAGE_VIDEO",
+  CHAT_MESSAGE_AUDIO = "CHAT_MESSAGE_AUDIO",
+  CHAT_MESSAGE_FILE = "CHAT_MESSAGE_FILE",
+  CHAT_MESSAGE_MONEY = "CHAT_MESSAGE_MONEY",
+  CHAT_MESSAGE_READ = "CHAT_MESSAGE_READ",
+  CHAT_DM_CREATED = "CHAT_DM_CREATED",
+  CHAT_GROUP_CHAT_CREATED = "CHAT_GROUP_CHAT_CREATED",
+  CHAT_DELETED = "CHAT_DELETED",
+  CHAT_USER_ADDED = "CHAT_USER_ADDED",
   
   // Transaction-related notifications
   PAYMENT_RECEIVED = "PAYMENT_RECEIVED",
@@ -56,6 +76,18 @@ export interface NotificationPayload {
     userId?: string;
     userName?: string;
     userEmail?: string;
+    
+    // Chat-related data
+    chatId?: string;
+    messageId?: string;
+    messageContent?: string;
+    messageType?: string;
+    senderId?: string;
+    senderName?: string;
+    chatName?: string;
+    isGroupChat?: boolean;
+    mediaUrl?: string;
+    thumbnailUrl?: string;
     
     // Transaction-related data
     transactionId?: string;
@@ -132,6 +164,30 @@ const notificationConfig = {
     description: "You have sent a group invitation",
     priority: "low",
   },
+  [NotificationType.GROUP_INVITATION_ACCEPTED]: {
+    description: "Your group invitation was accepted",
+    priority: "normal",
+  },
+  [NotificationType.GROUP_INVITATION_REJECTED]: {
+    description: "Your group invitation was rejected",
+    priority: "normal",
+  },
+  [NotificationType.GROUP_MEMBER_ADDED]: {
+    description: "You were added to a group",
+    priority: "high",
+  },
+  [NotificationType.GROUP_MEMBER_REMOVED]: {
+    description: "You were removed from a group",
+    priority: "high",
+  },
+  [NotificationType.GROUP_MEMBER_ROLE_CHANGED]: {
+    description: "Your role in a group has changed",
+    priority: "high",
+  },
+  [NotificationType.GROUP_UPDATED]: {
+    description: "A group you're in was updated",
+    priority: "normal",
+  },
   
   // Contact notifications
   [NotificationType.CONTACT_INVITATION_SENT]: {
@@ -165,6 +221,56 @@ const notificationConfig = {
   [NotificationType.CONTACT_REMOVED]: {
     description: "You have been removed from someone's contacts",
     priority: "normal",
+  },
+  
+  // Chat notifications
+  [NotificationType.CHAT_MESSAGE_RECEIVED]: {
+    description: "You have received a new message",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_TEXT]: {
+    description: "You have received a text message",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_IMAGE]: {
+    description: "You have received an image",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_VIDEO]: {
+    description: "You have received a video",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_AUDIO]: {
+    description: "You have received an audio message",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_FILE]: {
+    description: "You have received a file",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_MONEY]: {
+    description: "You have received money",
+    priority: "high",
+  },
+  [NotificationType.CHAT_MESSAGE_READ]: {
+    description: "Your message has been read",
+    priority: "low",
+  },
+  [NotificationType.CHAT_DM_CREATED]: {
+    description: "A new direct message chat has been created",
+    priority: "normal",
+  },
+  [NotificationType.CHAT_GROUP_CHAT_CREATED]: {
+    description: "A new group chat has been created",
+    priority: "normal",
+  },
+  [NotificationType.CHAT_DELETED]: {
+    description: "A chat has been deleted",
+    priority: "normal",
+  },
+  [NotificationType.CHAT_USER_ADDED]: {
+    description: "You have been added to a chat",
+    priority: "high",
   },
   
   // Transaction notifications

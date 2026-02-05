@@ -37,7 +37,16 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
-    // Remove foreign key constraint
-    await queryInterface.removeConstraint("Organizations", "fk_organizations_category");
+    // Check if constraint exists before trying to remove it
+    const [results] = await queryInterface.sequelize.query(`
+      SELECT constraint_name FROM information_schema.table_constraints 
+      WHERE table_name = 'Organizations' AND constraint_name = 'fk_organizations_category'
+    `);
+    const constraintExists = results.length > 0;
+
+    // Remove foreign key constraint only if it exists
+    if (constraintExists) {
+      await queryInterface.removeConstraint("Organizations", "fk_organizations_category");
+    }
   },
 };

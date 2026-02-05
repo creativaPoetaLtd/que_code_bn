@@ -289,8 +289,36 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // Drop foreign key constraint from Wallets if it exists
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "Wallets" DROP CONSTRAINT IF EXISTS "Wallets_groupId_fkey";`,
+        { transaction }
+      );
+
+      // Drop foreign key constraints from other dependent tables if they exist
+      const dependentTables = ['ChatParticipants', 'Chats', 'Notifications'];
+      for (const table of dependentTables) {
+        const tableExists = await queryInterface.sequelize.query(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '${table}';`,
+          { transaction, type: queryInterface.sequelize.QueryTypes.SELECT }
+        );
+        
+        if (tableExists.length > 0) {
+          await queryInterface.sequelize.query(
+            `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${table}_groupId_fkey";`,
+            { transaction }
+          );
+        }
+      }
+
+      // Now we can safely drop the tables
       await queryInterface.dropTable('GroupMembers', { transaction });
       await queryInterface.dropTable('Groups', { transaction });
+      
+      // Drop enum types
+      await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_Groups_privacyType";', { transaction });
+      await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_Groups_expirationType";', { transaction });
+      
       await transaction.commit();
     } catch (error) {
       await transaction.rollback();
