@@ -1,16 +1,15 @@
 // middleware/admin.auth.middleware.ts
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 
-// Separate JWT secret for admin tokens (CRITICAL for security)
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'admin_super_secret_key_CHANGE_THIS';
+// Use unified JWT secret (same as regular users)
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 export interface AdminTokenPayload {
-  adminId: string;
+  id: string; // Changed from adminId to id (unified format)
   email: string;
   role: string;
-  type: 'admin';
-  permissions: string[];
+  permissions?: string[]; // Optional for backward compatibility
 }
 
 // Extend Express Request to include admin
@@ -26,72 +25,71 @@ declare global {
  * Middleware to verify admin authentication
  * Uses separate JWT secret from user tokens
  */
-export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+export const requireAdmin = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
   try {
     // Get token from Authorization header
-    const authHeader = req.header('Authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const authHeader = req.header("Authorization");
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({
         success: false,
-        message: 'No admin token provided'
+        message: "No admin token provided",
       });
       return;
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-    // Verify token with ADMIN secret (not user secret)
-    const decoded = jwt.verify(token, ADMIN_JWT_SECRET) as AdminTokenPayload;
+    // Verify token with unified JWT secret
+    const decoded = jwt.verify(token, JWT_SECRET) as AdminTokenPayload;
 
-    // CRITICAL SECURITY CHECKS:
-    
-    // 1. Must be admin type token
-    if (decoded.type !== 'admin') {
+    // CRITICAL SECURITY CHECK: Must have admin role
+    if (
+      !["admin", "super_admin", "organization_admin", "moderator"].includes(
+        decoded.role,
+      )
+    ) {
       res.status(403).json({
         success: false,
-        message: 'Invalid token type - admin access required'
-      });
-      return;
-    }
-
-    // 2. Must have admin role
-    if (!['admin', 'super_admin'].includes(decoded.role)) {
-      res.status(403).json({
-        success: false,
-        message: 'Insufficient privileges - admin role required'
+        message: "Insufficient privileges - admin role required",
       });
       return;
     }
 
     // Attach admin data to request
     req.admin = decoded;
-    
+
     // Log admin action for audit trail
-    console.log(`[ADMIN ACTION] ${decoded.email} - ${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+    console.log(
+      `[ADMIN ACTION] ${decoded.email} - ${req.method} ${req.originalUrl} - ${new Date().toISOString()}`,
+    );
 
     next();
   } catch (error: any) {
-    if (error.name === 'JsonWebTokenError') {
+    if (error.name === "JsonWebTokenError") {
       res.status(401).json({
         success: false,
-        message: 'Invalid admin token'
-      });
-      return;
-    }
-    
-    if (error.name === 'TokenExpiredError') {
-      res.status(401).json({
-        success: false,
-        message: 'Admin token expired - please login again'
+        message: "Invalid admin token",
       });
       return;
     }
 
-    console.error('Admin auth middleware error:', error);
+    if (error.name === "TokenExpiredError") {
+      res.status(401).json({
+        success: false,
+        message: "Admin token expired - please login again",
+      });
+      return;
+    }
+
+    console.error("Admin auth middleware error:", error);
     res.status(500).json({
       success: false,
-      message: 'Authentication error'
+      message: "Authentication error",
     });
   }
 };
@@ -105,15 +103,15 @@ export const requirePermission = (permission: string) => {
     if (!req.admin) {
       res.status(401).json({
         success: false,
-        message: 'Not authenticated as admin'
+        message: "Not authenticated as admin",
       });
       return;
     }
 
-    if (!req.admin.permissions.includes(permission)) {
+    if (!req.admin.permissions || !req.admin.permissions.includes(permission)) {
       res.status(403).json({
         success: false,
-        message: `Permission denied - requires ${permission}`
+        message: `Permission denied - requires ${permission}`,
       });
       return;
     }
