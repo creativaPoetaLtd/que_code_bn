@@ -17,7 +17,7 @@ class Organization extends Model<
   public contactPhone!: string;
   public tinNumber!: string;
   public password!: string;
-  public approvalStatus!: boolean;
+  public status!: "pending" | "active" | "inactive" | "suspended";
   public categoryId?: string;
 
   public readonly createdAt!: Date;
@@ -35,9 +35,13 @@ const Organization_model = (sequelize: Sequelize) => {
       ownerEmail: { type: DataTypes.STRING, allowNull: false },
       contactPhone: { type: DataTypes.STRING, allowNull: false },
       tinNumber: { type: DataTypes.STRING, allowNull: false },
-      
+
       password: { type: DataTypes.STRING, allowNull: false },
-      approvalStatus: { type: DataTypes.BOOLEAN, defaultValue: false },
+      status: {
+        type: DataTypes.ENUM("pending", "active", "inactive", "suspended"),
+        allowNull: false,
+        defaultValue: "pending",
+      },
       categoryId: {
         type: DataTypes.UUID,
         allowNull: true,
@@ -50,7 +54,7 @@ const Organization_model = (sequelize: Sequelize) => {
     {
       sequelize,
       tableName: "Organizations",
-    }
+    },
   );
 
   return Organization;
