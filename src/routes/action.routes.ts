@@ -100,6 +100,10 @@ actionRouter.get(
   "/actions/:actionId/sub-actions",
   actionController.getSubActions
 );
+actionRouter.get(
+  "/sub-actions/:subActionId",
+  actionController.getSubActionById
+);
 actionRouter.put(
   "/sub-actions/:subActionId",
   actionController.updateSubAction

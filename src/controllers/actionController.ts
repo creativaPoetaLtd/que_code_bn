@@ -913,6 +913,35 @@ const getSubActions = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Get single sub-action by ID
+const getSubActionById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { subActionId } = req.params;
+
+    const subAction = await read_function<SubActionModelAttributes>(
+      "SubAction",
+      "findOne",
+      { where: { id: subActionId } }
+    );
+
+    if (!subAction) {
+      res.status(404).json({ message: "Sub-action not found" });
+      return;
+    }
+
+    res.status(200).json({
+      message: "Sub-action retrieved successfully",
+      data: subAction,
+    });
+  } catch (error: any) {
+    console.error("Error in getSubActionById:", error);
+    res.status(500).json({
+      message: "An error occurred while retrieving sub-action",
+      error: error.message,
+    });
+  }
+};
+
 // Update sub-action
 const updateSubAction = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -979,6 +1008,7 @@ export default {
   updateAction,
   deleteAction,
   getSubActions,
+  getSubActionById,
   updateSubAction,
   deleteSubAction,
 };
