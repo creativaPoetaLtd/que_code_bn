@@ -18,24 +18,22 @@ router.use(authenticate as RequestHandler);
 /**
  * GET /permissions
  * Get all permissions
- * Requires: admin role OR view_roles permission
+ * Requires: admin or super_admin role
  */
 router.get(
   "/",
   requireRole("admin", "super_admin") as RequestHandler,
-  requirePermission("view_roles") as RequestHandler,
   permissionController.getAllPermissions as RequestHandler
 );
 
 /**
  * GET /permissions/:id
  * Get permission by ID
- * Requires: admin role OR view_roles permission
+ * Requires: admin or super_admin role
  */
 router.get(
   "/:id",
   requireRole("admin", "super_admin") as RequestHandler,
-  requirePermission("view_roles") as RequestHandler,
   permissionController.getPermissionById as RequestHandler
 );
 
