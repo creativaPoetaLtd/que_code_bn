@@ -24,14 +24,14 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 const create_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     // Check for multer errors
     if ((req as any).fileValidationError) {
       res.status(400).json({
         message: "File validation error",
-        error: (req as any).fileValidationError
+        error: (req as any).fileValidationError,
       });
       return;
     }
@@ -45,7 +45,7 @@ const create_organization = async (
       ownerEmail,
       contactPhone,
       tinNumber,
-      
+
       password,
       categoryId,
     } = req.body;
@@ -86,34 +86,41 @@ const create_organization = async (
     if (actualCategoryId) {
       try {
         console.log(`Validating category with ID: ${actualCategoryId}`);
-        const category = await read_function<any>(
-          "Category",
-          "findOne",
-          { where: { id: actualCategoryId } }
+        const category = await read_function<any>("Category", "findOne", {
+          where: { id: actualCategoryId },
+        });
+
+        console.log(
+          `Category lookup result:`,
+          category ? "Found" : "Not found",
         );
 
-        console.log(`Category lookup result:`, category ? "Found" : "Not found");
-        
         if (!category) {
           // Try to find all categories to help with debugging
           const allCategories = await read_function<any[]>(
             "Category",
             "findAll",
-            { attributes: ["id", "name", "isActive"] }
+            { attributes: ["id", "name", "isActive"] },
           );
-          
+
           console.log(`Available categories:`, allCategories);
-          
-          res.status(400).json({ 
+
+          res.status(400).json({
             message: "Invalid organization category",
             providedCategoryId: actualCategoryId,
-            availableCategories: Array.isArray(allCategories) 
+            availableCategories: Array.isArray(allCategories)
               ? allCategories.map((c: any) => {
-                  const plain = isSequelizeInstance(c) ? c.get({ plain: true }) : c;
-                  return { id: plain.id, name: plain.name, isActive: plain.isActive };
+                  const plain = isSequelizeInstance(c)
+                    ? c.get({ plain: true })
+                    : c;
+                  return {
+                    id: plain.id,
+                    name: plain.name,
+                    isActive: plain.isActive,
+                  };
                 })
               : "Unable to fetch categories",
-            hint: "Make sure the category ID exists and is active"
+            hint: "Make sure the category ID exists and is active",
           });
           return;
         }
@@ -122,47 +129,49 @@ const create_organization = async (
         const plainCategory = isSequelizeInstance(category)
           ? category.get({ plain: true })
           : category;
-        
+
         if (plainCategory.isActive === false) {
-          res.status(400).json({ 
+          res.status(400).json({
             message: "Organization category is not active",
             providedCategoryId: actualCategoryId,
             categoryName: plainCategory.name,
-            hint: "Please select an active category"
+            hint: "Please select an active category",
           });
           return;
         }
 
-        console.log(`Category validated successfully: ${plainCategory.name} (ID: ${plainCategory.id})`);
+        console.log(
+          `Category validated successfully: ${plainCategory.name} (ID: ${plainCategory.id})`,
+        );
       } catch (error: any) {
-        console.error('Category validation error:', error);
-        console.error('Error details:', {
+        console.error("Category validation error:", error);
+        console.error("Error details:", {
           name: error.name,
           message: error.message,
-          stack: error.stack
+          stack: error.stack,
         });
-        res.status(400).json({ 
+        res.status(400).json({
           message: "Error validating category ID",
           providedCategoryId: actualCategoryId,
           error: error.message || "Category ID validation failed",
-          hint: "Please check the category ID format and ensure it exists in the database"
+          hint: "Please check the category ID format and ensure it exists in the database",
         });
         return;
       }
     } else {
-      res.status(400).json({ 
+      res.status(400).json({
         message: "Organization category is required",
-        availableCategories: "Use one of the valid category IDs from /api/organization-categories/"
+        availableCategories:
+          "Use one of the valid category IDs from /api/organization-categories/",
       });
       return;
     }
-
 
     // Check if organization already exists
     const existingOrg = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { email: email.toLowerCase() } }
+      { where: { email: email.toLowerCase() } },
     );
 
     if (existingOrg) {
@@ -194,7 +203,7 @@ const create_organization = async (
       newOrg = await insert_function<OrganizationModelAttributes>(
         "Organization",
         "create",
-        orgData
+        orgData,
       );
     } catch (dbError: any) {
       console.error("Error creating organization in database:", dbError);
@@ -227,9 +236,7 @@ const create_organization = async (
     }
 
     // Extract organization ID (handle both Sequelize instances and plain objects)
-    const orgId = isSequelizeInstance(newOrg)
-      ? newOrg.get("id")
-      : newOrg.id;
+    const orgId = isSequelizeInstance(newOrg) ? newOrg.get("id") : newOrg.id;
 
     // Generate QR Code for organization profile
     let qrCodeData: string;
@@ -255,7 +262,7 @@ const create_organization = async (
       await insert_function<ProfileModelAttributes>(
         "Profile",
         "create",
-        profileData
+        profileData,
       );
     } catch (profileError: any) {
       console.error("Error creating profile for organization:", profileError);
@@ -264,19 +271,17 @@ const create_organization = async (
       // In production, you might want to delete the organization here
       if (profileError.name === "SequelizeUniqueConstraintError") {
         // QR code collision (unlikely but possible)
-        console.error("QR code collision detected, attempting to regenerate...");
+        console.error(
+          "QR code collision detected, attempting to regenerate...",
+        );
         try {
           const orgProfileLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/welcome/${orgId}?t=${Date.now()}`;
           const newQrCodeData = await QRCode.toDataURL(orgProfileLink);
-          await insert_function<ProfileModelAttributes>(
-            "Profile",
-            "create",
-            {
-              type: "organization",
-              organizationId: orgId,
-              qrCode: newQrCodeData,
-            }
-          );
+          await insert_function<ProfileModelAttributes>("Profile", "create", {
+            type: "organization",
+            organizationId: orgId,
+            qrCode: newQrCodeData,
+          });
         } catch (retryError) {
           console.error("Failed to create profile after retry:", retryError);
           throw new Error("Failed to create organization profile");
@@ -308,7 +313,7 @@ const create_organization = async (
     const verificationToken = jwt.sign(
       { email: orgEmail, id: orgId, type: "organization" },
       JWT_SECRET,
-      { expiresIn: "2d", algorithm: "HS256" }
+      { expiresIn: "2d", algorithm: "HS256" },
     );
 
     // Verification URL
@@ -329,7 +334,7 @@ const create_organization = async (
       });
 
       console.log(
-        `Verification email sent successfully to organization: ${email}`
+        `Verification email sent successfully to organization: ${email}`,
       );
     } catch (emailError) {
       console.error("Failed to send verification email:", emailError);
@@ -349,11 +354,11 @@ const create_organization = async (
   } catch (error: any) {
     console.error("Organization registration error:", error);
     console.error("Error stack:", error.stack);
-    
+
     // Provide more detailed error information
     const errorMessage = error.message || "Unknown error";
     const isDevelopment = process.env.NODE_ENV !== "production";
-    
+
     res.status(500).json({
       message: "An error occurred while registering the organization",
       ...(isDevelopment && {
@@ -367,7 +372,7 @@ const create_organization = async (
 
 const get_all_organizations = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const allOrgs = await read_function<OrganizationModelAttributes[]>(
@@ -381,11 +386,11 @@ const get_all_organizations = async (
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
           },
         ],
-      }
+      },
     );
     const plainOrgs = Array.isArray(allOrgs)
       ? allOrgs.map((o) =>
-          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o,
         )
       : [];
     res.status(200).json(plainOrgs);
@@ -399,7 +404,7 @@ const get_all_organizations = async (
 
 const get_organization_by_id = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
@@ -414,7 +419,7 @@ const get_organization_by_id = async (
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
           },
         ],
-      }
+      },
     );
 
     if (!org) {
@@ -434,13 +439,13 @@ const get_organization_by_id = async (
 
 const update_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     if (!org) {
@@ -452,7 +457,6 @@ const update_organization = async (
       ...req.body,
     };
 
-
     // Hash password if provided
     if (updateData.password) {
       const saltRounds = 10;
@@ -463,7 +467,7 @@ const update_organization = async (
       "Organization",
       "update",
       updateData,
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     const plainOrg = isSequelizeInstance(updatedOrg)
@@ -480,13 +484,13 @@ const update_organization = async (
 
 const delete_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     if (!org) {
@@ -497,7 +501,7 @@ const delete_organization = async (
     await read_function<OrganizationModelAttributes>(
       "Organization",
       "destroy",
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     res.status(200).json({ message: "Organization deleted successfully" });
@@ -508,15 +512,15 @@ const delete_organization = async (
   }
 };
 
-const approve_organization = async (
+const activate_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     if (!org) {
@@ -524,33 +528,43 @@ const approve_organization = async (
       return;
     }
 
-    const approvedOrg = await insert_function<OrganizationModelAttributes>(
+    await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      { approvalStatus: true },
-      { where: { id: req.params.id } }
+      { status: "active" },
+      { where: { id: req.params.id } },
     );
 
-    const plainOrg = isSequelizeInstance(approvedOrg)
-      ? approvedOrg.get({ plain: true })
-      : approvedOrg;
-    res.status(200).json(plainOrg);
+    const updatedOrg = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findByPk",
+      req.params.id,
+    );
+
+    const plainOrg = isSequelizeInstance(updatedOrg)
+      ? updatedOrg!.get({ plain: true })
+      : updatedOrg;
+
+    res.status(200).json({
+      message: "Organization activated successfully",
+      data: plainOrg,
+    });
   } catch (error) {
     res
       .status(500)
-      .json({ message: "An error occurred while approving the organization" });
+      .json({ message: "An error occurred while activating the organization" });
   }
 };
 
-const disapprove_organization = async (
+const deactivate_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
       "Organization",
       "findOne",
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     if (!org) {
@@ -558,66 +572,120 @@ const disapprove_organization = async (
       return;
     }
 
-    const disapprovedOrg = await insert_function<OrganizationModelAttributes>(
+    await insert_function<OrganizationModelAttributes>(
       "Organization",
       "update",
-      { approvalStatus: false },
-      { where: { id: req.params.id } }
+      { status: "inactive" },
+      { where: { id: req.params.id } },
     );
 
-    const plainOrg = isSequelizeInstance(disapprovedOrg)
-      ? disapprovedOrg.get({ plain: true })
-      : disapprovedOrg;
-    res.status(200).json(plainOrg);
+    const updatedOrg = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findByPk",
+      req.params.id,
+    );
+
+    const plainOrg = isSequelizeInstance(updatedOrg)
+      ? updatedOrg!.get({ plain: true })
+      : updatedOrg;
+
+    res.status(200).json({
+      message: "Organization deactivated successfully",
+      data: plainOrg,
+    });
   } catch (error) {
     res.status(500).json({
-      message: "An error occurred while disapproving the organization",
+      message: "An error occurred while deactivating the organization",
     });
   }
 };
 
-const get_approved_organizations = async (
+const suspend_organization = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
-    const approvedOrgs = await read_function<OrganizationModelAttributes[]>(
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      { where: { id: req.params.id } },
+    );
+
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    await insert_function<OrganizationModelAttributes>(
+      "Organization",
+      "update",
+      { status: "suspended" },
+      { where: { id: req.params.id } },
+    );
+
+    const updatedOrg = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findByPk",
+      req.params.id,
+    );
+
+    const plainOrg = isSequelizeInstance(updatedOrg)
+      ? updatedOrg!.get({ plain: true })
+      : updatedOrg;
+
+    res.status(200).json({
+      message: "Organization suspended successfully",
+      data: plainOrg,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while suspending the organization",
+    });
+  }
+};
+
+const get_active_organizations = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const activeOrgs = await read_function<OrganizationModelAttributes[]>(
       "Organization",
       "findAll",
-      { where: { approvalStatus: true } }
+      { where: { status: "active" } },
     );
-    const plainOrgs = Array.isArray(approvedOrgs)
-      ? approvedOrgs.map((o) =>
-          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+    const plainOrgs = Array.isArray(activeOrgs)
+      ? activeOrgs.map((o) =>
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o,
         )
       : [];
     res.status(200).json(plainOrgs);
   } catch (error) {
     res.status(500).json({
-      message: "An error occurred while fetching all approved organizations",
+      message: "An error occurred while fetching active organizations",
     });
   }
 };
 
-const get_unapproved_organizations = async (
+const get_pending_organizations = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
-    const unapprovedOrgs = await read_function<OrganizationModelAttributes[]>(
+    const pendingOrgs = await read_function<OrganizationModelAttributes[]>(
       "Organization",
       "findAll",
-      { where: { approvalStatus: false } }
+      { where: { status: "pending" } },
     );
-    const plainOrgs = Array.isArray(unapprovedOrgs)
-      ? unapprovedOrgs.map((o) =>
-          isSequelizeInstance(o) ? o.get({ plain: true }) : o
+    const plainOrgs = Array.isArray(pendingOrgs)
+      ? pendingOrgs.map((o) =>
+          isSequelizeInstance(o) ? o.get({ plain: true }) : o,
         )
       : [];
     res.status(200).json(plainOrgs);
   } catch (error) {
     res.status(500).json({
-      message: "An error occurred while fetching all unapproved organizations",
+      message: "An error occurred while fetching pending organizations",
     });
   }
 };
@@ -625,7 +693,7 @@ const get_unapproved_organizations = async (
 // Email verification via token for organizations
 const verify_organization_email_token = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { token } = req.query;
@@ -650,7 +718,7 @@ const verify_organization_email_token = async (
       "findOne",
       {
         where: { email: payload.email.toLowerCase() },
-      }
+      },
     );
 
     if (!org) {
@@ -671,7 +739,7 @@ const verify_organization_email_token = async (
 
 const get_organization_category = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const org = await read_function<OrganizationModelAttributes>(
@@ -686,7 +754,7 @@ const get_organization_category = async (
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
           },
         ],
-      }
+      },
     );
 
     if (!org) {
@@ -695,9 +763,11 @@ const get_organization_category = async (
     }
 
     const plainOrg = isSequelizeInstance(org) ? org.get({ plain: true }) : org;
-    
+
     if (!plainOrg.category) {
-      res.status(404).json({ message: "Organization has no category assigned" });
+      res
+        .status(404)
+        .json({ message: "Organization has no category assigned" });
       return;
     }
 
@@ -706,7 +776,9 @@ const get_organization_category = async (
     console.error("Error fetching organization category:", error);
     res
       .status(500)
-      .json({ message: "An error occurred while fetching the organization category" });
+      .json({
+        message: "An error occurred while fetching the organization category",
+      });
   }
 };
 
@@ -716,10 +788,11 @@ export default {
   get_organization_by_id,
   update_organization,
   delete_organization,
-  approve_organization,
-  disapprove_organization,
-  get_approved_organizations,
-  get_unapproved_organizations,
+  activate_organization,
+  deactivate_organization,
+  suspend_organization,
+  get_active_organizations,
+  get_pending_organizations,
   verify_organization_email_token,
   get_organization_category,
 };

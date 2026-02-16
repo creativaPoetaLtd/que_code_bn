@@ -1,6 +1,12 @@
 import { UUID } from "crypto";
 import { Optional } from "sequelize";
 
+export type OrganizationStatus =
+  | "pending"
+  | "active"
+  | "inactive"
+  | "suspended";
+
 export interface OrganizationModelAttributes {
   id: string;
   name: string;
@@ -12,7 +18,7 @@ export interface OrganizationModelAttributes {
   tinNumber: string;
 
   password: string;
-  approvalStatus: boolean;
+  status: OrganizationStatus;
   categoryId?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -20,7 +26,7 @@ export interface OrganizationModelAttributes {
 
 export type OrganizationCreationAttributes = Optional<
   OrganizationModelAttributes,
-  "id" | "createdAt" | "updatedAt" | "approvalStatus"
+  "id" | "createdAt" | "updatedAt" | "status"
 >;
 
 export interface UserModelAttributes {

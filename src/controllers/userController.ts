@@ -11,6 +11,7 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
+import database_models from "../database/config/db.config";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -27,7 +28,6 @@ const generateOTP = (): string => {
 // Register a new user
 const create_user = async (req: Request, res: Response): Promise<void> => {
   try {
-
     const { firstName, lastName, phone, email, password } = req.body;
 
     // Validate required fields
@@ -43,7 +43,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     const existingUser = await read_function<UserModelAttributes>(
       "User",
       "findOne",
-      { where: { email: email.toLowerCase() } }
+      { where: { email: email.toLowerCase() } },
     );
 
     if (existingUser) {
@@ -55,11 +55,13 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     const existingPhone = await read_function<UserModelAttributes>(
       "User",
       "findOne",
-      { where: { phone: phone } }
+      { where: { phone: phone } },
     );
 
     if (existingPhone) {
-      res.status(400).json({ message: "User with this phone number already exists" });
+      res
+        .status(400)
+        .json({ message: "User with this phone number already exists" });
       return;
     }
 
@@ -91,7 +93,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     const newUser = await insert_function<UserModelAttributes>(
       "User",
       "create",
-      userData
+      userData,
     );
     // Generate QR Code for user profile
     const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
@@ -106,7 +108,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     await insert_function<ProfileModelAttributes>(
       "Profile",
       "create",
-      profileData
+      profileData,
     );
 
     // Create wallet
@@ -123,7 +125,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     const verificationToken = jwt.sign(
       { email: newUser.email, id: newUser.id },
       JWT_SECRET,
-      { expiresIn: "2d", algorithm: "HS256" }
+      { expiresIn: "2d", algorithm: "HS256" },
     );
     // Verification URL - point to frontend verification page
     const verificationUrl = `${
@@ -146,7 +148,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     } catch (emailError: any) {
       console.error(
         "❌ Failed to send verification email:",
-        emailError.message
+        emailError.message,
       );
     }
 
@@ -181,21 +183,25 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
 
 const verify_user_email = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     if (!JWT_SECRET) {
       throw new Error("JWT_SECRET is not defined in environment variables");
     }
 
-    const token = req.body.token || 
+    const token =
+      req.body.token ||
       (Array.isArray(req.query.token) ? req.query.token[0] : req.query.token);
-    const otp = req.body.otp || 
+    const otp =
+      req.body.otp ||
       (Array.isArray(req.query.otp) ? req.query.otp[0] : req.query.otp);
     const email = req.body.email;
 
     if (!token && !email) {
-      res.status(400).json({ message: "Verification token or email is required" });
+      res
+        .status(400)
+        .json({ message: "Verification token or email is required" });
       return;
     }
     if (!otp) {
@@ -236,7 +242,6 @@ const verify_user_email = async (
       ? user.get({ plain: true })
       : user;
 
-
     // Already verified?
     if (plainUser.isVerified) {
       res.status(200).json({
@@ -267,7 +272,7 @@ const verify_user_email = async (
         otp: null,
         otpExpires: null,
       },
-      { where: { id: plainUser.id } }
+      { where: { id: plainUser.id } },
     );
 
     res.status(200).json({
@@ -286,7 +291,7 @@ const verify_user_email = async (
 // filepath: /Users/izanyibukayvette/Desktop/WORK/CREATIVA/que_code_bn/src/controllers/userController.ts
 const resend_verification = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { email } = req.body;
@@ -317,16 +322,16 @@ const resend_verification = async (
       "User",
       "update",
       { otp, otpExpires },
-      { where: { id: user.id } }
+      { where: { id: user.id } },
     );
 
     const verificationToken = jwt.sign(
       { email: user.email, id: user.id },
       JWT_SECRET,
-      { expiresIn: "30d", algorithm: "HS256" }
+      { expiresIn: "30d", algorithm: "HS256" },
     );
 
-    // Frontend verification page URL  
+    // Frontend verification page URL
     const verificationUrl = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
     }/auth/verify?token=${verificationToken}&otp=${otp}`;
@@ -356,11 +361,11 @@ const get_all_users = async (req: Request, res: Response): Promise<void> => {
   try {
     const allUsers = await read_function<UserModelAttributes[]>(
       "User",
-      "findAll"
+      "findAll",
     );
     const plainUsers = Array.isArray(allUsers)
       ? allUsers.map((u) =>
-          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u,
         )
       : [];
     res.status(200).json(plainUsers);
@@ -418,7 +423,7 @@ const update_user = async (req: Request, res: Response): Promise<void> => {
       "User",
       "update",
       updateData,
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     const plainUser = isSequelizeInstance(updatedUser)
@@ -471,7 +476,7 @@ const approve_user = async (req: Request, res: Response): Promise<void> => {
       "User",
       "update",
       { approvalStatus: true },
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     const plainUser = isSequelizeInstance(approvedUser)
@@ -500,7 +505,7 @@ const disapprove_user = async (req: Request, res: Response): Promise<void> => {
       "User",
       "update",
       { approvalStatus: false },
-      { where: { id: req.params.id } }
+      { where: { id: req.params.id } },
     );
 
     const plainUser = isSequelizeInstance(disapprovedUser)
@@ -516,17 +521,17 @@ const disapprove_user = async (req: Request, res: Response): Promise<void> => {
 
 const get_approved_users = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const approvedUsers = await read_function<UserModelAttributes[]>(
       "User",
       "findAll",
-      { where: { approvalStatus: true } }
+      { where: { approvalStatus: true } },
     );
     const plainUsers = Array.isArray(approvedUsers)
       ? approvedUsers.map((u) =>
-          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u,
         )
       : [];
     res.status(200).json(plainUsers);
@@ -539,23 +544,331 @@ const get_approved_users = async (
 
 const get_unapproved_users = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const unapprovedUsers = await read_function<UserModelAttributes[]>(
       "User",
       "findAll",
-      { where: { approvalStatus: false } }
+      { where: { approvalStatus: false } },
     );
     const plainUsers = Array.isArray(unapprovedUsers)
       ? unapprovedUsers.map((u) =>
-          isSequelizeInstance(u) ? u.get({ plain: true }) : u
+          isSequelizeInstance(u) ? u.get({ plain: true }) : u,
         )
       : [];
     res.status(200).json(plainUsers);
   } catch (error) {
     res.status(500).json({
       message: "An error occurred while fetching all unapproved users",
+    });
+  }
+};
+
+// ============================================
+// ADMIN FUNCTIONS
+// ============================================
+
+/**
+ * Get all users with advanced pagination and filtering (Admin)
+ */
+const get_all_users_admin = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { page = 1, limit = 10, search = "", status = "all" } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const whereClause: any = {};
+
+    if (search) {
+      const { Op } = require("sequelize");
+      whereClause[Op.or] = [
+        { firstName: { [Op.iLike]: `%${search}%` } },
+        { lastName: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    if (status === "verified") {
+      whereClause.isVerified = true;
+    } else if (status === "unverified") {
+      whereClause.isVerified = false;
+    } else if (status === "approved") {
+      whereClause.approvalStatus = true;
+    } else if (status === "pending") {
+      whereClause.approvalStatus = false;
+    }
+
+    const users = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: whereClause,
+        limit: Number(limit),
+        offset,
+        order: [["createdAt", "DESC"]],
+        include: [
+          {
+            model: database_models.UserRole,
+            as: "userRoles",
+            include: [
+              {
+                model: database_models.Role,
+                as: "role",
+                attributes: ["id", "name", "description"],
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    const allUsersForCount = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: whereClause,
+      },
+    );
+    const totalCount = Array.isArray(allUsersForCount)
+      ? allUsersForCount.length
+      : 0;
+
+    const plainUsers = Array.isArray(users)
+      ? users.map((u: any) => {
+          const plain = isSequelizeInstance(u) ? u.get({ plain: true }) : u;
+          const { password, transactionPin, otp, pinResetOtp, ...safe } = plain;
+
+          // Extract role from userRoles
+          if (safe.userRoles && safe.userRoles.length > 0) {
+            safe.role = safe.userRoles[0].role;
+            delete safe.userRoles; // Remove the userRoles array, keep only role
+          }
+
+          return safe;
+        })
+      : [];
+
+    res.status(200).json({
+      success: true,
+      data: plainUsers,
+      pagination: {
+        total: totalCount,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(totalCount / Number(limit)),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching users",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get user statistics (Admin)
+ */
+const get_user_statistics = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const totalUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {},
+    );
+    const verifiedUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: { isVerified: true },
+      },
+    );
+    const approvedUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: { approvalStatus: true },
+      },
+    );
+    const pendingUsers = await read_function<UserModelAttributes[]>(
+      "User",
+      "findAll",
+      {
+        where: { approvalStatus: false },
+      },
+    );
+
+    const totalCount = Array.isArray(totalUsers) ? totalUsers.length : 0;
+    const verifiedCount = Array.isArray(verifiedUsers)
+      ? verifiedUsers.length
+      : 0;
+    const approvedCount = Array.isArray(approvedUsers)
+      ? approvedUsers.length
+      : 0;
+    const pendingCount = Array.isArray(pendingUsers) ? pendingUsers.length : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total: totalCount,
+        verified: verifiedCount,
+        approved: approvedCount,
+        pending: pendingCount,
+        unverified: totalCount - verifiedCount,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching user statistics",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update user status (Admin)
+ */
+const update_user_status = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { approvalStatus, isVerified } = req.body;
+
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id },
+    });
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    const updateData: any = {};
+    if (typeof approvalStatus !== "undefined") {
+      updateData.approvalStatus = approvalStatus;
+    }
+    if (typeof isVerified !== "undefined") {
+      updateData.isVerified = isVerified;
+    }
+
+    await insert_function<UserModelAttributes>("User", "update", updateData, {
+      where: { id },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "User status updated successfully",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating user status",
+      error: error.message,
+    });
+  }
+};
+
+// Assign role to user (Admin only)
+const assign_role_to_user = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { userId, roleId } = req.body;
+
+    if (!userId || !roleId) {
+      res.status(400).json({
+        success: false,
+        message: "userId and roleId are required",
+      });
+      return;
+    }
+
+    // Check if user exists
+    const user = await read_function<UserModelAttributes>("User", "findOne", {
+      where: { id: userId },
+    });
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    // Check if role exists
+    const role = await read_function("Role", "findOne", {
+      where: { id: roleId },
+    });
+
+    if (!role) {
+      res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+      return;
+    }
+
+    // Check if user already has this role
+    const existingUserRole = await read_function("UserRole", "findOne", {
+      where: { userId, roleId },
+    });
+
+    if (existingUserRole) {
+      res.status(400).json({
+        success: false,
+        message: "User already has this role",
+      });
+      return;
+    }
+
+    // Check if user already has a role assigned
+    const currentUserRole = await read_function("UserRole", "findOne", {
+      where: { userId },
+    });
+
+    if (currentUserRole) {
+      // Update existing role assignment
+      await insert_function(
+        "UserRole",
+        "update",
+        { roleId },
+        {
+          where: { userId },
+        },
+      );
+    } else {
+      // Create new role assignment
+      await insert_function("UserRole", "create", {
+        userId,
+        roleId,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Role assigned successfully",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error assigning role to user",
+      error: error.message,
     });
   }
 };
@@ -572,4 +885,9 @@ export default {
   disapprove_user,
   get_approved_users,
   get_unapproved_users,
+  // Admin functions
+  get_all_users_admin,
+  get_user_statistics,
+  update_user_status,
+  assign_role_to_user,
 };

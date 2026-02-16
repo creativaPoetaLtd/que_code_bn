@@ -10,7 +10,6 @@ import { SESSION_SECRET } from "./utils/keys";
 import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
 import * as path from "path";
-
 import FirebaseService from "./services/firebaseService";
 
 const app = express();

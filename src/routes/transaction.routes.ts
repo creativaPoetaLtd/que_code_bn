@@ -1,16 +1,27 @@
-import express from "express";
+import express, { RequestHandler } from "express";
 import transactionController from "../controllers/transactionController";
 import { downloadReceipt } from "../controllers/receiptController";
-import { authenticate } from "../middleware/auth.middleware";
+import { authenticate } from "../middleware/auth.unified.middleware";
 
 const router = express.Router();
-router.use(authenticate);
+
+// Apply authentication to all transaction routes
+router.use(authenticate as RequestHandler);
+
+// Get recent send recipients for authenticated user
+router.get("/recent-sends", transactionController.getRecentSends as express.RequestHandler);
 
 // Transfer money between users
-router.post("/transfer", transactionController.transferMoney as express.RequestHandler);
+router.post(
+  "/transfer",
+  transactionController.transferMoney as express.RequestHandler
+);
 
 // Download transaction receipt
-router.get("/receipt/:transactionId", downloadReceipt as express.RequestHandler);
+router.get(
+  "/receipt/:transactionId",
+  downloadReceipt as express.RequestHandler
+);
 
 // Get wallet balance
 router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
@@ -19,20 +30,48 @@ router.get("/wallet/:walletId/balance", transactionController.getWalletBalance);
 router.get("/user/:userId/wallet", transactionController.getUserWallet);
 
 // Get organization's wallet information
-router.get("/organization/:organizationId/wallet", transactionController.getOrganizationWallet);
+router.get(
+  "/organization/:organizationId/wallet",
+  transactionController.getOrganizationWallet
+);
 
 // Get wallet restrictions
-router.get("/wallet/:walletId/restrictions", transactionController.getWalletRestrictions);
+router.get(
+  "/wallet/:walletId/restrictions",
+  transactionController.getWalletRestrictions
+);
 
 // Get wallet balance breakdown (restricted vs unrestricted)
-router.get("/wallet/:walletId/balance-breakdown", transactionController.getWalletBalanceBreakdown);
+router.get(
+  "/wallet/:walletId/balance-breakdown",
+  transactionController.getWalletBalanceBreakdown
+);
 
 // Get transaction history for a wallet
-router.get("/wallet/:walletId/history", transactionController.getTransactionHistory);
+router.get(
+  "/wallet/:walletId/history",
+  transactionController.getTransactionHistory
+);
 
 router.get("/categories", transactionController.getTransactionCategories);
 
-// Get transaction details by ID
-router.get("/:transactionId", transactionController.getTransactionDetails);
+// UNIFIED ENDPOINTS - Role-based access
+// Admins see all transactions, regular users see only their own
+router.get(
+  "/all",
+  transactionController.getAllTransactions as express.RequestHandler
+);
+
+// Get single transaction by ID with role-based access control
+router.get(
+  "/:id",
+  transactionController.getTransactionById as express.RequestHandler
+);
+
+// Legacy endpoint for backward compatibility
+router.get(
+  "/:transactionId/details",
+  transactionController.getTransactionDetails
+);
 
 export default router;

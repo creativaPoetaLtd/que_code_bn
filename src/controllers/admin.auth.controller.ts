@@ -6,19 +6,18 @@ import database_models from "../database/config/db.config";
 
 const { User, UserRole, Role, Permission, RolePermission } = database_models;
 
-// Separate JWT secret for admin tokens
-const ADMIN_JWT_SECRET =
-  process.env.ADMIN_JWT_SECRET || "admin_super_secret_key_CHANGE_THIS";
-const ADMIN_TOKEN_EXPIRY: string | number =
-  process.env.ADMIN_TOKEN_EXPIRY || "8h"; // Shorter expiry for security
+// Use the SAME JWT_SECRET as regular users for unified auth
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key_CHANGE_THIS";
+const TOKEN_EXPIRY: string | number = process.env.JWT_EXPIRES_IN || "8h";
 
 /**
  * Admin login endpoint
  * Only allows users with admin or super_admin roles
+ * Generates STANDARD JWT token compatible with unified auth middleware
  */
 export const adminLogin = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { email, password } = req.body;
@@ -100,18 +99,19 @@ export const adminLogin = async (
       ? role.rolePermissions.map((rp: any) => rp.permission.name)
       : [];
 
-    // Generate ADMIN token with admin-specific payload
-    const tokenOptions: SignOptions = { expiresIn: ADMIN_TOKEN_EXPIRY as any };
-    const adminToken = jwt.sign(
+    // Generate STANDARD token compatible with unified auth middleware
+    // CRITICAL: Use "id" field (not "adminId") for unified auth compatibility
+    const tokenOptions: SignOptions = { expiresIn: TOKEN_EXPIRY as any };
+    const token = jwt.sign(
       {
-        adminId: user.id,
+        id: user.id, // CHANGED: Use "id" instead of "adminId"
         email: user.email,
         role: role.name,
-        type: "admin", // CRITICAL: identifies this as admin token
-        permissions,
+        accountType: user.accountType, // Include accountType for unified auth
+        // permissions are loaded from DB by auth middleware, not from token
       },
-      ADMIN_JWT_SECRET,
-      tokenOptions
+      JWT_SECRET, // CHANGED: Use unified JWT_SECRET
+      tokenOptions,
     );
 
     // Prepare admin data (don't expose sensitive fields)
@@ -132,13 +132,15 @@ export const adminLogin = async (
 
     // Log admin login for audit
     console.log(
-      `[ADMIN LOGIN] ${user.email} logged in at ${new Date().toISOString()}`
+      `[ADMIN LOGIN] ${user.email} logged in at ${new Date().toISOString()}`,
     );
 
     res.json({
       success: true,
-      adminToken,
-      admin: adminData,
+      token, // CHANGED: Return "token" for unified auth
+      adminToken: token, // Keep for backward compatibility
+      user: adminData, // CHANGED: Return "user" for unified structure
+      admin: adminData, // Keep for backward compatibility
     });
   } catch (error: any) {
     console.error("Admin login error:", error);
@@ -155,7 +157,7 @@ export const adminLogin = async (
  */
 export const verifyAdminToken = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     // req.admin is set by requireAdmin middleware
@@ -167,8 +169,8 @@ export const verifyAdminToken = async (
       return;
     }
 
-    // Fetch fresh admin data from database
-    const admin: any = await User.findByPk(req.admin.adminId, {
+    // Fetch fresh admin data from database (use 'id' field from unified token)
+    const admin: any = await User.findByPk(req.admin.id, {
       attributes: { exclude: ["password"] },
       include: [
         {
@@ -242,7 +244,7 @@ export const verifyAdminToken = async (
  */
 export const adminLogout = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     // Log admin logout for audit
@@ -250,7 +252,7 @@ export const adminLogout = async (
       console.log(
         `[ADMIN LOGOUT] ${
           req.admin.email
-        } logged out at ${new Date().toISOString()}`
+        } logged out at ${new Date().toISOString()}`,
       );
     }
 

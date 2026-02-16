@@ -20,6 +20,9 @@ router.post("/reset-attempts", pinController.resetPinAttempts as express.Request
 // Request PIN reset - sends OTP to email
 router.post("/request-reset", pinController.requestPinReset as express.RequestHandler);
 
+// Validate PIN reset token (OTP) without resetting PIN
+router.post("/validate-reset-token", pinController.validateResetToken as express.RequestHandler);
+
 // Confirm PIN reset - verifies OTP and sets new PIN
 router.post("/confirm-reset", pinController.confirmPinReset as express.RequestHandler);
 

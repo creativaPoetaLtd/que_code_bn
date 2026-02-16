@@ -16,7 +16,8 @@ export interface EmailOptions {
   | "email_verification"
   | "group_creation_notification"
   | "fundraising_target_reached"
-  | "group_expiring_soon";
+  | "group_expiring_soon"
+  | "account_blocked";
   data: { [key: string]: string | undefined };
 }
 
@@ -118,25 +119,25 @@ class EmailService {
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
               Thank you for registering with us! To complete your registration and verify your email address, please click the button below.
             </p>
-            <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
+            <p style="color: #999; font-size: 14px; margin-bottom: 30px;">
               This verification link will expire in 2 days for security reasons.
             </p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${data.verificationUrl}" style="
                 display: inline-block;
-                padding: 15px 30px;
+                padding: 15px 40px;
                 text-decoration: none;
-                border-radius: 5px;
-                font-weight: bold;
+                border-radius: 8px;
+                font-weight: 600;
                 text-align: center;
                 background: #00B512;
                 color: white;
                 font-size: 16px;
               ">Verify My Email Address</a>
             </div>
-            <p style="color: #999; font-size: 12px; margin-top: 30px;">
+            <p style="color: #999; font-size: 12px; margin-top: 30px; line-height: 1.6;">
               If the button doesn't work, you can also copy and paste this link into your browser:<br/>
-              <span style="color: #00B512; word-break: break-all;">${data.verificationUrl}</span>
+              <span style="color: #00B512; word-break: break-all; display: block; margin-top: 10px;">${data.verificationUrl}</span>
             </p>
           </div>
         `;
@@ -349,7 +350,7 @@ class EmailService {
       case "group_creation_notification":
         return `
         <div style="text-align: center;">
-            <h2 style="color: #333; font-size: 22px; font-weight: bold;">🎉 Group Created Successfully!</h2>
+            <h2 style="color: #00B512; font-size: 22px; font-weight: bold;">Group Created Successfully</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
                 Your group <strong>${data.groupName}</strong> has been created successfully!
             </p>
@@ -360,59 +361,70 @@ class EmailService {
             </p>
             ` : ''}
             
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="color: #333; margin-bottom: 15px;">Group Details:</h3>
-                <p><strong>Privacy:</strong> ${data.privacyType}</p>
-                <p><strong>Max Members:</strong> ${data.maxMembers || 'Unlimited'}</p>
-                ${data.hasFundraising === 'true' ? `<p><strong>Fundraising Target:</strong> $${data.fundraisingTarget}</p>` : ''}
-                ${data.expirationDate ? `<p><strong>Expires:</strong> ${data.expirationDate}</p>` : ''}
+            <div style="background: #f0f8f4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #00B512;">
+                <h3 style="color: #00313A; margin-bottom: 15px; font-size: 16px;">Group Details</h3>
+                <p style="color: #666; font-size: 14px; margin: 8px 0;"><strong>Privacy:</strong> ${data.privacyType}</p>
+                <p style="color: #666; font-size: 14px; margin: 8px 0;"><strong>Max Members:</strong> ${data.maxMembers || 'Unlimited'}</p>
+                ${data.hasFundraising === 'true' ? `<p style="color: #666; font-size: 14px; margin: 8px 0;"><strong>Fundraising Target:</strong> RWF ${data.fundraisingTarget}</p>` : ''}
+                ${data.expirationDate ? `<p style="color: #666; font-size: 14px; margin: 8px 0;"><strong>Expiration Date:</strong> ${data.expirationDate}</p>` : ''}
             </div>
             
             ${data.accessLink ? `
             <div style="text-align: center; margin: 30px 0;">
                 <a href="${data.accessLink}" style="
                     display: inline-block;
-                    padding: 12px 24px;
+                    padding: 15px 40px;
                     margin: 10px 5px;
                     text-decoration: none;
-                    border-radius: 5px;
-                    font-weight: bold;
+                    border-radius: 8px;
+                    font-weight: 600;
                     text-align: center;
-                    background: #007bff;
+                    background: #00B512;
                     color: white;
-                ">View Group</a>
+                    font-size: 16px;
+                ">View Your Group</a>
             </div>
             ` : ''}
+            
+            <p style="color: #999; font-size: 12px; line-height: 1.6; margin-top: 30px;">
+              You can now invite members to join your group and start collaborating.<br/>
+              Happy organizing!
+            </p>
         </div>
         `;
 
       case "fundraising_target_reached":
         return `
         <div style="text-align: center;">
-            <h2 style="color: #333; font-size: 22px; font-weight: bold;">🎯 Fundraising Target Reached!</h2>
+            <h2 style="color: #00B512; font-size: 22px; font-weight: bold;">Fundraising Target Reached</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
                 Congratulations! The group <strong>${data.groupName}</strong> has reached its fundraising target!
             </p>
             
-            <div style="background: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #c3e6cb;">
-                <h3 style="color: #155724; margin-bottom: 15px;">🎉 Target Achieved!</h3>
-                <p><strong>Target Amount:</strong> $${data.targetAmount}</p>
-                <p><strong>Amount Raised:</strong> $${data.currentAmount}</p>
-                <p><strong>Achievement Date:</strong> ${data.achievementDate}</p>
+            <div style="background: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745;">
+                <h3 style="color: #155724; margin-bottom: 15px; font-size: 16px;">Target Achieved</h3>
+                <p style="color: #155724; font-size: 14px; margin: 8px 0;"><strong>Target Amount:</strong> RWF ${data.targetAmount}</p>
+                <p style="color: #155724; font-size: 14px; margin: 8px 0;"><strong>Amount Raised:</strong> RWF ${data.currentAmount}</p>
+                <p style="color: #155724; font-size: 14px; margin: 8px 0;"><strong>Achievement Date:</strong> ${data.achievementDate}</p>
             </div>
+            
+            <p style="color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
+              This is a major milestone for your group. Thank you to all your supporters for making this possible!
+            </p>
             
             ${data.groupLink ? `
             <div style="text-align: center; margin: 30px 0;">
                 <a href="${data.groupLink}" style="
                     display: inline-block;
-                    padding: 12px 24px;
+                    padding: 15px 40px;
                     margin: 10px 5px;
                     text-decoration: none;
-                    border-radius: 5px;
-                    font-weight: bold;
+                    border-radius: 8px;
+                    font-weight: 600;
                     text-align: center;
                     background: #28a745;
                     color: white;
+                    font-size: 16px;
                 ">View Group Details</a>
             </div>
             ` : ''}
@@ -422,37 +434,89 @@ class EmailService {
       case "group_expiring_soon":
         return `
         <div style="text-align: center;">
-            <h2 style="color: #333; font-size: 22px; font-weight: bold;">⏰ Group Expiring Soon</h2>
+            <h2 style="color: #ff6b35; font-size: 22px; font-weight: bold;">Group Expiring Soon</h2>
             <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
                 The group <strong>${data.groupName}</strong> will expire soon!
             </p>
             
-            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffeaa7;">
-                <h3 style="color: #856404; margin-bottom: 15px;">⚠️ Expiration Notice</h3>
-                <p><strong>Expiration Date:</strong> ${data.expirationDate}</p>
-                <p><strong>Days Remaining:</strong> ${data.daysRemaining}</p>
-                <p><strong>Expiration Type:</strong> ${data.expirationType}</p>
+            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ff6b35;">
+                <h3 style="color: #856404; margin-bottom: 15px; font-size: 16px;">Expiration Notice</h3>
+                <p style="color: #856404; font-size: 14px; margin: 8px 0;"><strong>Expiration Date:</strong> ${data.expirationDate}</p>
+                <p style="color: #856404; font-size: 14px; margin: 8px 0;"><strong>Days Remaining:</strong> ${data.daysRemaining}</p>
+                <p style="color: #856404; font-size: 14px; margin: 8px 0;"><strong>Type:</strong> ${data.expirationType}</p>
             </div>
             
             <p style="color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
-                Make sure to complete any important activities before the group expires.
+                Make sure to complete any important activities before the group expires. You may be able to extend the group if needed.
             </p>
             
             ${data.groupLink ? `
             <div style="text-align: center; margin: 30px 0;">
                 <a href="${data.groupLink}" style="
                     display: inline-block;
-                    padding: 12px 24px;
+                    padding: 15px 40px;
                     margin: 10px 5px;
                     text-decoration: none;
-                    border-radius: 5px;
-                    font-weight: bold;
+                    border-radius: 8px;
+                    font-weight: 600;
                     text-align: center;
-                    background: #ffc107;
-                    color: #212529;
+                    background: #ff6b35;
+                    color: white;
+                    font-size: 16px;
                 ">Manage Group</a>
             </div>
             ` : ''}
+        </div>
+        `;
+
+      case "account_blocked":
+        return `
+        <div style="text-align: center;">
+            <h2 style="color: #dc3545; font-size: 22px; font-weight: bold;">Account Locked - Action Required</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Hello ${data.name},
+            </p>
+            
+            <div style="background: #f8d7da; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc3545;">
+                <h3 style="color: #721c24; margin-bottom: 15px; font-size: 16px;">Security Alert</h3>
+                <p style="color: #721c24; font-size: 14px; line-height: 1.6; margin: 0;">
+                  Your account has been locked due to too many failed PIN attempts. This is a security measure to protect your account from unauthorized access.
+                </p>
+            </div>
+            
+            <div style="background: #e7f3ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #00B512;">
+                <h3 style="color: #00313A; margin-bottom: 15px; font-size: 16px;">Lockout Details</h3>
+                <p style="color: #00313A; font-size: 14px; line-height: 1.6; margin: 8px 0;">
+                  <strong>Reason:</strong> Failed PIN verification attempts
+                </p>
+                <p style="color: #00313A; font-size: 14px; line-height: 1.6; margin: 8px 0;">
+                  <strong>Lockout Duration:</strong> ${data.lockoutMinutes} minutes
+                </p>
+                <p style="color: #00313A; font-size: 14px; line-height: 1.6; margin: 8px 0;">
+                  <strong>What to do:</strong> You can immediately reset your PIN to regain access to your account.
+                </p>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.resetUrl}" style="
+                    display: inline-block;
+                    padding: 15px 40px;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    text-align: center;
+                    background: #00B512;
+                    color: white;
+                    font-size: 16px;
+                ">Reset Your PIN Now</a>
+            </div>
+            
+            <p style="color: #999; font-size: 12px; line-height: 1.6; margin-top: 30px;">
+              If you didn't attempt to access your account or have any concerns about this activity, please contact our support team immediately.<br/>
+              <br/>
+              <strong>Stay secure,</strong><br/>
+              The QuéCode Team
+            </p>
         </div>
         `;
 

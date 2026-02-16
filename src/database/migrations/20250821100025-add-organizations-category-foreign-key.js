@@ -13,18 +13,27 @@ module.exports = {
       );
     `);
 
-    // Add foreign key constraint for categoryId to OrganizationCategories
-    await queryInterface.addConstraint("Organizations", {
-      fields: ["categoryId"],
-      type: "foreign key",
-      name: "fk_organizations_category",
-      references: {
-        table: "OrganizationCategories",
-        field: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
-    });
+    // Check if constraint already exists
+    const [results] = await queryInterface.sequelize.query(`
+      SELECT constraint_name FROM information_schema.table_constraints 
+      WHERE table_name = 'Organizations' AND constraint_name = 'fk_organizations_category'
+    `);
+    const constraintExists = results.length > 0;
+
+    // Add foreign key constraint for categoryId to OrganizationCategories only if it doesn't exist
+    if (!constraintExists) {
+      await queryInterface.addConstraint("Organizations", {
+        fields: ["categoryId"],
+        type: "foreign key",
+        name: "fk_organizations_category",
+        references: {
+          table: "OrganizationCategories",
+          field: "id",
+        },
+        onUpdate: "CASCADE",
+        onDelete: "SET NULL",
+      });
+    }
   },
 
   down: async (queryInterface, Sequelize) => {

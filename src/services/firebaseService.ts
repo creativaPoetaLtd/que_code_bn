@@ -1,8 +1,8 @@
-import admin from 'firebase-admin';
+import * as admin from "firebase-admin";
 
 class FirebaseService {
   private static instance: FirebaseService;
-  private app: admin.app.App | null = null;
+  private initialized: boolean = false;
 
   private constructor() {}
 
@@ -14,111 +14,105 @@ class FirebaseService {
   }
 
   public initialize(): void {
-    if (this.app) return;
+    if (this.initialized) {
+      console.log("Firebase already initialized");
+      return;
+    }
 
     try {
-      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY 
-        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
-        : {
-            type: "service_account",
-            project_id: process.env.FIREBASE_PROJECT_ID,
-            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-            private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-            client_email: process.env.FIREBASE_CLIENT_EMAIL,
-            client_id: process.env.FIREBASE_CLIENT_ID,
-            auth_uri: "https://accounts.google.com/o/oauth2/auth",
-            token_uri: "https://oauth2.googleapis.com/token",
-            auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-            client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${process.env.FIREBASE_CLIENT_EMAIL}`
-          };
+      // Check if Firebase credentials are provided
+      const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
-      this.app = admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: process.env.FIREBASE_PROJECT_ID,
+      if (!serviceAccountPath) {
+        console.warn(
+          "⚠️  Firebase service account path not configured. Push notifications will be disabled.",
+        );
+        console.warn(
+          "   To enable Firebase, set FIREBASE_SERVICE_ACCOUNT_PATH in your .env file",
+        );
+        return;
+      }
+
+      // Initialize Firebase Admin SDK
+      admin.initializeApp({
+        credential: admin.credential.cert(require(serviceAccountPath)),
       });
 
-      console.log('Firebase Admin initialized successfully');
+      this.initialized = true;
+      console.log("✅ Firebase Admin SDK initialized successfully");
     } catch (error) {
-      console.error('Firebase Admin initialization failed:', error);
+      console.error("❌ Error initializing Firebase Admin SDK:", error);
+      console.warn("   Push notifications will be disabled");
     }
   }
 
-  public async sendNotification(token: string, payload: {
-    title: string;
-    body: string;
-    data?: Record<string, string>;
-  }): Promise<boolean> {
-    if (!this.app) {
-      console.error('Firebase not initialized');
+  public async sendNotification(
+    token: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<boolean> {
+    if (!this.initialized) {
+      console.warn("Firebase not initialized. Cannot send notification.");
       return false;
     }
 
     try {
-      const message = {
-        token,
+      const message: admin.messaging.Message = {
         notification: {
-          title: payload.title,
-          body: payload.body,
+          title,
+          body,
         },
-        data: payload.data || {},
-        android: {
-          priority: 'high' as const,
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'default',
-            },
-          },
-        },
+        token,
+        ...(data && { data }),
       };
 
-      await admin.messaging().send(message);
+      const response = await admin.messaging().send(message);
+      console.log("Successfully sent message:", response);
       return true;
     } catch (error) {
-      console.error('Failed to send notification:', error);
+      console.error("Error sending notification:", error);
       return false;
     }
   }
 
-  public async sendMulticast(tokens: string[], payload: {
-    title: string;
-    body: string;
-    data?: Record<string, string>;
-  }): Promise<{ successCount: number; failureCount: number }> {
-    if (!this.app || tokens.length === 0) {
+  public async sendMulticastNotification(
+    tokens: string[],
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<{ successCount: number; failureCount: number }> {
+    if (!this.initialized) {
+      console.warn("Firebase not initialized. Cannot send notifications.");
       return { successCount: 0, failureCount: tokens.length };
     }
 
     try {
-      const message = {
-        tokens,
+      const message: admin.messaging.MulticastMessage = {
         notification: {
-          title: payload.title,
-          body: payload.body,
+          title,
+          body,
         },
-        data: payload.data || {},
-        android: {
-          priority: 'high' as const,
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'default',
-            },
-          },
-        },
+        tokens,
+        ...(data && { data }),
       };
 
       const response = await admin.messaging().sendEachForMulticast(message);
+      console.log(
+        `Successfully sent ${response.successCount} notifications, ${response.failureCount} failed`,
+      );
       return {
         successCount: response.successCount,
         failureCount: response.failureCount,
       };
     } catch (error) {
-      console.error('Failed to send multicast notification:', error);
+      console.error("Error sending multicast notification:", error);
       return { successCount: 0, failureCount: tokens.length };
     }
+  }
+
+  public isInitialized(): boolean {
+    return this.initialized;
   }
 }
 

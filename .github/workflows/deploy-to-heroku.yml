@@ -107,15 +107,6 @@ jobs:
       - name: Wait for deployment to stabilize
         run: sleep 30
 
-      - name: Run database migrations
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
-        run: |
-          echo "Running database migrations..."
-          heroku run "npm run migrate" --app $HEROKU_APP_NAME
-          echo "✅ Database migrations completed"
-
       - name: Verify deployment health
         run: |
           echo "Checking application health..."

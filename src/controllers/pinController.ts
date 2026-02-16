@@ -134,7 +134,7 @@ const verifyPIN = async (req: AuthenticatedRequest, res: Response): Promise<void
     } else {
       // Failed verification - increment attempts
       const newAttempts = (user.pinAttempts || 0) + 1;
-      const maxAttempts = 5;
+      const maxAttempts = 3;
       const lockoutMinutes = 15;
 
       let updateData: any = { pinAttempts: newAttempts };
@@ -146,9 +146,25 @@ const verifyPIN = async (req: AuthenticatedRequest, res: Response): Promise<void
 
         await user.update(updateData);
 
+        // Send account blocked email notification
+        try {
+          await sendEmail({
+            to: user.email,
+            subject: 'Account Locked - PIN Reset Required',
+            type: 'account_blocked',
+            data: {
+              name: user.firstName,
+              lockoutMinutes: lockoutMinutes.toString(),
+              resetUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings/security?tab=pin-reset`
+            }
+          });
+        } catch (emailError) {
+          console.error('Failed to send account blocked email:', emailError);
+        }
+
         res.status(429).json({
           success: false,
-          message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
+          message: `Account locked due to too many failed PIN attempts. Please reset your PIN to regain access.`,
           attemptsRemaining: 0,
           lockedUntil: lockedUntil,
           remainingMinutes: lockoutMinutes
@@ -159,7 +175,7 @@ const verifyPIN = async (req: AuthenticatedRequest, res: Response): Promise<void
         const attemptsRemaining = maxAttempts - newAttempts;
         res.status(400).json({
           success: false,
-          message: `Invalid PIN. ${attemptsRemaining} attempts remaining.`,
+          message: `Invalid PIN. ${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} remaining. Account will be locked after ${maxAttempts} failed attempts.`,
           attemptsRemaining: attemptsRemaining
         });
       }
@@ -243,7 +259,7 @@ const changePIN = async (req: AuthenticatedRequest, res: Response): Promise<void
     if (!isCurrentPinValid) {
       // Increment failed attempts for wrong current PIN
       const newAttempts = (user.pinAttempts || 0) + 1;
-      const maxAttempts = 5;
+      const maxAttempts = 3;
       const lockoutMinutes = 15;
 
       let updateData: any = { pinAttempts: newAttempts };
@@ -254,9 +270,25 @@ const changePIN = async (req: AuthenticatedRequest, res: Response): Promise<void
 
         await user.update(updateData);
 
+        // Send account blocked email notification
+        try {
+          await sendEmail({
+            to: user.email,
+            subject: 'Account Locked - PIN Reset Required',
+            type: 'account_blocked',
+            data: {
+              name: user.firstName,
+              lockoutMinutes: lockoutMinutes.toString(),
+              resetUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings/security?tab=pin-reset`
+            }
+          });
+        } catch (emailError) {
+          console.error('Failed to send account blocked email:', emailError);
+        }
+
         res.status(429).json({
           success: false,
-          message: `Invalid current PIN. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
+          message: `Account locked due to too many failed PIN attempts. Please reset your PIN to regain access.`,
           attemptsRemaining: 0,
           lockedUntil: lockedUntil,
           remainingMinutes: lockoutMinutes
@@ -267,7 +299,7 @@ const changePIN = async (req: AuthenticatedRequest, res: Response): Promise<void
         const attemptsRemaining = maxAttempts - newAttempts;
         res.status(400).json({
           success: false,
-          message: `Invalid current PIN. ${attemptsRemaining} attempts remaining.`,
+          message: `Invalid current PIN. ${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} remaining. Account will be locked after ${maxAttempts} failed attempts.`,
           attemptsRemaining: attemptsRemaining
         });
       }
@@ -387,8 +419,8 @@ const getPinStatus = async (req: AuthenticatedRequest, res: Response): Promise<v
       data: {
         hasPinSet: user.hasPinSet,
         pinAttempts: user.pinAttempts || 0,
-        maxAttempts: 5,
-        attemptsRemaining: Math.max(0, 5 - (user.pinAttempts || 0)),
+        maxAttempts: 3,
+        attemptsRemaining: Math.max(0, 3 - (user.pinAttempts || 0)),
         isLocked: isLocked,
         lockedUntil: user.pinLockedUntil,
         remainingMinutes: remainingMinutes,
@@ -606,6 +638,91 @@ const confirmPinReset = async (req: AuthenticatedRequest, res: Response): Promis
   }
 };
 
+// Validate PIN reset token (OTP) without resetting PIN
+const validateResetToken = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { resetToken } = req.body;
+
+    // Validate input
+    if (!resetToken) {
+      res.status(400).json({
+        success: false,
+        message: 'Reset code is required'
+      });
+      return;
+    }
+
+    // Find user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+      return;
+    }
+
+    // Check if user has a PIN set
+    if (!user.hasPinSet) {
+      res.status(400).json({
+        success: false,
+        message: 'No PIN is set for this user'
+      });
+      return;
+    }
+
+    // Check if OTP exists
+    if (!user.pinResetOtp || !user.pinResetOtpExpires) {
+      res.status(400).json({
+        success: false,
+        message: 'No reset code found. Please request a new reset code.'
+      });
+      return;
+    }
+
+    // Check if OTP has expired
+    if (user.pinResetOtpExpires < new Date()) {
+      // Clear expired OTP
+      await user.update({
+        pinResetOtp: null,
+        pinResetOtpExpires: null
+      });
+
+      res.status(400).json({
+        success: false,
+        message: 'Reset code has expired. Please request a new one.'
+      });
+      return;
+    }
+
+    // Verify OTP
+    if (user.pinResetOtp !== resetToken) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid reset code. Please check and try again.'
+      });
+      return;
+    }
+
+    // Token is valid
+    res.status(200).json({
+      success: true,
+      message: 'Reset code is valid',
+      data: {
+        valid: true
+      }
+    });
+
+  } catch (error) {
+    console.error('Validate PIN reset token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error while validating reset code'
+    });
+  }
+};
+
 export default {
   setupPIN,
   verifyPIN,
@@ -613,5 +730,6 @@ export default {
   resetPinAttempts,
   getPinStatus,
   requestPinReset,
-  confirmPinReset
+  confirmPinReset,
+  validateResetToken
 };
