@@ -30,7 +30,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: { secure: true },
-  })
+  }),
 );
 const allowedOrigins = [
   "http://localhost:3000",
@@ -42,7 +42,7 @@ const allowedOrigins = [
 const corsOptions = {
   origin: (
     origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void
+    callback: (err: Error | null, allow?: boolean) => void,
   ) => {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {

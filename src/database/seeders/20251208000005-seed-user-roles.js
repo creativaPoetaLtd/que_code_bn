@@ -61,7 +61,17 @@ module.exports = {
       },
     ];
 
-    await queryInterface.bulkInsert("UserRoles", userRoles, {});
+    // Use upsert to handle existing records gracefully
+    for (const userRole of userRoles) {
+      await queryInterface
+        .bulkInsert("UserRoles", [userRole], {
+          updateOnDuplicate: ["userId", "roleId", "updatedAt"],
+        })
+        .catch(async () => {
+          // If bulk insert fails, skip (record already exists)
+          console.log(`UserRole ${userRole.id} already exists, skipping...`);
+        });
+    }
   },
 
   down: async (queryInterface, Sequelize) => {

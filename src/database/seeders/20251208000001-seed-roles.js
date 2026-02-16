@@ -40,7 +40,28 @@ module.exports = {
       },
     ];
 
-    await queryInterface.bulkInsert("Roles", roles, {});
+    // Use upsert to handle existing records gracefully
+    for (const role of roles) {
+      await queryInterface
+        .bulkInsert("Roles", [role], {
+          updateOnDuplicate: ["name", "description", "updatedAt"],
+        })
+        .catch(async () => {
+          // If bulk insert fails, try to update the existing record
+          await queryInterface.sequelize.query(
+            `UPDATE "Roles" SET "name" = ?, "description" = ?, "updatedAt" = ? WHERE "id" = ?`,
+            {
+              replacements: [
+                role.name,
+                role.description,
+                role.updatedAt,
+                role.id,
+              ],
+              type: queryInterface.sequelize.QueryTypes.UPDATE,
+            },
+          );
+        });
+    }
   },
 
   down: async (queryInterface, Sequelize) => {

@@ -135,7 +135,24 @@ module.exports = {
       },
     ];
 
-    await queryInterface.bulkInsert("Users", users, {});
+    // Use upsert to handle existing records gracefully
+    for (const user of users) {
+      await queryInterface
+        .bulkInsert("Users", [user], {
+          updateOnDuplicate: [
+            "firstName",
+            "lastName",
+            "password",
+            "isVerified",
+            "approvalStatus",
+            "updatedAt",
+          ],
+        })
+        .catch(async () => {
+          // If bulk insert fails, skip (record already exists)
+          console.log(`User ${user.email} already exists, skipping...`);
+        });
+    }
   },
 
   down: async (queryInterface, Sequelize) => {
