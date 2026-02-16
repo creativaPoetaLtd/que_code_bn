@@ -214,7 +214,28 @@ module.exports = {
       },
     ];
 
-    await queryInterface.bulkInsert("Permissions", permissions, {});
+    // Use upsert to handle existing records gracefully
+    for (const permission of permissions) {
+      await queryInterface
+        .bulkInsert("Permissions", [permission], {
+          updateOnDuplicate: ["name", "description", "updatedAt"],
+        })
+        .catch(async () => {
+          // If bulk insert fails, try to update the existing record
+          await queryInterface.sequelize.query(
+            `UPDATE "Permissions" SET "name" = ?, "description" = ?, "updatedAt" = ? WHERE "id" = ?`,
+            {
+              replacements: [
+                permission.name,
+                permission.description,
+                permission.updatedAt,
+                permission.id,
+              ],
+              type: queryInterface.sequelize.QueryTypes.UPDATE,
+            },
+          );
+        });
+    }
   },
 
   down: async (queryInterface, Sequelize) => {
