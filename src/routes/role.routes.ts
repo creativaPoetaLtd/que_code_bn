@@ -23,7 +23,7 @@ router.use(authenticate as RequestHandler);
 router.get(
   "/",
   requireRole("admin", "super_admin") as RequestHandler,
-  roleController.getAllRoles as RequestHandler
+  roleController.getAllRoles as RequestHandler,
 );
 
 /**
@@ -34,7 +34,7 @@ router.get(
 router.get(
   "/:id",
   requireRole("admin", "super_admin") as RequestHandler,
-  roleController.getRoleById as RequestHandler
+  roleController.getRoleById as RequestHandler,
 );
 
 /**
@@ -44,8 +44,8 @@ router.get(
  */
 router.post(
   "/",
-  requireRole("super_admin", "admin" ) as RequestHandler,
-  roleController.createRole as RequestHandler
+  requireRole("super_admin", "admin") as RequestHandler,
+  roleController.createRole as RequestHandler,
 );
 
 /**
@@ -56,7 +56,7 @@ router.post(
 router.put(
   "/:id",
   requireRole("super_admin") as RequestHandler,
-  roleController.updateRole as RequestHandler
+  roleController.updateRole as RequestHandler,
 );
 
 /**
@@ -67,7 +67,7 @@ router.put(
 router.delete(
   "/:id",
   requireRole("super_admin") as RequestHandler,
-  roleController.deleteRole as RequestHandler
+  roleController.deleteRole as RequestHandler,
 );
 
 /**
@@ -78,7 +78,7 @@ router.delete(
 router.post(
   "/:id/permissions",
   requireRole("super_admin") as RequestHandler,
-  roleController.assignPermissionsToRole as RequestHandler
+  roleController.assignPermissionsToRole as RequestHandler,
 );
 
 /**
@@ -89,7 +89,7 @@ router.post(
 router.delete(
   "/:id/permissions/:permissionId",
   requireRole("super_admin") as RequestHandler,
-  roleController.removePermissionFromRole as RequestHandler
+  roleController.removePermissionFromRole as RequestHandler,
 );
 
 export default router;
