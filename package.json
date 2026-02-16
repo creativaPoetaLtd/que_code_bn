@@ -1,6 +1,6 @@
 {
   "name": "que_code_bn",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --require dotenv/config src/index.ts",
