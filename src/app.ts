@@ -35,6 +35,7 @@ app.use(
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "https://que-code-admin.netlify.app/",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
