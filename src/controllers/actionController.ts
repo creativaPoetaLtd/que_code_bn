@@ -138,6 +138,11 @@ const createActionStepA = async (
       }
     }
 
+    // Availability can be:
+    // - {} (empty) = always available, no restrictions
+    // - { mode: 'always' } = explicitly always available
+    // - { mode: 'scheduled', startDate: Date, endDate?: Date } = scheduled with optional end date
+    // Actions without endDate remain available indefinitely from startDate
     const actionData: ActionCreationAttributes = {
       organizationId,
       type,
@@ -150,7 +155,7 @@ const createActionStepA = async (
       currency: "RWF",
       taxProfileId: null,
       pricing: { mode: "fixed", amount: 0 },
-      availability: {},
+      availability: {}, // Empty = always available
       visibility: { mode: "public" },
       buyerFields: [],
       fulfillment: { storeOnBuyerQR: false },
@@ -404,10 +409,24 @@ const updateActionStepD = async (
       return;
     }
 
+    // Validate availability configuration
+    let availabilityData = availability || {};
+    
+    // If scheduled mode is provided, validate dates
+    if (availabilityData.mode === 'scheduled') {
+      if (!availabilityData.startDate) {
+        res.status(400).json({
+          message: "Start date is required for scheduled availability",
+        });
+        return;
+      }
+      // endDate is optional - actions can run indefinitely from startDate
+    }
+
     const updatedAction = await insert_function<ActionModelAttributes>(
       "Action",
       "update",
-      { availability: availability || {} },
+      { availability: availabilityData },
       { where: { id: actionId } }
     );
 
@@ -680,6 +699,11 @@ const getActionById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { actionId } = req.params;
 
+    if (!actionId || actionId === 'undefined') {
+      res.status(400).json({ message: "Valid action ID is required" });
+      return;
+    }
+
     const action = await read_function<ActionModelAttributes>(
       "Action",
       "findOne",
@@ -929,9 +953,22 @@ const getSubActionById = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Fetch parent action to get the type
+    const parentAction = await read_function<ActionModelAttributes>(
+      "Action",
+      "findOne",
+      { where: { id: (subAction as any).actionId } }
+    );
+
+    // Convert Sequelize instance to plain object
+    const subActionData = (subAction as any).toJSON ? (subAction as any).toJSON() : subAction;
+
     res.status(200).json({
       message: "Sub-action retrieved successfully",
-      data: subAction,
+      data: {
+        ...subActionData,
+        parentActionType: parentAction?.type || null,
+      },
     });
   } catch (error: any) {
     console.error("Error in getSubActionById:", error);

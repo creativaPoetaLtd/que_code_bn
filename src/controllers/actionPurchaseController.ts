@@ -81,10 +81,10 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         unitPrice = parseFloat(subAction.price.toString());
       }
 
-      // Check stock availability
-      if (subAction.stock !== null) {
+      // Check stock availability (only if stock is limited, not unlimited/null)
+      if (subAction.stock !== null && subAction.stock !== undefined) {
         const availableStock =
-          subAction.stock - subAction.stockReserved;
+          subAction.stock - (subAction.stockReserved || 0);
         if (availableStock < quantity) {
           await dbTransaction?.rollback();
           res.status(400).json({
@@ -241,13 +241,13 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 7. Reserve stock (if sub-action)
-    if (subAction && subAction.stock !== null) {
+    // 7. Reserve stock (if sub-action has limited stock)
+    if (subAction && subAction.stock !== null && subAction.stock !== undefined) {
       await insert_function<SubActionModelAttributes>(
         "SubAction",
         "update",
         {
-          stockReserved: subAction.stockReserved + quantity,
+          stockReserved: (subAction.stockReserved || 0) + quantity,
         },
         {
           where: { id: subActionId },
@@ -344,14 +344,14 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       { transaction: dbTransaction }
     );
 
-    // 11. Decrement stock (if sub-action)
-    if (subAction && subAction.stock !== null) {
+    // 11. Decrement stock (if sub-action has limited stock)
+    if (subAction && subAction.stock !== null && subAction.stock !== undefined) {
       await insert_function<SubActionModelAttributes>(
         "SubAction",
         "update",
         {
           stock: subAction.stock - quantity,
-          stockReserved: subAction.stockReserved - quantity,
+          stockReserved: (subAction.stockReserved || 0) - quantity,
         },
         {
           where: { id: subActionId },
