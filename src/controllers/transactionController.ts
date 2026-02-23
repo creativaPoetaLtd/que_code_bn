@@ -1,8 +1,9 @@
-import { Request, Response } from "express";
+import { Request, Response, RequestHandler } from "express";
 import { AuthenticatedRequest } from "../types/requests";
 import { AuthRequest } from "../middleware/auth.unified.middleware";
 import { Op, fn, col } from "sequelize";
 import * as bcrypt from "bcrypt";
+import { v4 as uuidv4 } from "uuid";
 import database_models from "../database/config/db.config";
 import Models from "../database/models";
 
@@ -1034,6 +1035,309 @@ const getWalletBalanceBreakdown = async (
 };
 
 /**
+ * Unified endpoint to list all wallets for admin usage
+ * Supports user, organization, and action wallet types in one response
+ */
+const getAllWallets = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins can access all wallets",
+      });
+      return;
+    }
+
+    const {
+      page = 1,
+      limit = 20,
+      search = "",
+      ownerType = "all",
+      status = "all",
+      sortBy = "updatedAt",
+      sortDirection = "desc",
+    } = req.query;
+
+    const pageNumber = Math.max(1, Number(page) || 1);
+    const pageSize = Math.max(1, Number(limit) || 20);
+    const normalizedOwnerType = String(ownerType).toLowerCase();
+    const normalizedStatus = String(status).toLowerCase();
+    const normalizedSortBy = String(sortBy);
+    const normalizedSortDirection =
+      String(sortDirection).toLowerCase() === "asc" ? "asc" : "desc";
+
+    const whereClause: any = {};
+    if (normalizedStatus === "active") {
+      whereClause.isActive = true;
+    } else if (normalizedStatus === "inactive") {
+      whereClause.isActive = false;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const wallets = await models.Wallet.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: models.User,
+          as: "user",
+          attributes: ["id", "firstName", "lastName", "email"],
+          required: false,
+        },
+        {
+          model: models.Organization,
+          as: "organization",
+          attributes: ["id", "name", "email"],
+          required: false,
+        },
+        {
+          model: models.Group,
+          as: "group",
+          attributes: ["id", "name"],
+          required: false,
+        },
+      ],
+      order: [["updatedAt", "DESC"]],
+    });
+
+    const walletIds = wallets.map((wallet) => wallet.id);
+
+    const [restrictionRows, transactionRows] = await Promise.all([
+      walletIds.length > 0
+        ? models.WalletRestriction.findAll({
+            where: {
+              walletId: {
+                [Op.in]: walletIds,
+              },
+            },
+            attributes: [
+              "walletId",
+              [fn("COUNT", col("id")), "restrictionsCount"],
+              [fn("COALESCE", fn("SUM", col("amount")), 0), "totalRestricted"],
+            ],
+            group: ["walletId"],
+            raw: true,
+          })
+        : [],
+      walletIds.length > 0
+        ? models.Transaction.findAll({
+            where: {
+              [Op.or]: [
+                {
+                  senderWalletId: {
+                    [Op.in]: walletIds,
+                  },
+                },
+                {
+                  receiverWalletId: {
+                    [Op.in]: walletIds,
+                  },
+                },
+              ],
+            },
+            attributes: ["senderWalletId", "receiverWalletId", "createdAt"],
+            raw: true,
+          })
+        : [],
+    ]);
+
+    const restrictionMap = new Map<
+      string,
+      { restrictionsCount: number; totalRestricted: number }
+    >();
+
+    (restrictionRows as any[]).forEach((row) => {
+      restrictionMap.set(row.walletId, {
+        restrictionsCount: Number(row.restrictionsCount || 0),
+        totalRestricted: Number(row.totalRestricted || 0),
+      });
+    });
+
+    const transactionStatsMap = new Map<
+      string,
+      { transactionCount: number; lastTransaction: Date | null }
+    >();
+
+    walletIds.forEach((walletId) => {
+      transactionStatsMap.set(walletId, {
+        transactionCount: 0,
+        lastTransaction: null,
+      });
+    });
+
+    (transactionRows as any[]).forEach((transaction) => {
+      const createdAt = new Date(transaction.createdAt);
+
+      const senderStats = transactionStatsMap.get(transaction.senderWalletId);
+      if (senderStats) {
+        senderStats.transactionCount += 1;
+        if (
+          !senderStats.lastTransaction ||
+          createdAt > senderStats.lastTransaction
+        ) {
+          senderStats.lastTransaction = createdAt;
+        }
+      }
+
+      const receiverStats = transactionStatsMap.get(
+        transaction.receiverWalletId,
+      );
+      if (receiverStats) {
+        receiverStats.transactionCount += 1;
+        if (
+          !receiverStats.lastTransaction ||
+          createdAt > receiverStats.lastTransaction
+        ) {
+          receiverStats.lastTransaction = createdAt;
+        }
+      }
+    });
+
+    const normalizedWallets = wallets.map((wallet: any) => {
+      const restrictionStats = restrictionMap.get(wallet.id) || {
+        restrictionsCount: 0,
+        totalRestricted: 0,
+      };
+
+      const transactionStats = transactionStatsMap.get(wallet.id) || {
+        transactionCount: 0,
+        lastTransaction: null,
+      };
+
+      let resolvedOwnerType: "user" | "organization" | "action" = "action";
+      let ownerName = "Action Wallet";
+
+      if (wallet.userId) {
+        resolvedOwnerType = "user";
+        ownerName =
+          `${wallet.user?.firstName || ""} ${wallet.user?.lastName || ""}`.trim();
+        if (!ownerName) ownerName = wallet.user?.email || "User Wallet";
+      } else if (wallet.organizationId) {
+        resolvedOwnerType = "organization";
+        ownerName =
+          wallet.organization?.name ||
+          wallet.organization?.email ||
+          "Organization Wallet";
+      } else if (wallet.groupId) {
+        resolvedOwnerType = "action";
+        ownerName = wallet.group?.name || "Action Wallet";
+      }
+
+      const balance = Number(wallet.balance || 0);
+      const availableBalance = Math.max(
+        0,
+        balance - restrictionStats.totalRestricted,
+      );
+
+      return {
+        id: wallet.id,
+        userId: wallet.userId || null,
+        organizationId: wallet.organizationId || null,
+        groupId: wallet.groupId || null,
+        ownerName,
+        ownerType: resolvedOwnerType,
+        balance,
+        currency: wallet.currency,
+        isActive: wallet.isActive,
+        restrictionsCount: restrictionStats.restrictionsCount,
+        totalRestricted: restrictionStats.totalRestricted,
+        availableBalance,
+        transactionCount: transactionStats.transactionCount,
+        lastTransaction: transactionStats.lastTransaction,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt,
+      };
+    });
+
+    const searchQuery = String(search).trim().toLowerCase();
+
+    let filteredWallets = normalizedWallets.filter((wallet) => {
+      if (
+        normalizedOwnerType !== "all" &&
+        wallet.ownerType !== normalizedOwnerType
+      ) {
+        return false;
+      }
+
+      if (!searchQuery) {
+        return true;
+      }
+
+      return (
+        wallet.id.toLowerCase().includes(searchQuery) ||
+        wallet.ownerName.toLowerCase().includes(searchQuery) ||
+        wallet.currency.toLowerCase().includes(searchQuery)
+      );
+    });
+
+    filteredWallets = filteredWallets.sort((first, second) => {
+      const firstValue = (first as any)[normalizedSortBy];
+      const secondValue = (second as any)[normalizedSortBy];
+
+      if (firstValue == null && secondValue == null) return 0;
+      if (firstValue == null) return normalizedSortDirection === "asc" ? -1 : 1;
+      if (secondValue == null)
+        return normalizedSortDirection === "asc" ? 1 : -1;
+
+      const firstComparable =
+        firstValue instanceof Date ? firstValue.getTime() : firstValue;
+      const secondComparable =
+        secondValue instanceof Date ? secondValue.getTime() : secondValue;
+
+      if (firstComparable < secondComparable) {
+        return normalizedSortDirection === "asc" ? -1 : 1;
+      }
+      if (firstComparable > secondComparable) {
+        return normalizedSortDirection === "asc" ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const total = filteredWallets.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const startIndex = (pageNumber - 1) * pageSize;
+    const paginatedData = filteredWallets.slice(
+      startIndex,
+      startIndex + pageSize,
+    );
+
+    res.status(200).json({
+      success: true,
+      data: paginatedData,
+      statistics: {
+        total,
+        active: filteredWallets.filter((wallet) => wallet.isActive).length,
+        inactive: filteredWallets.filter((wallet) => !wallet.isActive).length,
+        users: filteredWallets.filter((wallet) => wallet.ownerType === "user")
+          .length,
+        organizations: filteredWallets.filter(
+          (wallet) => wallet.ownerType === "organization",
+        ).length,
+        actions: filteredWallets.filter(
+          (wallet) => wallet.ownerType === "action",
+        ).length,
+      },
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get all wallets error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching wallets",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Unified endpoint to get all transactions with role-based filtering
  * - Admins see ALL transactions
  * - Regular users see only their own transactions (sent or received)
@@ -1430,9 +1734,504 @@ const getRecentSends = async (
   }
 };
 
+// Get all wallet restrictions (admin only)
+const getAllRestrictions = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins can access all restrictions",
+      });
+      return;
+    }
+
+    const {
+      page = 1,
+      limit = 20,
+      search = "",
+      categoryId = "",
+      sortBy = "updatedAt",
+      sortDirection = "desc",
+    } = req.query;
+
+    const pageNumber = Math.max(1, Number(page) || 1);
+    const pageSize = Math.max(1, Number(limit) || 20);
+    const normalizedSortBy = String(sortBy);
+    const normalizedSortDirection =
+      String(sortDirection).toLowerCase() === "asc" ? "asc" : "desc";
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const whereClause: any = {};
+
+    if (categoryId && categoryId !== "all") {
+      whereClause.categoryId = categoryId;
+    }
+
+    // Get all restrictions with wallet and category info
+    const restrictions = await models.WalletRestriction.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: models.Category,
+          as: "category",
+          attributes: ["id", "name", "description"],
+          required: true,
+        },
+        {
+          model: models.Wallet,
+          as: "wallet",
+          attributes: ["id", "userId", "organizationId", "groupId"],
+          include: [
+            {
+              model: models.User,
+              as: "user",
+              attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+            },
+            {
+              model: models.Organization,
+              as: "organization",
+              attributes: ["id", "name", "email"],
+              required: false,
+            },
+            {
+              model: models.Group,
+              as: "group",
+              attributes: ["id", "name"],
+              required: false,
+            },
+          ],
+          required: true,
+        },
+      ],
+      order: [[normalizedSortBy, normalizedSortDirection]],
+    });
+
+    // Get usage statistics for each restriction
+    const restrictionIds = restrictions.map((r) => r.id);
+    const transactionUsage = await models.Transaction.findAll({
+      where: {
+        categoryId: {
+          [Op.in]: restrictions.map((r) => r.categoryId),
+        },
+        status: "completed",
+      },
+      attributes: [
+        [fn("COUNT", col("id")), "transactionCount"],
+        [col("categoryId"), "categoryId"],
+      ],
+      group: ["categoryId"],
+      raw: true,
+    });
+
+    const usageMap = new Map<string, number>();
+    (transactionUsage as any[]).forEach((usage) => {
+      usageMap.set(usage.categoryId, Number(usage.transactionCount || 0));
+    });
+
+    // Normalize restrictions with wallet owner info
+    const normalizedRestrictions = restrictions.map((restriction: any) => {
+      const wallet = restriction.wallet;
+      let ownerName = "Unknown";
+      let walletOwnerType: "user" | "organization" | "action" = "action";
+
+      if (wallet.userId && wallet.user) {
+        walletOwnerType = "user";
+        ownerName =
+          `${wallet.user.firstName || ""} ${wallet.user.lastName || ""}`.trim();
+        if (!ownerName) ownerName = wallet.user.email || "User";
+      } else if (wallet.organizationId && wallet.organization) {
+        walletOwnerType = "organization";
+        ownerName =
+          wallet.organization.name ||
+          wallet.organization.email ||
+          "Organization";
+      } else if (wallet.groupId && wallet.group) {
+        walletOwnerType = "action";
+        ownerName = wallet.group.name || "Action";
+      }
+
+      const amount = Number(restriction.amount || 0);
+      const usedAmount = 0; // TODO: Calculate from transactions
+      const remainingAmount = Math.max(0, amount - usedAmount);
+      const transactionCount = usageMap.get(restriction.categoryId) || 0;
+
+      return {
+        id: restriction.id,
+        walletId: restriction.walletId,
+        walletOwner: ownerName,
+        walletOwnerType,
+        categoryId: restriction.categoryId,
+        categoryName: restriction.category?.name || "Unknown",
+        categoryDescription: restriction.category?.description || "",
+        amount,
+        usedAmount,
+        remainingAmount,
+        transactionCount,
+        createdAt: restriction.createdAt,
+        updatedAt: restriction.updatedAt,
+      };
+    });
+
+    // Apply search filter
+    const searchQuery = String(search).trim().toLowerCase();
+    let filteredRestrictions = normalizedRestrictions;
+
+    if (searchQuery) {
+      filteredRestrictions = normalizedRestrictions.filter((restriction) => {
+        return (
+          restriction.walletOwner.toLowerCase().includes(searchQuery) ||
+          restriction.categoryName.toLowerCase().includes(searchQuery) ||
+          restriction.categoryDescription.toLowerCase().includes(searchQuery) ||
+          restriction.id.toLowerCase().includes(searchQuery)
+        );
+      });
+    }
+
+    // Pagination
+    const total = filteredRestrictions.length;
+    const totalPages = Math.ceil(total / pageSize);
+    const startIndex = (pageNumber - 1) * pageSize;
+    const paginatedRestrictions = filteredRestrictions.slice(
+      startIndex,
+      startIndex + pageSize,
+    );
+
+    // Statistics
+    const totalRestrictions = filteredRestrictions.length;
+    const activeRestrictions = filteredRestrictions.filter(
+      (r) => r.remainingAmount > 0,
+    ).length;
+    const exhaustedRestrictions = filteredRestrictions.filter(
+      (r) => r.remainingAmount === 0,
+    ).length;
+    const unusedRestrictions = filteredRestrictions.filter(
+      (r) => r.usedAmount === 0,
+    ).length;
+    const totalAllocated = filteredRestrictions.reduce(
+      (sum, r) => sum + r.amount,
+      0,
+    );
+    const totalUsed = filteredRestrictions.reduce(
+      (sum, r) => sum + r.usedAmount,
+      0,
+    );
+    const totalRemaining = filteredRestrictions.reduce(
+      (sum, r) => sum + r.remainingAmount,
+      0,
+    );
+
+    res.status(200).json({
+      success: true,
+      data: paginatedRestrictions,
+      statistics: {
+        total: totalRestrictions,
+        active: activeRestrictions,
+        exhausted: exhaustedRestrictions,
+        unused: unusedRestrictions,
+        totalAllocated,
+        totalUsed,
+        totalRemaining,
+      },
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    console.error("Get all restrictions error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+/**
+ * Create a new wallet restriction
+ * POST /api/v1/transactions/restrictions
+ */
+export const createRestriction: RequestHandler = async (req, res) => {
+  try {
+    const { walletId, categoryId, amount } = req.body;
+
+    // Validate required fields
+    if (!walletId || !categoryId || amount === undefined) {
+      res.status(400).json({
+        success: false,
+        message: "walletId, categoryId, and amount are required",
+      });
+      return;
+    }
+
+    // Validate amount
+    const restrictionAmount = Number(amount);
+    if (isNaN(restrictionAmount) || restrictionAmount <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Amount must be a positive number",
+      });
+      return;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    // Verify wallet exists
+    const wallet = await models.Wallet.findByPk(walletId);
+    if (!wallet) {
+      res.status(404).json({
+        success: false,
+        message: "Wallet not found",
+      });
+      return;
+    }
+
+    // Verify category exists
+    const category = await models.Category.findByPk(categoryId);
+    if (!category) {
+      res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+      return;
+    }
+
+    // Check if restriction already exists
+    const existingRestriction = await models.WalletRestriction.findOne({
+      where: { walletId, categoryId },
+    });
+
+    if (existingRestriction) {
+      res.status(409).json({
+        success: false,
+        message: "Restriction already exists for this wallet and category",
+      });
+      return;
+    }
+
+    // Create restriction
+    const restriction = await models.WalletRestriction.create({
+      walletId,
+      categoryId,
+      amount: restrictionAmount,
+    });
+
+    // Fetch with associations for response
+    const createdRestriction = await models.WalletRestriction.findByPk(
+      restriction.id,
+      {
+        include: [
+          {
+            model: models.Category,
+            as: "category",
+            attributes: ["id", "name", "description"],
+          },
+          {
+            model: models.Wallet,
+            as: "wallet",
+            attributes: ["id", "userId", "organizationId", "groupId"],
+            include: [
+              {
+                model: models.User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email"],
+                required: false,
+              },
+              {
+                model: models.Organization,
+                as: "organization",
+                attributes: ["id", "name", "email"],
+                required: false,
+              },
+              {
+                model: models.Group,
+                as: "group",
+                attributes: ["id", "name"],
+                required: false,
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Restriction created successfully",
+      data: createdRestriction,
+    });
+  } catch (error: any) {
+    console.error("Create restriction error:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/**
+ * Update a wallet restriction
+ * PUT /api/v1/transactions/restrictions/:id
+ */
+export const updateRestriction: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+
+    if (amount === undefined) {
+      res.status(400).json({
+        success: false,
+        message: "Amount is required",
+      });
+      return;
+    }
+
+    const restrictionAmount = Number(amount);
+    if (isNaN(restrictionAmount) || restrictionAmount <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Amount must be a positive number",
+      });
+      return;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const restriction = await models.WalletRestriction.findByPk(id);
+    if (!restriction) {
+      res.status(404).json({
+        success: false,
+        message: "Restriction not found",
+      });
+      return;
+    }
+
+    // Update restriction
+    await restriction.update({ amount: restrictionAmount });
+
+    // Fetch with associations for response
+    const updatedRestriction = await models.WalletRestriction.findByPk(id, {
+      include: [
+        {
+          model: models.Category,
+          as: "category",
+          attributes: ["id", "name", "description"],
+        },
+        {
+          model: models.Wallet,
+          as: "wallet",
+          attributes: ["id", "userId", "organizationId", "groupId"],
+          include: [
+            {
+              model: models.User,
+              as: "user",
+              attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+            },
+            {
+              model: models.Organization,
+              as: "organization",
+              attributes: ["id", "name", "email"],
+              required: false,
+            },
+            {
+              model: models.Group,
+              as: "group",
+              attributes: ["id", "name"],
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Restriction updated successfully",
+      data: updatedRestriction,
+    });
+  } catch (error) {
+    console.error("Update restriction error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+/**
+ * Delete a wallet restriction
+ * DELETE /api/v1/transactions/restrictions/:id
+ */
+export const deleteRestriction: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const restriction = await models.WalletRestriction.findByPk(id);
+    if (!restriction) {
+      res.status(404).json({
+        success: false,
+        message: "Restriction not found",
+      });
+      return;
+    }
+
+    // Check if restriction has been used in transactions
+    const transactionCount = await models.Transaction.count({
+      where: {
+        [Op.or]: [
+          { senderWalletId: restriction.walletId },
+          { receiverWalletId: restriction.walletId },
+        ],
+        categoryId: restriction.categoryId,
+        status: "completed",
+      },
+    });
+
+    if (transactionCount > 0) {
+      res.status(409).json({
+        success: false,
+        message: `Cannot delete restriction. It has been used in ${transactionCount} completed transaction(s).`,
+      });
+      return;
+    }
+
+    // Delete restriction
+    await restriction.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: "Restriction deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete restriction error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 export default {
   transferMoney,
   getWalletBalance,
+  getAllWallets,
+  getAllRestrictions,
+  createRestriction,
+  updateRestriction,
+  deleteRestriction,
   getUserWallet,
   getOrganizationWallet,
   getTransactionHistory,

@@ -15,6 +15,7 @@ import chatRouter from "./chat.routes";
 import actionRouter from "./action.routes";
 import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
+import adminDashboardRouter from "./admin.dashboard.routes";
 
 import fcmRouter from "./fcm.routes";
 
@@ -65,5 +66,6 @@ router.use("/permissions", permissionRouter);
 // - /api/v1/permissions (super_admin-only permission management)
 // - /api/v1/transactions (role-based filtering)
 router.use("/admin/auth", adminAuthRouter); // Admin login (separate auth for now)
+router.use("/admin/dashboard", adminDashboardRouter);
 
 export default router;
