@@ -147,7 +147,7 @@ export interface TransactionModelAttributes {
   updatedAt?: Date;
 }
 
-export interface AuthenticatedUser extends UserModelAttributes {}
+export interface AuthenticatedUser extends UserModelAttributes { }
 
 export interface ChatAttributes {
   id: string;
@@ -167,13 +167,13 @@ export interface ChatMessageAttributes {
   senderId: string;
   content: string;
   messageType:
-    | "text"
-    | "image"
-    | "file"
-    | "money"
-    | "audio"
-    | "video"
-    | "document";
+  | "text"
+  | "image"
+  | "file"
+  | "money"
+  | "audio"
+  | "video"
+  | "document";
   transactionId?: string;
   isEncrypted: boolean;
   encryptionIv?: string;
@@ -213,11 +213,20 @@ export interface ContactAttributes {
   userAId: string;
   userBId: string;
   status: "active" | "blocked";
+  userAIsFavorite: boolean;
+  userBIsFavorite: boolean;
+  userATags: string[];
+  userBTags: string[];
   createdAt?: Date;
 }
-export type ContactCreationAttributes = Omit<
+export type ContactCreationAttributes = Optional<
   ContactAttributes,
-  "id" | "createdAt"
+  | "id"
+  | "createdAt"
+  | "userAIsFavorite"
+  | "userBIsFavorite"
+  | "userATags"
+  | "userBTags"
 >;
 
 export interface ContactInvitationAttributes {
@@ -276,10 +285,10 @@ export interface GroupAttributes {
   fundraisingCurrentAmount: number;
   expirationDate?: Date;
   expirationType:
-    | "custom_date"
-    | "target_reached"
-    | "deadline_reached"
-    | "never";
+  | "custom_date"
+  | "target_reached"
+  | "deadline_reached"
+  | "never";
   hasAdditionalInfo: boolean;
   additionalInfoPrompt?: string;
   profilePictureUrl?: string;
@@ -411,13 +420,13 @@ export interface TransactionAttributes {
   externalSenderName?: string;
   externalSenderContact?: string;
   externalSenderProvider?:
-    | "mtn_momo"
-    | "airtel_money"
-    | "bank"
-    | "visa"
-    | "mastercard"
-    | "paypal"
-    | "other";
+  | "mtn_momo"
+  | "airtel_money"
+  | "bank"
+  | "visa"
+  | "mastercard"
+  | "paypal"
+  | "other";
   externalSenderReference?: string;
   categoryId?: string;
   spendConstraintType?: "none" | "category" | "recipient";
@@ -521,18 +530,18 @@ export interface ActionModelAttributes {
   id: string;
   organizationId: string;
   type:
-    | "ticket"
-    | "transport"
-    | "service"
-    | "subscription"
-    | "payment"
-    | "donation"
-    | "vote"
-    | "booking"
-    | "license"
-    | "membership"
-    | "rental"
-    | "group";
+  | "ticket"
+  | "transport"
+  | "service"
+  | "subscription"
+  | "payment"
+  | "donation"
+  | "vote"
+  | "booking"
+  | "license"
+  | "membership"
+  | "rental"
+  | "group";
   name: string;
   slug: string;
   displayLayout: "mosaic" | "list" | "icons" | "card";
@@ -614,13 +623,13 @@ export interface QRObjectModelAttributes {
   actionPurchaseId: string;
   subActionId: string | null;
   type:
-    | "eticket"
-    | "badge"
-    | "license"
-    | "membership"
-    | "booking"
-    | "transport"
-    | "subscription";
+  | "eticket"
+  | "badge"
+  | "license"
+  | "membership"
+  | "booking"
+  | "transport"
+  | "subscription";
   metadata: any; // JSON
   status: "valid" | "used" | "expired" | "revoked";
   issuedAt: Date;

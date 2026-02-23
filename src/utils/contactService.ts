@@ -36,19 +36,32 @@ export async function getUserContacts(
     models.Contact.count({ where: whereClause }),
   ]);
 
-  // Transform contacts to include the "other user" information
+  // Transform contacts to include the "other user" information and user-specific data
   const contactsWithOtherUser = await Promise.all(
     contacts.map(async (contact: any) => {
       const contactData = contact.get({ plain: true });
-      const otherUserId =
-        contactData.userAId === userId ? contactData.userBId : contactData.userAId;
+      const isUserA = contactData.userAId === userId;
+      const otherUserId = isUserA ? contactData.userBId : contactData.userAId;
 
       const otherUser = await models.User.findByPk(otherUserId, {
         attributes: ["id", "firstName", "lastName", "email", "phone"],
+        include: [
+          {
+            model: models.Profile,
+            as: "profile",
+            attributes: ["profileImage"],
+          },
+        ],
       });
+
+      // Map user-specific fields
+      const isFavorite = isUserA ? contactData.userAIsFavorite : contactData.userBIsFavorite;
+      const tags = isUserA ? contactData.userATags : contactData.userBTags;
 
       return {
         ...contactData,
+        isFavorite,
+        tags,
         otherUser: otherUser ? otherUser.get({ plain: true }) : null,
       };
     })
@@ -84,11 +97,125 @@ export async function getContactById(
 
   const otherUser = await models.User.findByPk(otherUserId, {
     attributes: ["id", "firstName", "lastName", "email", "phone"],
+    include: [
+      {
+        model: models.Profile,
+        as: "profile",
+        attributes: ["profileImage"],
+      },
+    ],
   });
+
+  // Map user-specific fields
+  const isUserA = contactData.userAId === userId;
+  const isFavorite = isUserA ? contactData.userAIsFavorite : contactData.userBIsFavorite;
+  const tags = isUserA ? contactData.userATags : contactData.userBTags;
 
   return {
     ...contactData,
+    isFavorite,
+    tags,
     otherUser: otherUser ? otherUser.get({ plain: true }) : null,
+  };
+}
+
+/**
+ * Toggle favorite status for a contact
+ */
+export async function toggleContactFavorite(
+  app: Application,
+  contactId: string,
+  userId: string
+) {
+  const models = app.get("models") as ReturnType<typeof Models>;
+
+  const contact = await models.Contact.findOne({
+    where: {
+      id: contactId,
+      [Op.or]: [{ userAId: userId }, { userBId: userId }],
+    },
+  });
+
+  if (!contact) {
+    return null;
+  }
+
+  const isUserA = contact.userAId === userId;
+  if (isUserA) {
+    contact.userAIsFavorite = !contact.userAIsFavorite;
+  } else {
+    contact.userBIsFavorite = !contact.userBIsFavorite;
+  }
+
+  await contact.save();
+
+  // Return formatted contact
+  const contactData = contact.get({ plain: true });
+
+  // Re-fetch other user info for completeness (or just return basic updated data)
+  // For efficiency, we'll return the updated boolean and tags mapping
+  const isFavorite = isUserA ? contactData.userAIsFavorite : contactData.userBIsFavorite;
+  const tags = isUserA ? contactData.userATags : contactData.userBTags;
+
+  return {
+    ...contactData,
+    isFavorite,
+    tags
+  };
+}
+
+/**
+ * Manage tags for a contact (add/remove/set)
+ */
+export async function manageContactTags(
+  app: Application,
+  contactId: string,
+  userId: string,
+  tags: string[],
+  action: "add" | "remove" | "set"
+) {
+  const models = app.get("models") as ReturnType<typeof Models>;
+
+  const contact = await models.Contact.findOne({
+    where: {
+      id: contactId,
+      [Op.or]: [{ userAId: userId }, { userBId: userId }],
+    },
+  });
+
+  if (!contact) {
+    return null;
+  }
+
+  const isUserA = contact.userAId === userId;
+  let currentTags = isUserA ? (contact.userATags || []) : (contact.userBTags || []);
+
+  if (action === "set") {
+    currentTags = tags;
+  } else if (action === "add") {
+    // Add unique tags
+    const newTags = tags.filter(tag => !currentTags.includes(tag));
+    currentTags = [...currentTags, ...newTags];
+  } else if (action === "remove") {
+    // Remove specified tags
+    currentTags = currentTags.filter(tag => !tags.includes(tag));
+  }
+
+  if (isUserA) {
+    contact.userATags = currentTags;
+  } else {
+    contact.userBTags = currentTags;
+  }
+
+  await contact.save();
+
+  const contactData = contact.get({ plain: true });
+  const isFavorite = isUserA ? contactData.userAIsFavorite : contactData.userBIsFavorite;
+
+  return {
+    ...contactData,
+    isFavorite,
+    tags: currentTags
   };
 }
 
@@ -236,6 +363,13 @@ export async function searchUsers(
       ],
     },
     attributes: ["id", "firstName", "lastName", "email"],
+    include: [
+      {
+        model: models.Profile,
+        as: "profile",
+        attributes: ["profileImage"],
+      },
+    ],
     limit,
   });
 

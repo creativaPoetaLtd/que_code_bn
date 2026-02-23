@@ -7,6 +7,10 @@ class Contact extends Model<ContactAttributes, ContactCreationAttributes> {
   public userAId!: string;
   public userBId!: string;
   public status!: "active" | "blocked";
+  public userAIsFavorite!: boolean;
+  public userBIsFavorite!: boolean;
+  public userATags!: string[];
+  public userBTags!: string[];
   public createdAt?: Date;
   public updatedAt?: Date;
 
@@ -26,9 +30,29 @@ const Contact_model = (sequelize: Sequelize) => {
         defaultValue: "active",
         allowNull: false,
       },
+      userAIsFavorite: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false
+      },
+      userBIsFavorite: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false
+      },
+      userATags: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        allowNull: false
+      },
+      userBTags: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        allowNull: false
+      }
     },
-    { 
-      sequelize, 
+    {
+      sequelize,
       tableName: "Contacts",
       indexes: [
         {

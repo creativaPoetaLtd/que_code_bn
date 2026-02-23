@@ -34,6 +34,12 @@ router.post("/", contactController.create_contact as RequestHandler);
 // Update contact status (block/unblock)
 router.put("/:id", contactController.update_contact_status as RequestHandler);
 
+// Toggle favorite status
+router.put("/:id/favorite", contactController.toggle_favorite as RequestHandler);
+
+// Manage tags
+router.put("/:id/tags", contactController.manage_tags as RequestHandler);
+
 // Remove contact
 router.delete("/:id", contactController.remove_contact as RequestHandler);
 

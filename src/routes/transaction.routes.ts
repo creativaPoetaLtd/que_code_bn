@@ -94,7 +94,19 @@ router.get(
 // Get transaction history for a wallet
 router.get(
   "/wallet/:walletId/history",
-  transactionController.getTransactionHistory,
+  transactionController.getTransactionHistory
+);
+
+// Get contact transaction stats
+router.get("/wallet/:walletId/contact-stats", transactionController.getContactStats);
+
+router.get("/categories", transactionController.getTransactionCategories);
+
+// UNIFIED ENDPOINTS - Role-based access
+// Admins see all transactions, regular users see only their own
+router.get(
+  "/all",
+  transactionController.getAllTransactions as express.RequestHandler
 );
 
 // Get single transaction by ID with role-based access control (must be last)
