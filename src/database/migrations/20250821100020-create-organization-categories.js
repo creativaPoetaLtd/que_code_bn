@@ -38,6 +38,27 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable("OrganizationCategories");
+    const transaction = await queryInterface.sequelize.transaction();
+    
+    try {
+      // Drop foreign key constraint from Organizations if it exists
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "Organizations" DROP CONSTRAINT IF EXISTS "Organizations_categoryId_fkey";`,
+        { transaction }
+      );
+      
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "Organizations" DROP CONSTRAINT IF EXISTS "fk_organizations_category";`,
+        { transaction }
+      );
+
+      // Now we can safely drop the table
+      await queryInterface.dropTable("OrganizationCategories", { transaction });
+      
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   },
 };

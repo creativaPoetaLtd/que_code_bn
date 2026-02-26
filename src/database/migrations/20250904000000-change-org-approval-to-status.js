@@ -20,6 +20,36 @@ module.exports = {
         return;
       }
 
+      // Check if status column already exists
+      const [statusColumnExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'Organizations' AND column_name = 'status'
+        )`,
+        { transaction }
+      );
+
+      if (statusColumnExists[0].exists) {
+        console.log("⚠️  Status column already exists, skipping migration");
+        await transaction.commit();
+        return;
+      }
+
+      // Check if approvalStatus column exists
+      const [approvalStatusExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'Organizations' AND column_name = 'approvalStatus'
+        )`,
+        { transaction }
+      );
+
+      if (!approvalStatusExists[0].exists) {
+        console.log("⚠️  approvalStatus column doesn't exist, skipping migration");
+        await transaction.commit();
+        return;
+      }
+
       // Add new status column
       await queryInterface.addColumn(
         "Organizations",
@@ -72,27 +102,53 @@ module.exports = {
         return;
       }
 
-      // Add back approvalStatus column
-      await queryInterface.addColumn(
-        "Organizations",
-        "approvalStatus",
-        {
-          type: Sequelize.BOOLEAN,
-          allowNull: false,
-          defaultValue: false,
-        },
-        { transaction },
+      // Check if status column exists
+      const [statusColumnExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'Organizations' AND column_name = 'status'
+        )`,
+        { transaction }
       );
 
-      // Migrate data back: active -> true, others -> false
-      await queryInterface.sequelize.query(
-        `UPDATE "Organizations" 
-         SET "approvalStatus" = CASE 
-           WHEN status = 'active' THEN true 
-           ELSE false 
-         END`,
-        { transaction },
+      if (!statusColumnExists[0].exists) {
+        console.log("⚠️  Status column doesn't exist, skipping migration revert");
+        await transaction.commit();
+        return;
+      }
+
+      // Check if approvalStatus column already exists
+      const [approvalStatusExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'Organizations' AND column_name = 'approvalStatus'
+        )`,
+        { transaction }
       );
+
+      // Add back approvalStatus column only if it doesn't exist
+      if (!approvalStatusExists[0].exists) {
+        await queryInterface.addColumn(
+          "Organizations",
+          "approvalStatus",
+          {
+            type: Sequelize.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          },
+          { transaction },
+        );
+
+        // Migrate data back: active -> true, others -> false
+        await queryInterface.sequelize.query(
+          `UPDATE "Organizations" 
+           SET "approvalStatus" = CASE 
+             WHEN status = 'active' THEN true 
+             ELSE false 
+           END`,
+          { transaction },
+        );
+      }
 
       // Remove status column and enum type
       await queryInterface.removeColumn("Organizations", "status", {
