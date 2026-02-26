@@ -40,27 +40,27 @@ module.exports = {
       },
     ];
 
-    // Use upsert to handle existing records gracefully
+    // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const role of roles) {
-      await queryInterface
-        .bulkInsert("Roles", [role], {
-          updateOnDuplicate: ["name", "description", "updatedAt"],
-        })
-        .catch(async () => {
-          // If bulk insert fails, try to update the existing record
-          await queryInterface.sequelize.query(
-            `UPDATE "Roles" SET "name" = ?, "description" = ?, "updatedAt" = ? WHERE "id" = ?`,
-            {
-              replacements: [
-                role.name,
-                role.description,
-                role.updatedAt,
-                role.id,
-              ],
-              type: queryInterface.sequelize.QueryTypes.UPDATE,
-            },
-          );
-        });
+      await queryInterface.sequelize.query(
+        `INSERT INTO "Roles" ("id", "name", "description", "createdAt", "updatedAt")
+         VALUES (:id, :name, :description, :createdAt, :updatedAt)
+         ON CONFLICT ("id") 
+         DO UPDATE SET 
+           "name" = EXCLUDED."name",
+           "description" = EXCLUDED."description",
+           "updatedAt" = EXCLUDED."updatedAt"`,
+        {
+          replacements: {
+            id: role.id,
+            name: role.name,
+            description: role.description,
+            createdAt: role.createdAt,
+            updatedAt: role.updatedAt,
+          },
+          type: queryInterface.sequelize.QueryTypes.INSERT,
+        }
+      );
     }
   },
 

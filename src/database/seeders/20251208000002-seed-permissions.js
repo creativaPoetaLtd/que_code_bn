@@ -214,27 +214,27 @@ module.exports = {
       },
     ];
 
-    // Use upsert to handle existing records gracefully
+    // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const permission of permissions) {
-      await queryInterface
-        .bulkInsert("Permissions", [permission], {
-          updateOnDuplicate: ["name", "description", "updatedAt"],
-        })
-        .catch(async () => {
-          // If bulk insert fails, try to update the existing record
-          await queryInterface.sequelize.query(
-            `UPDATE "Permissions" SET "name" = ?, "description" = ?, "updatedAt" = ? WHERE "id" = ?`,
-            {
-              replacements: [
-                permission.name,
-                permission.description,
-                permission.updatedAt,
-                permission.id,
-              ],
-              type: queryInterface.sequelize.QueryTypes.UPDATE,
-            },
-          );
-        });
+      await queryInterface.sequelize.query(
+        `INSERT INTO "Permissions" ("id", "name", "description", "createdAt", "updatedAt")
+         VALUES (:id, :name, :description, :createdAt, :updatedAt)
+         ON CONFLICT ("id") 
+         DO UPDATE SET 
+           "name" = EXCLUDED."name",
+           "description" = EXCLUDED."description",
+           "updatedAt" = EXCLUDED."updatedAt"`,
+        {
+          replacements: {
+            id: permission.id,
+            name: permission.name,
+            description: permission.description,
+            createdAt: permission.createdAt,
+            updatedAt: permission.updatedAt,
+          },
+          type: queryInterface.sequelize.QueryTypes.INSERT,
+        }
+      );
     }
   },
 

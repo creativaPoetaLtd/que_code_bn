@@ -135,23 +135,26 @@ module.exports = {
       },
     ];
 
-    // Use upsert to handle existing records gracefully
+    // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const user of users) {
-      await queryInterface
-        .bulkInsert("Users", [user], {
-          updateOnDuplicate: [
-            "firstName",
-            "lastName",
-            "password",
-            "isVerified",
-            "approvalStatus",
-            "updatedAt",
-          ],
-        })
-        .catch(async () => {
-          // If bulk insert fails, skip (record already exists)
-          console.log(`User ${user.email} already exists, skipping...`);
-        });
+      await queryInterface.sequelize.query(
+        `INSERT INTO "Users" ("id", "firstName", "lastName", "email", "phone", "password", "isVerified", "approvalStatus", "hasPinSet", "transactionPin", "pinAttempts", "isOnline", "createdAt", "updatedAt")
+         VALUES (:id, :firstName, :lastName, :email, :phone, :password, :isVerified, :approvalStatus, :hasPinSet, :transactionPin, :pinAttempts, :isOnline, :createdAt, :updatedAt)
+         ON CONFLICT ("id") 
+         DO UPDATE SET 
+           "firstName" = EXCLUDED."firstName",
+           "lastName" = EXCLUDED."lastName",
+           "password" = EXCLUDED."password",
+           "isVerified" = EXCLUDED."isVerified",
+           "approvalStatus" = EXCLUDED."approvalStatus",
+           "updatedAt" = EXCLUDED."updatedAt"`,
+        {
+          replacements: user,
+          type: queryInterface.sequelize.QueryTypes.INSERT,
+        }
+      ).catch((error) => {
+        console.log(`User ${user.email} already exists, skipping...`);
+      });
     }
   },
 
