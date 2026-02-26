@@ -10,10 +10,25 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
-    // Revert back to VARCHAR(255) - WARNING: this may truncate data
-    await queryInterface.changeColumn("ContactInvitations", "invitationToken", {
-      type: Sequelize.STRING,
-      allowNull: false,
-    });
+    const transaction = await queryInterface.sequelize.transaction();
+    
+    try {
+      // First, truncate any invitationToken values longer than 255 characters
+      await queryInterface.sequelize.query(
+        `UPDATE "ContactInvitations" SET "invitationToken" = LEFT("invitationToken", 255) WHERE LENGTH("invitationToken") > 255`,
+        { transaction }
+      );
+
+      // Revert back to VARCHAR(255)
+      await queryInterface.changeColumn("ContactInvitations", "invitationToken", {
+        type: Sequelize.STRING,
+        allowNull: false,
+      }, { transaction });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   },
 };

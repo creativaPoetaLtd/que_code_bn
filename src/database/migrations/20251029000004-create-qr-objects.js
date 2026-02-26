@@ -143,6 +143,13 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // First, drop the foreign key constraint from ActionPurchases if it exists
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "ActionPurchases" DROP CONSTRAINT IF EXISTS "ActionPurchases_qrObjectId_fkey";`,
+        { transaction }
+      );
+
+      // Now we can safely drop the QRObjects table
       await queryInterface.dropTable("QRObjects", { transaction });
       await queryInterface.sequelize.query(
         'DROP TYPE IF EXISTS "enum_QRObjects_type";',

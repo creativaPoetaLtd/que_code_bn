@@ -8,6 +8,18 @@ module.exports = {
     try {
       console.log("🔧 Changing approvalStatus to status field...");
 
+      // Check if Organizations table exists
+      const [tableExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Organizations')`,
+        { transaction }
+      );
+
+      if (!tableExists[0].exists) {
+        console.log("⚠️  Organizations table doesn't exist yet, skipping migration");
+        await transaction.commit();
+        return;
+      }
+
       // Add new status column
       await queryInterface.addColumn(
         "Organizations",
@@ -48,6 +60,18 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // Check if Organizations table exists
+      const [tableExists] = await queryInterface.sequelize.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Organizations')`,
+        { transaction }
+      );
+
+      if (!tableExists[0].exists) {
+        console.log("⚠️  Organizations table doesn't exist, skipping migration revert");
+        await transaction.commit();
+        return;
+      }
+
       // Add back approvalStatus column
       await queryInterface.addColumn(
         "Organizations",
