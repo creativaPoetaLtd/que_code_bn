@@ -137,24 +137,24 @@ module.exports = {
 
     // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const user of users) {
-      await queryInterface.sequelize.query(
-        `INSERT INTO "Users" ("id", "firstName", "lastName", "email", "phone", "password", "isVerified", "approvalStatus", "hasPinSet", "transactionPin", "pinAttempts", "isOnline", "createdAt", "updatedAt")
-         VALUES (:id, :firstName, :lastName, :email, :phone, :password, :isVerified, :approvalStatus, :hasPinSet, :transactionPin, :pinAttempts, :isOnline, :createdAt, :updatedAt)
-         ON CONFLICT ("id") 
-         DO UPDATE SET 
-           "firstName" = EXCLUDED."firstName",
-           "lastName" = EXCLUDED."lastName",
-           "password" = EXCLUDED."password",
-           "isVerified" = EXCLUDED."isVerified",
-           "approvalStatus" = EXCLUDED."approvalStatus",
-           "updatedAt" = EXCLUDED."updatedAt"`,
-        {
-          replacements: user,
-          type: queryInterface.sequelize.QueryTypes.INSERT,
-        }
-      ).catch((error) => {
-        console.log(`User ${user.email} already exists, skipping...`);
-      });
+      try {
+        await queryInterface.sequelize.query(
+          `INSERT INTO "Users" ("id", "firstName", "lastName", "email", "phone", "password", "isVerified", "approvalStatus", "hasPinSet", "transactionPin", "pinAttempts", "isOnline", "createdAt", "updatedAt")
+           VALUES ('${user.id}', '${user.firstName}', '${user.lastName}', '${user.email}', '${user.phone}', '${user.password}', ${user.isVerified}, ${user.approvalStatus}, ${user.hasPinSet}, '${user.transactionPin}', ${user.pinAttempts}, ${user.isOnline}, '${user.createdAt.toISOString()}', '${user.updatedAt.toISOString()}')
+           ON CONFLICT ("id") 
+           DO UPDATE SET 
+             "firstName" = EXCLUDED."firstName",
+             "lastName" = EXCLUDED."lastName",
+             "password" = EXCLUDED."password",
+             "isVerified" = EXCLUDED."isVerified",
+             "approvalStatus" = EXCLUDED."approvalStatus",
+             "updatedAt" = EXCLUDED."updatedAt"`
+        );
+        console.log(`✓ Seeded user: ${user.email}`);
+      } catch (error) {
+        console.error(`✗ Failed to seed user ${user.email}:`, error.message);
+        throw error;
+      }
     }
   },
 

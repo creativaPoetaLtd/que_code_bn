@@ -216,25 +216,21 @@ module.exports = {
 
     // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const permission of permissions) {
-      await queryInterface.sequelize.query(
-        `INSERT INTO "Permissions" ("id", "name", "description", "createdAt", "updatedAt")
-         VALUES (:id, :name, :description, :createdAt, :updatedAt)
-         ON CONFLICT ("id") 
-         DO UPDATE SET 
-           "name" = EXCLUDED."name",
-           "description" = EXCLUDED."description",
-           "updatedAt" = EXCLUDED."updatedAt"`,
-        {
-          replacements: {
-            id: permission.id,
-            name: permission.name,
-            description: permission.description,
-            createdAt: permission.createdAt,
-            updatedAt: permission.updatedAt,
-          },
-          type: queryInterface.sequelize.QueryTypes.INSERT,
-        }
-      );
+      try {
+        await queryInterface.sequelize.query(
+          `INSERT INTO "Permissions" ("id", "name", "description", "createdAt", "updatedAt")
+           VALUES ('${permission.id}', '${permission.name}', '${permission.description}', '${permission.createdAt.toISOString()}', '${permission.updatedAt.toISOString()}')
+           ON CONFLICT ("id") 
+           DO UPDATE SET 
+             "name" = EXCLUDED."name",
+             "description" = EXCLUDED."description",
+             "updatedAt" = EXCLUDED."updatedAt"`
+        );
+        console.log(`✓ Seeded permission: ${permission.name}`);
+      } catch (error) {
+        console.error(`✗ Failed to seed permission ${permission.name}:`, error.message);
+        throw error;
+      }
     }
   },
 

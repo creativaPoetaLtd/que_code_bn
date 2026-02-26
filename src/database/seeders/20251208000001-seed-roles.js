@@ -42,25 +42,21 @@ module.exports = {
 
     // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const role of roles) {
-      await queryInterface.sequelize.query(
-        `INSERT INTO "Roles" ("id", "name", "description", "createdAt", "updatedAt")
-         VALUES (:id, :name, :description, :createdAt, :updatedAt)
-         ON CONFLICT ("id") 
-         DO UPDATE SET 
-           "name" = EXCLUDED."name",
-           "description" = EXCLUDED."description",
-           "updatedAt" = EXCLUDED."updatedAt"`,
-        {
-          replacements: {
-            id: role.id,
-            name: role.name,
-            description: role.description,
-            createdAt: role.createdAt,
-            updatedAt: role.updatedAt,
-          },
-          type: queryInterface.sequelize.QueryTypes.INSERT,
-        }
-      );
+      try {
+        await queryInterface.sequelize.query(
+          `INSERT INTO "Roles" ("id", "name", "description", "createdAt", "updatedAt")
+           VALUES ('${role.id}', '${role.name}', '${role.description}', '${role.createdAt.toISOString()}', '${role.updatedAt.toISOString()}')
+           ON CONFLICT ("id") 
+           DO UPDATE SET 
+             "name" = EXCLUDED."name",
+             "description" = EXCLUDED."description",
+             "updatedAt" = EXCLUDED."updatedAt"`
+        );
+        console.log(`✓ Seeded role: ${role.name}`);
+      } catch (error) {
+        console.error(`✗ Failed to seed role ${role.name}:`, error.message);
+        throw error;
+      }
     }
   },
 

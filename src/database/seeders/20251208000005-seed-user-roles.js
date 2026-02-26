@@ -63,21 +63,21 @@ module.exports = {
 
     // Use INSERT ... ON CONFLICT for PostgreSQL upsert
     for (const userRole of userRoles) {
-      await queryInterface.sequelize.query(
-        `INSERT INTO "UserRoles" ("id", "userId", "roleId", "createdAt", "updatedAt")
-         VALUES (:id, :userId, :roleId, :createdAt, :updatedAt)
-         ON CONFLICT ("id") 
-         DO UPDATE SET 
-           "userId" = EXCLUDED."userId",
-           "roleId" = EXCLUDED."roleId",
-           "updatedAt" = EXCLUDED."updatedAt"`,
-        {
-          replacements: userRole,
-          type: queryInterface.sequelize.QueryTypes.INSERT,
-        }
-      ).catch((error) => {
-        console.log(`UserRole ${userRole.id} already exists, skipping...`);
-      });
+      try {
+        await queryInterface.sequelize.query(
+          `INSERT INTO "UserRoles" ("id", "userId", "roleId", "createdAt", "updatedAt")
+           VALUES ('${userRole.id}', '${userRole.userId}', '${userRole.roleId}', '${userRole.createdAt.toISOString()}', '${userRole.updatedAt.toISOString()}')
+           ON CONFLICT ("id") 
+           DO UPDATE SET 
+             "userId" = EXCLUDED."userId",
+             "roleId" = EXCLUDED."roleId",
+             "updatedAt" = EXCLUDED."updatedAt"`
+        );
+        console.log(`✓ Seeded user role: ${userRole.id}`);
+      } catch (error) {
+        console.error(`✗ Failed to seed user role ${userRole.id}:`, error.message);
+        throw error;
+      }
     }
   },
 
