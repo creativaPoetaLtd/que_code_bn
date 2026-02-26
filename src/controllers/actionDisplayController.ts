@@ -6,7 +6,7 @@ import {
 } from "../types/model";
 import { Op } from "sequelize";
 
-// Get public actions for an organization (Welcome Page)
+
 const getPublicActions = async (req: Request, res: Response): Promise<void> => {
   try {
     const { organizationId } = req.params;
