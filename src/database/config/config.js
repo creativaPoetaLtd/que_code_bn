@@ -1,7 +1,8 @@
 require("dotenv").config();
 
 const dialect_option =
-  process.env.DB_HOSTED_MODE === "hosted" || process.env.NODE_ENV === "production"
+  process.env.DB_HOSTED_MODE === "hosted" ||
+  process.env.NODE_ENV === "production"
     ? {
         ssl: {
           require: true,
@@ -12,7 +13,7 @@ const dialect_option =
 
 module.exports = {
   development: {
-    use_env_variable: "DB_DEV_URL",
+    url: process.env.DB_DEV_URL,
     dialect: "postgres",
     dialectOptions: dialect_option,
   },
