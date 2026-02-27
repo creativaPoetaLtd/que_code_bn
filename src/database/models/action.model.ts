@@ -38,6 +38,7 @@ class Action extends Model<ActionModelAttributes, ActionCreationAttributes> {
   public customFields!: any; // JSON: type-specific fields
   public status!: "draft" | "published" | "archived";
   public dedicatedQrCode!: string | null;
+  public dedicatedQrCodeData!: string | null; // Base64 QR code data URL
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -128,6 +129,11 @@ const Action_model = (sequelize: Sequelize) => {
         defaultValue: "draft",
       },
       dedicatedQrCode: { type: DataTypes.TEXT, allowNull: true },
+      dedicatedQrCodeData: { 
+        type: DataTypes.TEXT, 
+        allowNull: true,
+        comment: "Base64 QR code data URL for the action"
+      },
     },
     {
       sequelize,

@@ -44,6 +44,8 @@ actionRouter.put(
 );
 actionRouter.post(
   "/actions/:actionId/sub-actions",
+  actionCoverImageUpload.single("coverImage"),
+  handleMulterError,
   actionController.createSubAction
 );
 actionRouter.put(
@@ -97,6 +99,10 @@ actionRouter.delete("/actions/:actionId", actionController.deleteAction);
 actionRouter.get(
   "/actions/:actionId/sub-actions",
   actionController.getSubActions
+);
+actionRouter.get(
+  "/sub-actions/:subActionId",
+  actionController.getSubActionById
 );
 actionRouter.put(
   "/sub-actions/:subActionId",

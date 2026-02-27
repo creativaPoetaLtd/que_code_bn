@@ -551,6 +551,7 @@ export interface ActionModelAttributes {
   customFields: any; // JSON
   status: "draft" | "published" | "archived";
   dedicatedQrCode: string | null;
+  dedicatedQrCodeData: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -572,6 +573,8 @@ export interface SubActionModelAttributes {
   metadata: any; // JSON
   isActive: boolean;
   sortOrder: number;
+  coverImage: string | null;
+  dedicatedQrCodeData: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
