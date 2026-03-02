@@ -1,11 +1,11 @@
 // categories.model.ts
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
-import { CategoryAttributes, CategoryCreationAttributes } from "../../types/model";
-
-class Category extends Model<
+import {
   CategoryAttributes,
-  CategoryCreationAttributes
-> {
+  CategoryCreationAttributes,
+} from "../../types/model";
+
+class Category extends Model<CategoryAttributes, CategoryCreationAttributes> {
   public id!: string;
   public name!: string;
   public description?: string;
@@ -20,11 +20,23 @@ const Category_model = (sequelize: Sequelize) => {
       id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
       name: { type: DataTypes.STRING, allowNull: false, unique: true },
       description: DataTypes.TEXT,
-      isActive: { type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false },
-      createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-      updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+      isActive: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
     },
-    { sequelize, tableName: "Categories" }
+    { sequelize, tableName: "Categories" },
   );
 
   return Category;

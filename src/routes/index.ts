@@ -15,11 +15,13 @@ import chatRouter from "./chat.routes";
 import actionRouter from "./action.routes";
 import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
+import adminDashboardRouter from "./admin.dashboard.routes";
 
 import fcmRouter from "./fcm.routes";
 
 // Admin routes (unified authentication with role/permission middleware)
 import adminAuthRouter from "./admin.auth.routes";
+import adminMainRouter from "./admin.main.routes";
 
 const router = express.Router();
 
@@ -60,10 +62,13 @@ router.use("/permissions", permissionRouter);
 // Uses standard JWT auth with role/permission-based access control
 // Middleware in routes: requireRole(), requirePermission()
 // Admin-specific routes can be accessed via:
-// - /api/v1/users (with admin middleware - shows all users)
-// - /api/v1/roles (admin-only role management)
-// - /api/v1/permissions (super_admin-only permission management)
-// - /api/v1/transactions (role-based filtering)
+// - /api/v1/admin/users (with admin middleware - shows all users)
+// - /api/v1/admin/roles (admin-only role management)
+// - /api/v1/admin/permissions (super_admin-only permission management)
+// - /api/v1/admin/transactions (role-based filtering)
+// - /api/v1/admin/actions (admin-only action management)
 router.use("/admin/auth", adminAuthRouter); // Admin login (separate auth for now)
+router.use("/admin/dashboard", adminDashboardRouter);
+router.use("/admin", adminMainRouter); // Admin panel routes (users, roles, permissions, transactions, actions)
 
 export default router;
