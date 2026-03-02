@@ -14,6 +14,7 @@ const {
   WalletRestriction,
   User,
   Organization,
+  Profile,
 } = database_models;
 
 // Helper function to calculate fee
@@ -663,14 +664,51 @@ const getTransactionHistory = async (
       status,
       startDate,
       endDate,
+      contactId,
     } = req.query;
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    const contactIdStr = contactId ? String(contactId) : undefined;
 
     // Build where clause
     const whereClause: any = {
       [Op.or]: [{ senderWalletId: walletId }, { receiverWalletId: walletId }],
     };
+
+    // Filter by contact if provided
+    if (contactIdStr) {
+      // Find the contact's wallet first
+      const contactWallet = await Wallet.findOne({
+        where: { userId: contactIdStr }
+      });
+
+      if (contactWallet) {
+        whereClause[Op.and] = [
+          {
+            [Op.or]: [
+              { senderWalletId: contactWallet.id },
+              { receiverWalletId: contactWallet.id }
+            ]
+          }
+        ];
+      } else {
+        // If contact has no wallet, they can't have transactions. Return empty.
+        res.status(200).json({
+          success: true,
+          data: {
+            transactions: [],
+            pagination: {
+              page: parseInt(page as string),
+              limit: parseInt(limit as string),
+              total: 0,
+              totalPages: 0
+            }
+          }
+        });
+        return;
+      }
+    }
 
     if (type) {
       whereClause.type = type;
@@ -704,12 +742,54 @@ const getTransactionHistory = async (
           {
             model: Wallet,
             as: "senderWallet",
-            attributes: ["id", "userId", "currency"],
+            attributes: ["id", "userId", "organizationId", "currency"],
+            include: [
+              {
+                model: User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email"],
+                include: [
+                  {
+                    model: Profile,
+                    as: "profile",
+                    attributes: ["profileImage"],
+                  },
+                ],
+                required: false,
+              },
+              {
+                model: Organization,
+                as: "organization",
+                attributes: ["id", "name", "email"],
+                required: false,
+              },
+            ],
           },
           {
             model: Wallet,
             as: "receiverWallet",
-            attributes: ["id", "userId", "currency"],
+            attributes: ["id", "userId", "organizationId", "currency"],
+            include: [
+              {
+                model: User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email"],
+                include: [
+                  {
+                    model: Profile,
+                    as: "profile",
+                    attributes: ["profileImage"],
+                  },
+                ],
+                required: false,
+              },
+              {
+                model: Organization,
+                as: "organization",
+                attributes: ["id", "name", "email"],
+                required: false,
+              },
+            ],
           },
         ],
       });
@@ -759,6 +839,13 @@ const getTransactionDetails = async (
               model: User,
               as: "user",
               attributes: ["id", "firstName", "lastName", "email"],
+              include: [
+                {
+                  model: Profile,
+                  as: "profile",
+                  attributes: ["profileImage"],
+                },
+              ],
               required: false,
             },
             {
@@ -778,6 +865,13 @@ const getTransactionDetails = async (
               model: User,
               as: "user",
               attributes: ["id", "firstName", "lastName", "email"],
+              include: [
+                {
+                  model: Profile,
+                  as: "profile",
+                  attributes: ["profileImage"],
+                },
+              ],
               required: false,
             },
             {
@@ -1425,6 +1519,13 @@ const getAllTransactions = async (
                 model: models.User,
                 as: "user",
                 attributes: ["id", "firstName", "lastName", "email", "phone"],
+                include: [
+                  {
+                    model: models.Profile,
+                    as: "profile",
+                    attributes: ["profileImage"],
+                  },
+                ],
               },
               {
                 model: models.Organization,
@@ -1442,6 +1543,13 @@ const getAllTransactions = async (
                 model: models.User,
                 as: "user",
                 attributes: ["id", "firstName", "lastName", "email", "phone"],
+                include: [
+                  {
+                    model: models.Profile,
+                    as: "profile",
+                    attributes: ["profileImage"],
+                  },
+                ],
               },
               {
                 model: models.Organization,
@@ -1535,6 +1643,13 @@ const getTransactionById = async (
               attributes: {
                 exclude: ["password", "transactionPin", "otp", "pinResetOtp"],
               },
+              include: [
+                {
+                  model: models.Profile,
+                  as: "profile",
+                  attributes: ["profileImage"],
+                },
+              ],
             },
             {
               model: models.Organization,
@@ -1552,6 +1667,13 @@ const getTransactionById = async (
               attributes: {
                 exclude: ["password", "transactionPin", "otp", "pinResetOtp"],
               },
+              include: [
+                {
+                  model: models.Profile,
+                  as: "profile",
+                  attributes: ["profileImage"],
+                },
+              ],
             },
             {
               model: models.Organization,
@@ -1667,6 +1789,13 @@ const getRecentSends = async (
               model: User,
               as: "user",
               attributes: ["id", "firstName", "lastName", "email", "phone"],
+              include: [
+                {
+                  model: Profile,
+                  as: "profile",
+                  attributes: ["profileImage"],
+                },
+              ],
               required: false,
             },
             {
@@ -1696,6 +1825,10 @@ const getRecentSends = async (
         const receiver = receiverWallet.user || receiverWallet.organization;
         if (!receiver) continue;
 
+        const profileImage = receiver.profile?.profileImage ||
+          (receiverWallet.userId ? null : receiver.profile?.logo) ||
+          null;
+
         receiverMap.set(receiverId, {
           receiverId,
           receiverType: receiverWallet.userId ? "user" : "organization",
@@ -1706,6 +1839,7 @@ const getRecentSends = async (
             ? receiver.phone
             : receiver.contactPhone || null,
           receiverEmail: receiver.email || null,
+          receiverProfileImage: profileImage,
           lastTransactionId: transaction.id,
           lastTransactionDate: (transaction as any).createdAt,
           lastTransactionAmount: parseFloat(transaction.amount.toString()),
@@ -1730,6 +1864,71 @@ const getRecentSends = async (
     res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+// Get contact transaction stats
+const getContactStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { walletId } = req.params;
+    const { contactId } = req.query;
+
+    if (!walletId) {
+      res.status(400).json({ success: false, message: 'Wallet ID is required' });
+      return;
+    }
+
+    if (!contactId) {
+      res.status(400).json({ success: false, message: 'Contact ID is required' });
+      return;
+    }
+
+    // Find contact's wallet
+    const contactWallet = await Wallet.findOne({ where: { userId: String(contactId) } });
+
+    if (!contactWallet) {
+      res.status(200).json({
+        success: true,
+        data: {
+          totalSent: 0,
+          totalReceived: 0
+        }
+      });
+      return;
+    }
+
+    // Calculate total sent to contact
+    const totalSent = await TransactionModel.sum('amount', {
+      where: {
+        senderWalletId: walletId,
+        receiverWalletId: contactWallet.id,
+        status: 'completed'
+      }
+    });
+
+    // Calculate total received from contact
+    const totalReceived = await TransactionModel.sum('amount', {
+      where: {
+        senderWalletId: contactWallet.id,
+        receiverWalletId: walletId,
+        status: 'completed'
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalSent: totalSent || 0,
+        totalReceived: totalReceived || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Get contact stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 };
@@ -2240,6 +2439,7 @@ export default {
   getWalletRestrictions,
   getWalletBalanceBreakdown,
   getRecentSends,
+  getContactStats,
   getAllTransactions,
   getTransactionById,
 };

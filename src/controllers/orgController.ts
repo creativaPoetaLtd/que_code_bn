@@ -317,9 +317,8 @@ const create_organization = async (
     );
 
     // Verification URL
-    const verificationUrl = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/verify?token=${verificationToken}`;
+    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"
+      }/verify?token=${verificationToken}`;
 
     // Send verification email to organization's email
     try {
@@ -417,6 +416,11 @@ const get_organization_by_id = async (
             model: database_models.Category,
             as: "category",
             attributes: ["id", "name", "description", "createdAt", "updatedAt"],
+          },
+          {
+            model: database_models.Profile,
+            as: "profile",
+            attributes: ["profileImage"],
           },
         ],
       },

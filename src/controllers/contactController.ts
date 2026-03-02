@@ -9,6 +9,8 @@ import {
   searchUsers,
   createContact,
   getContactStats,
+  toggleContactFavorite,
+  manageContactTags,
 } from "../utils/contactService";
 
 // Get all contacts for current user
@@ -190,19 +192,6 @@ const get_contact_stats = async (
   }
 };
 
-export {
-  get_user_contacts,
-  get_contact_by_id,
-  update_contact_status,
-  remove_contact,
-  search_users,
-  create_contact,
-  get_contact_stats,
-  get_pending_invitations,
-  get_accepted_contacts,
-  get_sent_invitations,
-};
-
 // Get pending contact invitations
 const get_pending_invitations = async (
   req: AuthenticatedRequest,
@@ -227,6 +216,13 @@ const get_pending_invitations = async (
             model: models.User,
             as: "inviter",
             attributes: ["id", "firstName", "lastName", "email"],
+            include: [
+              {
+                model: models.Profile,
+                as: "profile",
+                attributes: ["profileImage"],
+              },
+            ],
           },
         ],
         order: [["invitedAt", "DESC"]],
@@ -309,6 +305,13 @@ const get_sent_invitations = async (
             model: models.User,
             as: "invitee",
             attributes: ["id", "firstName", "lastName", "email"],
+            include: [
+              {
+                model: models.Profile,
+                as: "profile",
+                attributes: ["profileImage"],
+              },
+            ],
           },
         ],
         order: [["invitedAt", "DESC"]],
@@ -335,6 +338,61 @@ const get_sent_invitations = async (
   }
 };
 
+// Toggle favorite status
+const toggle_favorite = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const result = await toggleContactFavorite(req.app, id, req.user.id);
+
+    if (!result) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    res.json({
+      message: result.isFavorite ? "Contact added to favorites" : "Contact removed from favorites",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Manage tags
+const manage_tags = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { tags, action } = req.body;
+
+    if (!Array.isArray(tags) || !["add", "remove", "set"].includes(action)) {
+      res.status(400).json({ message: "Valid tags array and action (add, remove, set) are required" });
+      return;
+    }
+
+    const result = await manageContactTags(req.app, id, req.user.id, tags, action);
+
+    if (!result) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    res.json({
+      message: "Contact tags updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const contactController = {
   get_user_contacts,
   get_contact_by_id,
@@ -346,6 +404,23 @@ const contactController = {
   get_pending_invitations,
   get_accepted_contacts,
   get_sent_invitations,
+  toggle_favorite,
+  manage_tags,
+};
+
+export {
+  get_user_contacts,
+  get_contact_by_id,
+  update_contact_status,
+  remove_contact,
+  search_users,
+  create_contact,
+  get_contact_stats,
+  get_pending_invitations,
+  get_accepted_contacts,
+  get_sent_invitations,
+  toggle_favorite,
+  manage_tags,
 };
 
 export default contactController;

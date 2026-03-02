@@ -65,14 +65,18 @@ module.exports = {
       // Add foreign key for qrObjectId in ActionPurchases (after QRObjects table exists)
       const actionPurchasesDescription = await queryInterface.describeTable("ActionPurchases");
       if (actionPurchasesDescription.qrObjectId && !actionPurchasesDescription.qrObjectId.references) {
-        await queryInterface.sequelize.query(
-          `ALTER TABLE "ActionPurchases" 
-           ADD CONSTRAINT "ActionPurchases_qrObjectId_fkey" 
-           FOREIGN KEY ("qrObjectId") 
-           REFERENCES "QRObjects"("id") 
-           ON UPDATE CASCADE ON DELETE SET NULL;`,
-          { transaction }
-        );
+        try {
+          await queryInterface.sequelize.query(
+            `ALTER TABLE "ActionPurchases" 
+            ADD CONSTRAINT "ActionPurchases_qrObjectId_fkey" 
+            FOREIGN KEY ("qrObjectId") 
+            REFERENCES "QRObjects"("id") 
+            ON UPDATE CASCADE ON DELETE SET NULL;`,
+            { transaction }
+          );
+        } catch (e) {
+          console.log('Constraint ActionPurchases_qrObjectId_fkey already exists or migration failed: ', e.message);
+        }
       }
 
       await transaction.commit();

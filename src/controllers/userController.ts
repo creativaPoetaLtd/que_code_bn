@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { insert_function, read_function } from "../utils/db_methods";
+import database_models from "../database/config/db.config";
 import {
   UserCreationAttributes,
   UserModelAttributes,
@@ -11,7 +12,6 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
-import database_models from "../database/config/db.config";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -128,9 +128,8 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       { expiresIn: "2d", algorithm: "HS256" },
     );
     // Verification URL - point to frontend verification page
-    const verificationUrl = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/auth/verify?token=${verificationToken}&otp=${otp}`;
+    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"
+      }/auth/verify?token=${verificationToken}&otp=${otp}`;
     // Send verification email with OTP
     let emailSent = false;
     try {
@@ -380,6 +379,13 @@ const get_user_by_id = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await read_function<UserModelAttributes>("User", "findOne", {
       where: { id: req.params.id },
+      include: [
+        {
+          model: database_models.Profile,
+          as: "profile",
+          attributes: ["profileImage"],
+        },
+      ],
     });
 
     if (!user) {
