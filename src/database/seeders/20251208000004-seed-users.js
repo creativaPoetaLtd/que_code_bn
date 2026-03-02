@@ -141,7 +141,7 @@ module.exports = {
         await queryInterface.sequelize.query(
           `INSERT INTO "Users" ("id", "firstName", "lastName", "email", "phone", "password", "isVerified", "approvalStatus", "hasPinSet", "transactionPin", "pinAttempts", "isOnline", "createdAt", "updatedAt")
            VALUES ('${user.id}', '${user.firstName}', '${user.lastName}', '${user.email}', '${user.phone}', '${user.password}', ${user.isVerified}, ${user.approvalStatus}, ${user.hasPinSet}, '${user.transactionPin}', ${user.pinAttempts}, ${user.isOnline}, '${user.createdAt.toISOString()}', '${user.updatedAt.toISOString()}')
-           ON CONFLICT ("id") 
+           ON CONFLICT ("email") 
            DO UPDATE SET 
              "firstName" = EXCLUDED."firstName",
              "lastName" = EXCLUDED."lastName",
