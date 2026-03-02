@@ -1,21 +1,25 @@
-require('dotenv').config();
-const { Client } = require('pg');
+require("dotenv").config();
+const { Client } = require("pg");
 
 const fixConstraint = async () => {
   const client = new Client(process.env.DB_DEV_URL);
-  
+
   try {
     await client.connect();
-    console.log('✅ Connected to database');
-    
+    console.log("✅ Connected to database");
+
     // Drop the incorrect constraint
-    await client.query('ALTER TABLE "WalletRestrictions" DROP CONSTRAINT IF EXISTS "WalletRestrictions_categoryId_fkey"');
-    console.log('✅ Dropped old constraint');
-    
+    await client.query(
+      'ALTER TABLE "WalletRestrictions" DROP CONSTRAINT IF EXISTS "WalletRestrictions_categoryId_fkey"',
+    );
+    console.log("✅ Dropped old constraint");
+
     // Add the correct constraint
-    await client.query('ALTER TABLE "WalletRestrictions" ADD CONSTRAINT "WalletRestrictions_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Categories" ("id") ON DELETE NO ACTION ON UPDATE CASCADE');
-    console.log('✅ Added new constraint pointing to Categories table');
-    
+    await client.query(
+      'ALTER TABLE "WalletRestrictions" ADD CONSTRAINT "WalletRestrictions_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Categories" ("id") ON DELETE NO ACTION ON UPDATE CASCADE',
+    );
+    console.log("✅ Added new constraint pointing to Categories table");
+
     // Verify
     const result = await client.query(`
       SELECT 
@@ -36,15 +40,14 @@ const fixConstraint = async () => {
         AND tc.constraint_type = 'FOREIGN KEY'
         AND kcu.column_name = 'categoryId'
     `);
-    
-    console.log('\n✅ Constraint verification:');
+
+    console.log("\n✅ Constraint verification:");
     console.table(result.rows);
-    
+
     await client.end();
-    console.log('\n✅ All done! Please restart your server.');
-    
+    console.log("\n✅ All done! Please restart your server.");
   } catch (error) {
-    console.error('❌ Error:', error.message);
+    console.error("❌ Error:", error.message);
     await client.end();
     process.exit(1);
   }

@@ -3,6 +3,7 @@ import userRouter from "./user.routes";
 import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
 import transactionRouter from "./transaction.routes";
+import actionRouter from "./admin.action.routes";
 
 const router = express.Router();
 
@@ -27,5 +28,8 @@ router.use("/permissions", permissionRouter);
 
 // Transaction management (role-based filtering)
 router.use("/transactions", transactionRouter);
+
+// Action management (admin only)
+router.use("/actions", actionRouter);
 
 export default router;
