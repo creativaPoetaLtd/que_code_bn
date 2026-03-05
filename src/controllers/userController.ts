@@ -111,10 +111,11 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       profileData,
     );
 
-    // Create wallet
+    // Create wallet with initial balance for testing
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
+        balance: 67000,
       };
       await insert_function("Wallet", "create", walletData);
     } catch (walletError) {

@@ -509,8 +509,10 @@ export interface WalletAttributes {
 }
 export type WalletCreationAttributes = Omit<
   WalletAttributes,
-  "id" | "balance" | "currency" | "isActive" | "createdAt" | "updatedAt"
->;
+  "id" | "currency" | "isActive" | "createdAt" | "updatedAt"
+> & {
+  balance?: number;
+};
 
 export interface WalletRestrictionAttributes {
   id: string;
