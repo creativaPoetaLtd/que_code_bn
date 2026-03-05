@@ -1,11 +1,16 @@
-import { Request, Response, RequestHandler } from "express";
-import { AuthenticatedRequest } from "../types/requests";
-import { AuthRequest } from "../middleware/auth.unified.middleware";
-import { Op, fn, col } from "sequelize";
-import * as bcrypt from "bcrypt";
-import { v4 as uuidv4 } from "uuid";
-import database_models from "../database/config/db.config";
-import Models from "../database/models";
+import { Request, Response, RequestHandler } from 'express';
+import { AuthenticatedRequest } from '../types/requests';
+import { Op, fn, col } from 'sequelize';
+import * as bcrypt from 'bcrypt';
+import database_models from '../database/config/db.config';
+import {
+  notifyPaymentReceived,
+  notifyPaymentSent,
+  notifyPaymentFailed,
+  notifyTransactionCompleted,
+  notifyLargeTransaction
+} from '../utils/notificationHelpers';
+import { AuthRequest } from '../middleware/auth.unified.middleware';
 
 const {
   Wallet,
@@ -560,6 +565,96 @@ const transferMoney = async (
 
     // Commit the transaction
     await transaction?.commit();
+
+    // Send notifications to both sender and receiver
+    try {
+      // Get sender and receiver names for notification
+      let senderName = 'A user';
+      let receiverName = 'A user';
+
+      if (senderUserId) {
+        const sender = await User.findByPk(senderUserId);
+        senderName = sender ? `${sender.firstName} ${sender.lastName}` : senderName;
+      } else if (senderOrganizationId) {
+        const senderOrg = await Organization.findByPk(senderOrganizationId);
+        senderName = senderOrg ? senderOrg.name : senderName;
+      }
+
+      if (receiverUserId) {
+        const receiver = await User.findByPk(receiverUserId);
+        receiverName = receiver ? `${receiver.firstName} ${receiver.lastName}` : receiverName;
+      } else if (receiverOrganizationId) {
+        const receiverOrg = await Organization.findByPk(receiverOrganizationId);
+        receiverName = receiverOrg ? receiverOrg.name : receiverName;
+      }
+
+      // Notify receiver about payment received
+      if (receiverUserId) {
+        await notifyPaymentReceived(
+          req.app,
+          receiverUserId,
+          newTransaction.id,
+          transferAmount,
+          senderWallet.currency || 'RWF',
+          senderName
+        );
+      }
+
+      // Notify sender about payment sent
+      if (senderUserId) {
+        await notifyPaymentSent(
+          req.app,
+          senderUserId,
+          newTransaction.id,
+          transferAmount,
+          senderWallet.currency || 'RWF',
+          receiverName
+        );
+      }
+
+      // Notify sender about transaction completion
+      if (senderUserId) {
+        await notifyTransactionCompleted(
+          req.app,
+          senderUserId,
+          newTransaction.id,
+          transferAmount,
+          senderWallet.currency || 'RWF',
+          type || 'transfer',
+          receiverName
+        );
+      }
+
+      // Large transaction alert (threshold: 100,000 RWF or equivalent)
+      const largeTransactionThreshold = 100000;
+      if (transferAmount >= largeTransactionThreshold) {
+        if (senderUserId) {
+          await notifyLargeTransaction(
+            req.app,
+            senderUserId,
+            newTransaction.id,
+            transferAmount,
+            senderWallet.currency || 'RWF',
+            type || 'transfer',
+            largeTransactionThreshold
+          );
+        }
+        if (receiverUserId) {
+          await notifyLargeTransaction(
+            req.app,
+            receiverUserId,
+            newTransaction.id,
+            transferAmount,
+            senderWallet.currency || 'RWF',
+            type || 'transfer',
+            largeTransactionThreshold
+          );
+        }
+      }
+    } catch (notificationError) {
+      // Log notification error but don't fail the transaction
+      console.error('Notification error:', notificationError);
+    }
 
     // Return success response
     res.status(200).json({
@@ -1170,7 +1265,7 @@ const getAllWallets = async (
       whereClause.isActive = false;
     }
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
 
     const wallets = await models.Wallet.findAll({
       where: whereClause,
@@ -1202,39 +1297,39 @@ const getAllWallets = async (
     const [restrictionRows, transactionRows] = await Promise.all([
       walletIds.length > 0
         ? models.WalletRestriction.findAll({
-            where: {
-              walletId: {
-                [Op.in]: walletIds,
-              },
+          where: {
+            walletId: {
+              [Op.in]: walletIds,
             },
-            attributes: [
-              "walletId",
-              [fn("COUNT", col("id")), "restrictionsCount"],
-              [fn("COALESCE", fn("SUM", col("amount")), 0), "totalRestricted"],
-            ],
-            group: ["walletId"],
-            raw: true,
-          })
+          },
+          attributes: [
+            "walletId",
+            [fn("COUNT", col("id")), "restrictionsCount"],
+            [fn("COALESCE", fn("SUM", col("amount")), 0), "totalRestricted"],
+          ],
+          group: ["walletId"],
+          raw: true,
+        })
         : [],
       walletIds.length > 0
         ? models.Transaction.findAll({
-            where: {
-              [Op.or]: [
-                {
-                  senderWalletId: {
-                    [Op.in]: walletIds,
-                  },
+          where: {
+            [Op.or]: [
+              {
+                senderWalletId: {
+                  [Op.in]: walletIds,
                 },
-                {
-                  receiverWalletId: {
-                    [Op.in]: walletIds,
-                  },
+              },
+              {
+                receiverWalletId: {
+                  [Op.in]: walletIds,
                 },
-              ],
-            },
-            attributes: ["senderWalletId", "receiverWalletId", "createdAt"],
-            raw: true,
-          })
+              },
+            ],
+          },
+          attributes: ["senderWalletId", "receiverWalletId", "createdAt"],
+          raw: true,
+        })
         : [],
     ]);
 
@@ -1505,7 +1600,7 @@ const getAllTransactions = async (
       ];
     }
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
     const { count, rows: transactions } =
       await models.Transaction.findAndCountAll({
         where: whereClause,
@@ -1630,7 +1725,7 @@ const getTransactionById = async (
   try {
     const { id } = req.params;
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
     const transaction = await models.Transaction.findByPk(id, {
       include: [
         {
@@ -1962,7 +2057,7 @@ const getAllRestrictions = async (
     const normalizedSortDirection =
       String(sortDirection).toLowerCase() === "asc" ? "asc" : "desc";
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
     const whereClause: any = {};
 
     if (categoryId && categoryId !== "all") {
@@ -2178,7 +2273,7 @@ export const createRestriction: RequestHandler = async (req, res) => {
       return;
     }
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
 
     // Verify wallet exists
     const wallet = await models.Wallet.findByPk(walletId);
@@ -2304,7 +2399,7 @@ export const updateRestriction: RequestHandler = async (req, res) => {
       return;
     }
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
 
     const restriction = await models.WalletRestriction.findByPk(id);
     if (!restriction) {
@@ -2376,7 +2471,7 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const models = req.app.get("models") as typeof database_models;
 
     const restriction = await models.WalletRestriction.findByPk(id);
     if (!restriction) {

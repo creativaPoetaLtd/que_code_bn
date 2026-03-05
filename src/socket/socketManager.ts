@@ -552,12 +552,12 @@ class SocketManager {
           chatId: chat.id,
           isGroup: true,
           participants: allParticipants,
-          createdBy: socket.userId,
+          createdBy: socket.userId || '',
           createdAt: chat.createdAt
         });
 
         // Send notification to other participants (not the creator)
-        if (participantId !== socket.userId) {
+        if (participantId !== socket.userId && socket.userId) {
           notifyChatGroupChatCreated(
             this.app,
             participantId,

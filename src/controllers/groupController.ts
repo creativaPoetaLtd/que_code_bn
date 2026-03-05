@@ -20,12 +20,12 @@ import {
 import sendEmail from "../helpers/email";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification, markNotificationAsRead, getUserNotifications } from "../utils/notificationService";
-import { 
-  notifyGroupInvitationAccepted,
-  notifyGroupInvitationRejected,
-  notifyGroupUpdated,
-  notifyGroupMemberAdded,
-  notifyGroupMemberRemoved 
+import {
+    notifyGroupInvitationAccepted,
+    notifyGroupInvitationRejected,
+    notifyGroupUpdated,
+    notifyGroupMemberAdded,
+    notifyGroupMemberRemoved
 } from "../utils/notificationHelpers";
 import CloudinaryService from "../services/cloudinaryService";
 
@@ -162,7 +162,8 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         let walletId: string | undefined;
         if (hasFundraising) {
             const wallet = await models.Wallet.create({
-                groupId: group.id
+                groupId: group.id,
+                balance: 0
             });
             walletId = wallet.id;
             await group.update({ walletId: wallet.id });
@@ -416,26 +417,26 @@ const respondToGroupInvitation = async (req: AuthenticatedRequest, res: Response
                         actionText: action === 'accept' ? 'accepted' : 'rejected'
                     }
                 });
-                
+
                 // Send in-app notification to inviter
                 if (action === 'accept') {
-                  await notifyGroupInvitationAccepted(
-                    req.app,
-                    membership.invitedBy,
-                    membership.groupId,
-                    membership.group.name,
-                    userId,
-                    `${currentUser.firstName} ${currentUser.lastName}`
-                  );
+                    await notifyGroupInvitationAccepted(
+                        req.app,
+                        membership.invitedBy,
+                        membership.groupId,
+                        membership.group.name,
+                        userId,
+                        `${currentUser.firstName} ${currentUser.lastName}`
+                    );
                 } else {
-                  await notifyGroupInvitationRejected(
-                    req.app,
-                    membership.invitedBy,
-                    membership.groupId,
-                    membership.group.name,
-                    userId,
-                    `${currentUser.firstName} ${currentUser.lastName}`
-                  );
+                    await notifyGroupInvitationRejected(
+                        req.app,
+                        membership.invitedBy,
+                        membership.groupId,
+                        membership.group.name,
+                        userId,
+                        `${currentUser.firstName} ${currentUser.lastName}`
+                    );
                 }
             }
         } catch (emailError) {
@@ -1070,7 +1071,7 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         // Get updater info for notifications
         const updater = await models.User.findByPk(userId);
         const updaterName = updater ? `${updater.firstName} ${updater.lastName}` : 'Admin';
-        
+
         // Determine what was updated for the notification message
         const changes = [];
         if (updateData.name) changes.push('name');
@@ -1078,30 +1079,30 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         if (updateData.picture) changes.push('picture');
         if (updateData.isPrivate !== undefined) changes.push('privacy settings');
         if (updateData.maxMembers) changes.push('member limit');
-        
-        const updateDescription = changes.length > 0 
-          ? `Updated ${changes.join(', ')}`
-          : 'Group information updated';
+
+        const updateDescription = changes.length > 0
+            ? `Updated ${changes.join(', ')}`
+            : 'Group information updated';
 
         // Notify all active members about the group update
         const activeMembers = await models.GroupMember.findAll({
-          where: {
-            groupId,
-            userId: { [Op.ne]: userId },
-            status: GroupMemberStatus.ACTIVE
-          }
+            where: {
+                groupId,
+                userId: { [Op.ne]: userId },
+                status: GroupMemberStatus.ACTIVE
+            }
         });
 
         const notificationPromises = activeMembers.map(member =>
-          notifyGroupUpdated(
-            req.app,
-            member.userId,
-            groupId,
-            group.name,
-            userId,
-            updaterName,
-            updateDescription
-          )
+            notifyGroupUpdated(
+                req.app,
+                member.userId,
+                groupId,
+                group.name,
+                userId,
+                updaterName,
+                updateDescription
+            )
         );
 
         await Promise.all(notificationPromises);

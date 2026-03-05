@@ -946,3 +946,1050 @@ export const notifyGroupJoinRejected = async (
     },
   });
 };
+
+// ===========================
+// TRANSACTION NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when a transaction is completed
+ */
+export const notifyTransactionCompleted = async (
+  app: Application,
+  recipientId: string,
+  transactionId: string,
+  amount: number,
+  currency: string,
+  transactionType: string,
+  otherPartyName?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.TRANSACTION_COMPLETED,
+    recipientId,
+    data: {
+      transactionId,
+      amount,
+      currency,
+      transactionType,
+      userName: otherPartyName,
+      title: "Transaction Completed",
+      message: otherPartyName 
+        ? `Your ${transactionType} of ${amount} ${currency} with ${otherPartyName} is complete`
+        : `Your ${transactionType} of ${amount} ${currency} is complete`,
+      url: `/transactions/${transactionId}`,
+    },
+  });
+};
+
+/**
+ * Notify when a transaction is refunded
+ */
+export const notifyTransactionRefunded = async (
+  app: Application,
+  recipientId: string,
+  transactionId: string,
+  amount: number,
+  currency: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.TRANSACTION_REFUNDED,
+    recipientId,
+    data: {
+      transactionId,
+      amount,
+      currency,
+      reason,
+      title: "Transaction Refunded",
+      message: reason
+        ? `Your transaction of ${amount} ${currency} has been refunded: ${reason}`
+        : `Your transaction of ${amount} ${currency} has been refunded`,
+      url: `/transactions/${transactionId}`,
+    },
+  });
+};
+
+/**
+ * Notify when a transaction is disputed
+ */
+export const notifyTransactionDisputed = async (
+  app: Application,
+  recipientId: string,
+  transactionId: string,
+  amount: number,
+  currency: string,
+  disputedByName: string,
+  disputeReason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.TRANSACTION_DISPUTED,
+    recipientId,
+    data: {
+      transactionId,
+      amount,
+      currency,
+      userName: disputedByName,
+      reason: disputeReason,
+      title: "Transaction Disputed",
+      message: `${disputedByName} has disputed a transaction of ${amount} ${currency}: ${disputeReason}`,
+      url: `/transactions/${transactionId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Details",
+          url: `/transactions/${transactionId}/dispute`,
+        },
+        {
+          type: "respond",
+          label: "Respond",
+          url: `/transactions/${transactionId}/dispute/respond`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify for large transaction alerts
+ */
+export const notifyLargeTransaction = async (
+  app: Application,
+  recipientId: string,
+  transactionId: string,
+  amount: number,
+  currency: string,
+  transactionType: string,
+  thresholdAmount: number
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.LARGE_TRANSACTION_ALERT,
+    recipientId,
+    data: {
+      transactionId,
+      amount,
+      currency,
+      transactionType,
+      thresholdAmount,
+      title: "Large Transaction Alert",
+      message: `Large ${transactionType} detected: ${amount} ${currency} (threshold: ${thresholdAmount})`,
+      url: `/transactions/${transactionId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Transaction",
+          url: `/transactions/${transactionId}`,
+        },
+      ],
+    },
+  });
+};
+
+// ===========================
+// WALLET NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when a wallet is created
+ */
+export const notifyWalletCreated = async (
+  app: Application,
+  recipientId: string,
+  walletId: string,
+  currency: string = "RWF"
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.WALLET_CREATED,
+    recipientId,
+    data: {
+      walletId,
+      currency,
+      title: "Wallet Created",
+      message: `Your ${currency} wallet has been created successfully`,
+      url: `/wallet`,
+    },
+  });
+};
+
+/**
+ * Notify when a wallet restriction is added
+ */
+export const notifyWalletRestrictionAdded = async (
+  app: Application,
+  recipientId: string,
+  walletId: string,
+  restrictionType: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.WALLET_RESTRICTION_ADDED,
+    recipientId,
+    data: {
+      walletId,
+      restrictionType,
+      reason,
+      title: "Wallet Restriction Added",
+      message: reason 
+        ? `A ${restrictionType} restriction has been added to your wallet: ${reason}`
+        : `A ${restrictionType} restriction has been added to your wallet`,
+      url: `/wallet/restrictions`,
+    },
+  });
+};
+
+/**
+ * Notify when a wallet restriction is removed
+ */
+export const notifyWalletRestrictionRemoved = async (
+  app: Application,
+  recipientId: string,
+  walletId: string,
+  restrictionType: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.WALLET_RESTRICTION_REMOVED,
+    recipientId,
+    data: {
+      walletId,
+      restrictionType,
+      title: "Wallet Restriction Removed",
+      message: `The ${restrictionType} restriction has been removed from your wallet`,
+      url: `/wallet`,
+    },
+  });
+};
+
+/**
+ * Notify for low balance warning
+ */
+export const notifyLowBalance = async (
+  app: Application,
+  recipientId: string,
+  walletId: string,
+  balance: number,
+  currency: string,
+  thresholdAmount: number
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.LOW_BALANCE_WARNING,
+    recipientId,
+    data: {
+      walletId,
+      balance,
+      currency,
+      thresholdAmount,
+      title: "Low Balance Warning",
+      message: `Your wallet balance is low: ${balance} ${currency} (threshold: ${thresholdAmount})`,
+      url: `/wallet`,
+      actions: [
+        {
+          type: "fund",
+          label: "Add Funds",
+          url: `/wallet/fund`,
+        },
+      ],
+    },
+  });
+};
+
+// ===========================
+// ACTION NOTIFICATION HELPERS (Tickets, Services, etc.)
+// ===========================
+
+/**
+ * Notify when an action is created
+ */
+export const notifyActionCreated = async (
+  app: Application,
+  recipientId: string,
+  actionId: string,
+  actionName: string,
+  actionType: string,
+  organizationName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_CREATED,
+    recipientId,
+    data: {
+      actionId,
+      actionName,
+      actionType,
+      organizationName,
+      title: "New Action Available",
+      message: `${organizationName} created a new ${actionType}: ${actionName}`,
+      url: `/actions/${actionId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Details",
+          url: `/actions/${actionId}`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when an action is updated
+ */
+export const notifyActionUpdated = async (
+  app: Application,
+  recipientId: string,
+  actionId: string,
+  actionName: string,
+  actionType: string,
+  updateDescription: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_UPDATED,
+    recipientId,
+    data: {
+      actionId,
+      actionName,
+      actionType,
+      description: updateDescription,
+      title: "Action Updated",
+      message: `${actionName} has been updated: ${updateDescription}`,
+      url: `/actions/${actionId}`,
+    },
+  });
+};
+
+/**
+ * Notify when an action is deleted
+ */
+export const notifyActionDeleted = async (
+  app: Application,
+  recipientId: string,
+  actionName: string,
+  actionType: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_DELETED,
+    recipientId,
+    data: {
+      actionName,
+      actionType,
+      reason,
+      title: "Action Deleted",
+      message: reason
+        ? `${actionName} (${actionType}) has been deleted: ${reason}`
+        : `${actionName} (${actionType}) has been deleted`,
+    },
+  });
+};
+
+/**
+ * Notify when an action is purchased
+ */
+export const notifyActionPurchased = async (
+  app: Application,
+  recipientId: string,
+  purchaseId: string,
+  actionId: string,
+  actionName: string,
+  actionType: string,
+  amount: number,
+  currency: string,
+  ticketNumber?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_PURCHASED,
+    recipientId,
+    data: {
+      purchaseId,
+      actionId,
+      actionName,
+      actionType,
+      amount,
+      currency,
+      ticketNumber,
+      title: "Purchase Confirmed",
+      message: `You purchased ${actionName} for ${amount} ${currency}${ticketNumber ? `. Ticket: ${ticketNumber}` : ''}`,
+      url: `/purchases/${purchaseId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Ticket",
+          url: `/purchases/${purchaseId}`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify organization when an action is sold
+ */
+export const notifyActionSold = async (
+  app: Application,
+  recipientId: string,
+  purchaseId: string,
+  actionId: string,
+  actionName: string,
+  buyerName: string,
+  amount: number,
+  currency: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_SOLD,
+    recipientId,
+    data: {
+      purchaseId,
+      actionId,
+      actionName,
+      userName: buyerName,
+      amount,
+      currency,
+      title: "Action Sold",
+      message: `${buyerName} purchased ${actionName} for ${amount} ${currency}`,
+      url: `/sales/${purchaseId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Sale",
+          url: `/sales/${purchaseId}`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when an action expires
+ */
+export const notifyActionExpired = async (
+  app: Application,
+  recipientId: string,
+  actionId: string,
+  actionName: string,
+  actionType: string,
+  expiryDate: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ACTION_EXPIRED,
+    recipientId,
+    data: {
+      actionId,
+      actionName,
+      actionType,
+      expiryDate,
+      title: "Action Expired",
+      message: `${actionName} expired on ${expiryDate}`,
+    },
+  });
+};
+
+/**
+ * Notify when a sub-action is created
+ */
+export const notifySubActionCreated = async (
+  app: Application,
+  recipientId: string,
+  subActionId: string,
+  subActionName: string,
+  actionId: string,
+  actionName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SUB_ACTION_CREATED,
+    recipientId,
+    data: {
+      subActionId,
+      subActionName,
+      actionId,
+      actionName,
+      title: "New Sub-Action Available",
+      message: `A new option "${subActionName}" is now available for ${actionName}`,
+      url: `/actions/${actionId}`,
+    },
+  });
+};
+
+/**
+ * Notify when a sub-action is updated
+ */
+export const notifySubActionUpdated = async (
+  app: Application,
+  recipientId: string,
+  subActionId: string,
+  subActionName: string,
+  actionId: string,
+  actionName: string,
+  updateDescription: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SUB_ACTION_UPDATED,
+    recipientId,
+    data: {
+      subActionId,
+      subActionName,
+      actionId,
+      actionName,
+      description: updateDescription,
+      title: "Sub-Action Updated",
+      message: `"${subActionName}" for ${actionName} has been updated: ${updateDescription}`,
+      url: `/actions/${actionId}`,
+    },
+  });
+};
+
+// ===========================
+// ORGANIZATION NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when an organization is created
+ */
+export const notifyOrganizationCreated = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string,
+  ownerName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_CREATED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      ownerName,
+      title: "Organization Created",
+      message: `Your organization "${organizationName}" has been created successfully`,
+      url: `/organizations/${organizationId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Organization",
+          url: `/organizations/${organizationId}`,
+        },
+        {
+          type: "setup",
+          label: "Complete Setup",
+          url: `/organizations/${organizationId}/setup`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when an organization is verified
+ */
+export const notifyOrganizationVerified = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_VERIFIED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      title: "Organization Verified",
+      message: `${organizationName} has been verified!`,
+      url: `/organizations/${organizationId}`,
+    },
+  });
+};
+
+/**
+ * Notify when an organization is updated
+ */
+export const notifyOrganizationUpdated = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string,
+  updatedByName: string,
+  updateDescription: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_UPDATED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      userName: updatedByName,
+      description: updateDescription,
+      title: "Organization Updated",
+      message: `${updatedByName} updated ${organizationName}: ${updateDescription}`,
+      url: `/organizations/${organizationId}`,
+    },
+  });
+};
+
+/**
+ * Notify when an organization is deleted
+ */
+export const notifyOrganizationDeleted = async (
+  app: Application,
+  recipientId: string,
+  organizationName: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_DELETED,
+    recipientId,
+    data: {
+      organizationName,
+      reason,
+      title: "Organization Deleted",
+      message: reason
+        ? `${organizationName} has been deleted: ${reason}`
+        : `${organizationName} has been deleted`,
+    },
+  });
+};
+
+/**
+ * Notify when an organization is suspended
+ */
+export const notifyOrganizationSuspended = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string,
+  reason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_SUSPENDED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      reason,
+      title: "Organization Suspended",
+      message: `${organizationName} has been suspended: ${reason}`,
+      url: `/organizations/${organizationId}`,
+    },
+  });
+};
+
+/**
+ * Notify when added as an organization member
+ */
+export const notifyOrganizationMemberAdded = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string,
+  role: string,
+  addedByName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_MEMBER_ADDED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      roleName: role,
+      userName: addedByName,
+      title: "Added to Organization",
+      message: `${addedByName} added you to ${organizationName} as ${role}`,
+      url: `/organizations/${organizationId}`,
+      actions: [
+        {
+          type: "view",
+          label: "View Organization",
+          url: `/organizations/${organizationId}`,
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when removed from an organization
+ */
+export const notifyOrganizationMemberRemoved = async (
+  app: Application,
+  recipientId: string,
+  organizationName: string,
+  removedByName: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_MEMBER_REMOVED,
+    recipientId,
+    data: {
+      organizationName,
+      userName: removedByName,
+      reason,
+      title: "Removed from Organization",
+      message: reason
+        ? `${removedByName} removed you from ${organizationName}: ${reason}`
+        : `${removedByName} removed you from ${organizationName}`,
+    },
+  });
+};
+
+/**
+ * Notify when organization role changes
+ */
+export const notifyOrganizationRoleChanged = async (
+  app: Application,
+  recipientId: string,
+  organizationId: string,
+  organizationName: string,
+  newRole: string,
+  previousRole: string,
+  changedByName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ORGANIZATION_ROLE_CHANGED,
+    recipientId,
+    data: {
+      organizationId,
+      organizationName,
+      roleName: newRole,
+      previousStatus: previousRole,
+      userName: changedByName,
+      title: "Role Changed",
+      message: `${changedByName} changed your role in ${organizationName} from ${previousRole} to ${newRole}`,
+      url: `/organizations/${organizationId}`,
+    },
+  });
+};
+
+// ===========================
+// USER ACCOUNT NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when PIN is set
+ */
+export const notifyPinSet = async (
+  app: Application,
+  recipientId: string,
+  userName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PIN_SET,
+    recipientId,
+    data: {
+      userName,
+      title: "PIN Set Successfully",
+      message: "Your security PIN has been set. You can now make secure transactions.",
+      url: "/settings/security",
+    },
+  });
+};
+
+/**
+ * Notify when PIN is changed
+ */
+export const notifyPinChanged = async (
+  app: Application,
+  recipientId: string,
+  userName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PIN_CHANGED,
+    recipientId,
+    data: {
+      userName,
+      title: "PIN Changed",
+      message: "Your security PIN has been changed. If this wasn't you, please contact support immediately.",
+      url: "/settings/security",
+      actions: [
+        {
+          type: "support",
+          label: "Contact Support",
+          url: "/support",
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when password is changed
+ */
+export const notifyPasswordChanged = async (
+  app: Application,
+  recipientId: string,
+  userName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PASSWORD_CHANGED,
+    recipientId,
+    data: {
+      userName,
+      title: "Password Changed",
+      message: "Your password has been changed successfully. If this wasn't you, please contact support immediately.",
+      url: "/settings/security",
+      actions: [
+        {
+          type: "support",
+          label: "Contact Support",
+          url: "/support",
+        },
+      ],
+    },
+  });
+};
+
+/**
+ * Notify when profile is updated
+ */
+export const notifyProfileUpdated = async (
+  app: Application,
+  recipientId: string,
+  userName: string,
+  updateFields: string[]
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PROFILE_UPDATED,
+    recipientId,
+    data: {
+      userName,
+      title: "Profile Updated",
+      message: `Your profile has been updated: ${updateFields.join(', ')}`,
+      url: "/profile",
+    },
+  });
+};
+
+// ===========================
+// ADMIN NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when admin creates a user account
+ */
+export const notifyAdminUserCreated = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  temporaryPassword?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_USER_CREATED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      title: "Account Created",
+      message: temporaryPassword
+        ? `Your account has been created by ${adminName}. Use the temporary password sent to your email to log in.`
+        : `Your account has been created by ${adminName}. Please check your email for login instructions.`,
+      url: "/profile",
+    },
+  });
+};
+
+/**
+ * Notify when admin updates a user account
+ */
+export const notifyAdminUserUpdated = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  updateDescription: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_USER_UPDATED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      description: updateDescription,
+      title: "Account Updated by Admin",
+      message: `${adminName} updated your account: ${updateDescription}`,
+      url: "/profile",
+    },
+  });
+};
+
+/**
+ * Notify when admin deletes a user account
+ */
+export const notifyAdminUserDeleted = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  reason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_USER_DELETED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      reason,
+      title: "Account Deleted",
+      message: `Your account has been deleted by ${adminName}: ${reason}`,
+    },
+  });
+};
+
+/**
+ * Notify when admin changes user status
+ */
+export const notifyAdminStatusChanged = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  previousStatus: string,
+  newStatus: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_STATUS_CHANGED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      previousStatus,
+      newStatus,
+      reason,
+      title: "Account Status Changed",
+      message: reason
+        ? `${adminName} changed your status from ${previousStatus} to ${newStatus}: ${reason}`
+        : `${adminName} changed your status from ${previousStatus} to ${newStatus}`,
+      url: "/profile",
+    },
+  });
+};
+
+/**
+ * Notify when admin assigns a role
+ */
+export const notifyAdminRoleAssigned = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  roleId: string,
+  roleName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_ROLE_ASSIGNED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      roleId,
+      roleName,
+      title: "New Role Assigned",
+      message: `${adminName} assigned you the role: ${roleName}`,
+      url: "/profile/roles",
+    },
+  });
+};
+
+/**
+ * Notify when admin removes a role
+ */
+export const notifyAdminRoleRemoved = async (
+  app: Application,
+  recipientId: string,
+  adminId: string,
+  adminName: string,
+  roleId: string,
+  roleName: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.ADMIN_ROLE_REMOVED,
+    recipientId,
+    data: {
+      adminId,
+      adminName,
+      roleId,
+      roleName,
+      reason,
+      title: "Role Removed",
+      message: reason
+        ? `${adminName} removed your role "${roleName}": ${reason}`
+        : `${adminName} removed your role "${roleName}"`,
+      url: "/profile/roles",
+    },
+  });
+};
+
+// ===========================
+// EXTERNAL ACCOUNT NOTIFICATION HELPERS
+// ===========================
+
+/**
+ * Notify when an external account is linked
+ */
+export const notifyExternalAccountLinked = async (
+  app: Application,
+  recipientId: string,
+  externalAccountId: string,
+  externalAccountType: string,
+  externalAccountName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.EXTERNAL_ACCOUNT_LINKED,
+    recipientId,
+    data: {
+      externalAccountId,
+      externalAccountType,
+      externalAccountName,
+      title: "External Account Linked",
+      message: `Your ${externalAccountType} account (${externalAccountName}) has been linked successfully`,
+      url: "/settings/external-accounts",
+    },
+  });
+};
+
+/**
+ * Notify when an external account is unlinked
+ */
+export const notifyExternalAccountUnlinked = async (
+  app: Application,
+  recipientId: string,
+  externalAccountType: string,
+  externalAccountName: string,
+  reason?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.EXTERNAL_ACCOUNT_UNLINKED,
+    recipientId,
+    data: {
+      externalAccountType,
+      externalAccountName,
+      reason,
+      title: "External Account Unlinked",
+      message: reason
+        ? `Your ${externalAccountType} account (${externalAccountName}) has been unlinked: ${reason}`
+        : `Your ${externalAccountType} account (${externalAccountName}) has been unlinked`,
+      url: "/settings/external-accounts",
+    },
+  });
+};
+
+/**
+ * Notify when an external account is verified
+ */
+export const notifyExternalAccountVerified = async (
+  app: Application,
+  recipientId: string,
+  externalAccountId: string,
+  externalAccountType: string,
+  externalAccountName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.EXTERNAL_ACCOUNT_VERIFIED,
+    recipientId,
+    data: {
+      externalAccountId,
+      externalAccountType,
+      externalAccountName,
+      title: "External Account Verified",
+      message: `Your ${externalAccountType} account (${externalAccountName}) has been verified`,
+      url: "/settings/external-accounts",
+    },
+  });
+};

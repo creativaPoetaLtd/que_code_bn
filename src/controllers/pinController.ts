@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../types/requests';
 import * as bcrypt from 'bcrypt';
 import database_models from '../database/config/db.config';
 import sendEmail from '../helpers/email';
+import { notifyPinSet, notifyPinChanged } from '../utils/notificationHelpers';
 
 const { User } = database_models;
 
@@ -56,6 +57,17 @@ const setupPIN = async (req: AuthenticatedRequest, res: Response): Promise<void>
       pinAttempts: 0, // Reset attempts on successful setup
       pinLockedUntil: null // Clear any existing lockout
     });
+
+    // Send PIN set notification
+    try {
+      await notifyPinSet(
+        req.app,
+        userId,
+        `${user.firstName} ${user.lastName}`
+      );
+    } catch (notificationError) {
+      console.error('Failed to send PIN set notification:', notificationError);
+    }
 
     res.status(200).json({
       success: true,
@@ -326,6 +338,17 @@ const changePIN = async (req: AuthenticatedRequest, res: Response): Promise<void
       pinAttempts: 0,
       pinLockedUntil: null
     });
+
+    // Send PIN changed notification
+    try {
+      await notifyPinChanged(
+        req.app,
+        userId,
+        `${user.firstName} ${user.lastName}`
+      );
+    } catch (notificationError) {
+      console.error('Failed to send PIN changed notification:', notificationError);
+    }
 
     res.status(200).json({
       success: true,
