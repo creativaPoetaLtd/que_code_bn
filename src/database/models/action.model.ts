@@ -36,7 +36,7 @@ class Action extends Model<ActionModelAttributes, ActionCreationAttributes> {
   public policy!: any; // JSON: { refund?: string, tosUrl?: string, cancellation?: string }
   public webhooks!: any; // JSON: { onCheckout?: string, onScanValid?: string, onRefund?: string }
   public customFields!: any; // JSON: type-specific fields
-  public status!: "draft" | "published" | "archived";
+  public status!: "draft" | "published" | "archived" | "suspended";
   public dedicatedQrCode!: string | null;
   public dedicatedQrCodeData!: string | null; // Base64 QR code data URL
 
@@ -69,7 +69,7 @@ const Action_model = (sequelize: Sequelize) => {
           "license",
           "membership",
           "rental",
-          "group"
+          "group",
         ),
         allowNull: false,
       },
@@ -82,7 +82,11 @@ const Action_model = (sequelize: Sequelize) => {
       coverImage: { type: DataTypes.TEXT, allowNull: true },
       shortDescription: { type: DataTypes.STRING(140), allowNull: true },
       description: { type: DataTypes.TEXT, allowNull: true },
-      currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: "RWF" },
+      currency: {
+        type: DataTypes.STRING(3),
+        allowNull: false,
+        defaultValue: "RWF",
+      },
       taxProfileId: { type: DataTypes.UUID, allowNull: true },
       pricing: {
         type: DataTypes.JSONB,
@@ -125,24 +129,23 @@ const Action_model = (sequelize: Sequelize) => {
         defaultValue: {},
       },
       status: {
-        type: DataTypes.ENUM("draft", "published", "archived"),
+        type: DataTypes.ENUM("draft", "published", "archived", "suspended"),
         defaultValue: "draft",
       },
       dedicatedQrCode: { type: DataTypes.TEXT, allowNull: true },
-      dedicatedQrCodeData: { 
-        type: DataTypes.TEXT, 
+      dedicatedQrCodeData: {
+        type: DataTypes.TEXT,
         allowNull: true,
-        comment: "Base64 QR code data URL for the action"
+        comment: "Base64 QR code data URL for the action",
       },
     },
     {
       sequelize,
       tableName: "Actions",
-    }
+    },
   );
 
   return Action;
 };
 
 export default Action_model;
-

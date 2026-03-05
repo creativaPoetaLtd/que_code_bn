@@ -79,17 +79,20 @@ export const getAllActions = async (
     });
 
     // Get statistics - using separate queries
-    const [draftCount, publishedCount, archivedCount] = await Promise.all([
-      models.Action.count({ where: { status: "draft" } }),
-      models.Action.count({ where: { status: "published" } }),
-      models.Action.count({ where: { status: "archived" } }),
-    ]);
+    const [draftCount, publishedCount, archivedCount, suspendedCount] =
+      await Promise.all([
+        models.Action.count({ where: { status: "draft" } }),
+        models.Action.count({ where: { status: "published" } }),
+        models.Action.count({ where: { status: "archived" } }),
+        models.Action.count({ where: { status: "suspended" } }),
+      ]);
 
     const statistics = {
       total: count,
       draft: draftCount,
       published: publishedCount,
       archived: archivedCount,
+      suspended: suspendedCount,
     };
 
     const totalPages = Math.ceil(count / pageSize);
@@ -282,9 +285,208 @@ export const deleteAction = async (
   }
 };
 
+/**
+ * Suspend action (admin only - for unlawful/problematic actions)
+ * PUT /api/v1/admin/actions/:id/suspend
+ */
+export const suspendAction = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins can suspend actions",
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const action = await models.Action.findByPk(id);
+    if (!action) {
+      res.status(404).json({
+        success: false,
+        message: "Action not found",
+      });
+      return;
+    }
+
+    if (action.status === "suspended") {
+      res.status(400).json({
+        success: false,
+        message: "Action is already suspended",
+      });
+      return;
+    }
+
+    await action.update({ status: "suspended" });
+
+    res.status(200).json({
+      success: true,
+      message: "Action suspended successfully",
+      data: {
+        action,
+        reason: reason || "No reason provided",
+      },
+    });
+  } catch (error: any) {
+    console.error("Suspend action error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/**
+ * Unsuspend action (admin only - restore suspended action)
+ * PUT /api/v1/admin/actions/:id/unsuspend
+ */
+export const unsuspendAction = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins can unsuspend actions",
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const { newStatus } = req.body;
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const action = await models.Action.findByPk(id);
+    if (!action) {
+      res.status(404).json({
+        success: false,
+        message: "Action not found",
+      });
+      return;
+    }
+
+    if (action.status !== "suspended") {
+      res.status(400).json({
+        success: false,
+        message: "Action is not suspended",
+      });
+      return;
+    }
+
+    // Default to draft when unsuspending, or use provided status
+    const targetStatus = newStatus || "draft";
+    const validStatuses = ["draft", "published"];
+
+    if (!validStatuses.includes(targetStatus)) {
+      res.status(400).json({
+        success: false,
+        message: "Can only unsuspend to draft or published status",
+      });
+      return;
+    }
+
+    await action.update({ status: targetStatus });
+
+    res.status(200).json({
+      success: true,
+      message: `Action unsuspended and set to ${targetStatus}`,
+      data: action,
+    });
+  } catch (error: any) {
+    console.error("Unsuspend action error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/**
+ * Get sub-actions for a specific action (admin only)
+ * GET /api/v1/admin/actions/:id/sub-actions
+ */
+export const getActionSubActions = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins can view sub-actions",
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    // First verify action exists
+    const action = await models.Action.findByPk(id);
+    if (!action) {
+      res.status(404).json({
+        success: false,
+        message: "Action not found",
+      });
+      return;
+    }
+
+    // Get all sub-actions for this action
+    const subActions = await models.SubAction.findAll({
+      where: { actionId: id },
+      order: [
+        ["sortOrder", "ASC"],
+        ["createdAt", "DESC"],
+      ],
+    });
+
+    // Calculate statistics
+    const statistics = {
+      total: subActions.length,
+      active: subActions.filter((sa: any) => sa.isActive).length,
+      inactive: subActions.filter((sa: any) => !sa.isActive).length,
+      withStock: subActions.filter((sa: any) => sa.stock !== null).length,
+      unlimited: subActions.filter((sa: any) => sa.stock === null).length,
+      soldOut: subActions.filter(
+        (sa: any) => sa.stock !== null && sa.stock <= sa.stockReserved,
+      ).length,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: subActions,
+      statistics,
+      action: {
+        id: action.id,
+        name: action.name,
+        type: action.type,
+        status: action.status,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get action sub-actions error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
 export default {
   getAllActions,
   getActionById,
   updateActionStatus,
   deleteAction,
+  suspendAction,
+  unsuspendAction,
+  getActionSubActions,
 };
