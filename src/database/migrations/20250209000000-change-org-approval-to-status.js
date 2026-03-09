@@ -20,6 +20,19 @@ module.exports = {
         return;
       }
 
+      // Check if status column already exists
+      const [statusColumnExists] = await queryInterface.sequelize.query(
+        `SELECT column_name FROM information_schema.columns 
+         WHERE table_name = 'Organizations' AND column_name = 'status'`,
+        { transaction }
+      );
+
+      if (statusColumnExists.length > 0) {
+        console.log("⚠️  Status column already exists, skipping migration");
+        await transaction.commit();
+        return;
+      }
+
       // Add new status column
       await queryInterface.addColumn(
         "Organizations",

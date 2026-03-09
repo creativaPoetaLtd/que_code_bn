@@ -44,10 +44,10 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: false,
       },
-      approvalStatus: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false,
+      status: {
+        type: Sequelize.ENUM("pending", "active", "inactive", "suspended"),
         allowNull: false,
+        defaultValue: "pending",
       },
       // Additional fields that were being added by other migrations
       description: {
@@ -111,8 +111,8 @@ module.exports = {
       name: "idx_organizations_category",
     });
 
-    await queryInterface.addIndex("Organizations", ["approvalStatus"], {
-      name: "idx_organizations_approval_status",
+    await queryInterface.addIndex("Organizations", ["status"], {
+      name: "idx_organizations_status",
     });
   },
 
