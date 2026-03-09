@@ -17,7 +17,7 @@ const generateOTP = (): string => {
 
 const login_user = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
 
     if (!email || !password) {
       res.status(400).json({ message: "Email and password are required" });
@@ -145,8 +145,9 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       role: (userPlain && userPlain.userRoles?.[0]?.role?.name) || "user",
     };
 
+    const tokenExpiry = rememberMe ? "30d" : "1d";
     const token = jwt.sign(tokenPayload, JWT_SECRET, {
-      expiresIn: "1d",
+      expiresIn: tokenExpiry,
       algorithm: "HS256",
     });
 
