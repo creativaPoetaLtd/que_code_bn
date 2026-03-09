@@ -84,35 +84,60 @@ module.exports = {
         await queryInterface.removeConstraint('Transactions', 'Transactions_constraintCategoryId_fkey', { transaction });
       }
       
-      // Restore the old foreign key constraints pointing to TransactionCategories
-      if (!(await constraintExists('Transactions_categoryId_fkey'))) {
-        await queryInterface.addConstraint('Transactions', {
-          fields: ['categoryId'],
-          type: 'foreign key',
-          name: 'Transactions_categoryId_fkey',
-          references: {
-            table: 'TransactionCategories',
-            field: 'id'
-          },
-          onUpdate: 'CASCADE',
-          onDelete: 'SET NULL',
-          transaction
-        });
-      }
+      // Clean up invalid category references before restoring old constraints
+      // Set categoryId to NULL where it doesn't exist in TransactionCategories
+      const tableExists = await queryInterface.sequelize.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'TransactionCategories';`,
+        { transaction, type: queryInterface.sequelize.QueryTypes.SELECT }
+      );
+
+      if (tableExists.length > 0) {
+        await queryInterface.sequelize.query(
+          `UPDATE "Transactions" 
+           SET "categoryId" = NULL 
+           WHERE "categoryId" IS NOT NULL 
+           AND "categoryId" NOT IN (SELECT id FROM "TransactionCategories");`,
+          { transaction }
+        );
+
+        await queryInterface.sequelize.query(
+          `UPDATE "Transactions" 
+           SET "constraintCategoryId" = NULL 
+           WHERE "constraintCategoryId" IS NOT NULL 
+           AND "constraintCategoryId" NOT IN (SELECT id FROM "TransactionCategories");`,
+          { transaction }
+        );
+
+        // Restore the old foreign key constraints pointing to TransactionCategories
+        if (!(await constraintExists('Transactions_categoryId_fkey'))) {
+          await queryInterface.addConstraint('Transactions', {
+            fields: ['categoryId'],
+            type: 'foreign key',
+            name: 'Transactions_categoryId_fkey',
+            references: {
+              table: 'TransactionCategories',
+              field: 'id'
+            },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            transaction
+          });
+        }
       
-      if (!(await constraintExists('Transactions_constraintCategoryId_fkey'))) {
-        await queryInterface.addConstraint('Transactions', {
-          fields: ['constraintCategoryId'],
-          type: 'foreign key',
-          name: 'Transactions_constraintCategoryId_fkey',
-          references: {
-            table: 'TransactionCategories',
-            field: 'id'
-          },
-          onUpdate: 'CASCADE',
-          onDelete: 'SET NULL',
-          transaction
-        });
+        if (!(await constraintExists('Transactions_constraintCategoryId_fkey'))) {
+          await queryInterface.addConstraint('Transactions', {
+            fields: ['constraintCategoryId'],
+            type: 'foreign key',
+            name: 'Transactions_constraintCategoryId_fkey',
+            references: {
+              table: 'TransactionCategories',
+              field: 'id'
+            },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            transaction
+          });
+        }
       }
       
       await transaction.commit();

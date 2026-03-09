@@ -295,6 +295,7 @@ const create_organization = async (
     try {
       const walletData: WalletCreationAttributes = {
         organizationId: orgId,
+        balance: 0,
       };
 
       await insert_function("Wallet", "create", walletData);

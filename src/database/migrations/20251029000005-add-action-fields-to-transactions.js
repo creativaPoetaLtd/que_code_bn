@@ -90,6 +90,12 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // Remove the foreign key constraint from ActionPurchases
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "ActionPurchases" DROP CONSTRAINT IF EXISTS "ActionPurchases_qrObjectId_fkey";`,
+        { transaction }
+      );
+
       await queryInterface.removeColumn("Transactions", "actionPurchaseId", {
         transaction,
       });

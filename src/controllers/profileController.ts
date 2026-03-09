@@ -6,6 +6,7 @@ import {
 } from "../types/model";
 import cloudinary from "../helpers/cloudinary";
 import { deleteCloudinaryFile } from "../helpers/upload";
+import { notifyProfileUpdated } from "../utils/notificationHelpers";
 
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
   return obj && typeof obj.get === "function";
@@ -361,6 +362,30 @@ const update_profile = async (req: Request, res: Response): Promise<void> => {
     const plainProfile = isSequelizeInstance(refreshedProfile)
       ? refreshedProfile.get({ plain: true })
       : refreshedProfile;
+
+    // Send profile updated notification
+    try {
+      if (plainProfile.userId) {
+        // Get user details for the notification
+        const user = await read_function("User", "findOne", {
+          where: { id: plainProfile.userId }
+        });
+        
+        if (user) {
+          const plainUser = isSequelizeInstance(user) ? user.get({ plain: true }) : user;
+          const updatedFields = Object.keys(updateData);
+          
+          await notifyProfileUpdated(
+            req.app,
+            plainProfile.userId,
+            `${plainUser.firstName} ${plainUser.lastName}`,
+            updatedFields
+          );
+        }
+      }
+    } catch (notificationError) {
+      console.error("❌ Failed to send profile updated notification:", notificationError);
+    }
 
     res.status(200).json({
       message: "Profile updated successfully",

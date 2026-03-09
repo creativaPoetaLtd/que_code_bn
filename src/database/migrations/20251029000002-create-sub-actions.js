@@ -104,6 +104,26 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
+      // Drop foreign key constraint from Transactions if it exists
+      await queryInterface.sequelize.query(
+        `ALTER TABLE "Transactions" DROP CONSTRAINT IF EXISTS "Transactions_subActionId_fkey";`,
+        { transaction }
+      );
+
+      // Drop foreign key constraints from QRObjects if table exists
+      const tables = await queryInterface.sequelize.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'QRObjects';`,
+        { transaction, type: queryInterface.sequelize.QueryTypes.SELECT }
+      );
+      
+      if (tables.length > 0) {
+        await queryInterface.sequelize.query(
+          `ALTER TABLE "QRObjects" DROP CONSTRAINT IF EXISTS "QRObjects_subActionId_fkey";`,
+          { transaction }
+        );
+      }
+
+      // Now we can safely drop the SubActions table
       await queryInterface.dropTable("SubActions", { transaction });
       await transaction.commit();
     } catch (error) {

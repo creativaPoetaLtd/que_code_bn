@@ -12,6 +12,12 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
+import { 
+  notifyAccountVerified, 
+  notifyWelcome,
+  notifyPasswordChanged,
+  notifyWalletCreated 
+} from "../utils/notificationHelpers";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -111,13 +117,17 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       profileData,
     );
 
-    // Create wallet with initial balance for testing
+    // Create wallet
+    let walletCreated = false;
+    let walletId: string | undefined;
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
         balance: 67000,
       };
-      await insert_function("Wallet", "create", walletData);
+      const newWallet = await insert_function("Wallet", "create", walletData);
+      walletCreated = true;
+      walletId = (newWallet as any).id;
     } catch (walletError) {
       console.error("❌ Error creating wallet for user:", walletError);
     }
@@ -150,6 +160,31 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
         "❌ Failed to send verification email:",
         emailError.message,
       );
+    }
+
+    // Send welcome notification
+    try {
+      await notifyWelcome(
+        req.app,
+        newUser.id,
+        `${firstName} ${lastName}`
+      );
+    } catch (notificationError) {
+      console.error("❌ Failed to send welcome notification:", notificationError);
+    }
+
+    // Send wallet created notification
+    if (walletCreated && walletId) {
+      try {
+        await notifyWalletCreated(
+          req.app,
+          newUser.id,
+          walletId,
+          'RWF'
+        );
+      } catch (notificationError) {
+        console.error("❌ Failed to send wallet notification:", notificationError);
+      }
     }
 
     const plainUser = isSequelizeInstance(newUser)
@@ -274,6 +309,17 @@ const verify_user_email = async (
       },
       { where: { id: plainUser.id } },
     );
+
+    // Send account verified notification
+    try {
+      await notifyAccountVerified(
+        req.app,
+        plainUser.id,
+        `${plainUser.firstName} ${plainUser.lastName}`
+      );
+    } catch (notificationError) {
+      console.error("❌ Failed to send account verified notification:", notificationError);
+    }
 
     res.status(200).json({
       message: "User verified successfully! You can now log in.",
