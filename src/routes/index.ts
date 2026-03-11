@@ -16,6 +16,7 @@ import actionRouter from "./action.routes";
 import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
 import adminDashboardRouter from "./admin.dashboard.routes";
+import auditLogRouter from "./auditLog.routes";
 
 import fcmRouter from "./fcm.routes";
 
@@ -69,6 +70,7 @@ router.use("/permissions", permissionRouter);
 // - /api/v1/admin/actions (admin-only action management)
 router.use("/admin/auth", adminAuthRouter); // Admin login (separate auth for now)
 router.use("/admin/dashboard", adminDashboardRouter);
+router.use("/admin/audit-logs", auditLogRouter); // Audit logs (admin-only)
 router.use("/admin", adminMainRouter); // Admin panel routes (users, roles, permissions, transactions, actions)
 
 export default router;

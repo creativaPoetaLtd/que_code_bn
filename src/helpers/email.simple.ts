@@ -13,7 +13,9 @@ export interface EmailOptions {
     | "group_invitation"
     | "group_join_request"
     | "join_request_response"
-    | "email_verification";
+    | "email_verification"
+    | "admin_user_creation"
+    | "admin_organization_creation";
   data: { [key: string]: string | undefined };
 }
 
@@ -24,9 +26,6 @@ const sendEmail = async ({
   type,
   data,
 }: EmailOptions): Promise<void> => {
-  console.log(`📧 Starting email send to: ${to}`);
-  console.log(`📧 Email subject: ${subject}`);
-  console.log(`📧 Email type: ${type}`);
 
   // Create transporter for each email to avoid connection issues
   const transportOptions: SMTPTransport.Options = {
@@ -46,7 +45,7 @@ const sendEmail = async ({
 
   const generateEmailTemplate = (
     type: string,
-    data: { [key: string]: string | undefined }
+    data: { [key: string]: string | undefined },
   ): string => {
     switch (type) {
       case "email_verification":
@@ -85,6 +84,86 @@ const sendEmail = async ({
                 data.verificationUrl
               }</span>
             </p>
+          </div>
+        `;
+      case "admin_user_creation":
+        return `
+          <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">Welcome ${
+              data.name
+            }!</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              An account has been created for you by an administrator. You can now log in and start using our platform.
+            </p>
+            <div style="background-color: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: left;">
+              <h3 style="color: #333; font-size: 16px; margin-bottom: 15px;">Your Login Credentials:</h3>
+              <p style="color: #666; font-size: 14px; margin: 8px 0;">
+                <strong>Email:</strong> <span style="color: #00B512;">${
+                  data.email
+                }</span>
+              </p>
+              <p style="color: #666; font-size: 14px; margin: 8px 0;">
+                <strong>Password:</strong> <span style="color: #00B512; font-family: monospace;">${
+                  data.password
+                }</span>
+              </p>
+            </div>
+            <p style="color: #ff6b6b; font-size: 14px; margin-bottom: 20px;">
+              ⚠️ For security reasons, please change your password after your first login.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}" style="
+                display: inline-block;
+                padding: 15px 30px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                text-align: center;
+                background: #00B512;
+                color: white;
+                font-size: 16px;
+              ">Login to Your Account</a>
+            </div>
+          </div>
+        `;
+      case "admin_organization_creation":
+        return `
+          <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">Welcome ${
+              data.organizationName
+            }!</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Your organization account has been created by an administrator. You can now log in and start managing your organization.
+            </p>
+            <div style="background-color: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: left;">
+              <h3 style="color: #333; font-size: 16px; margin-bottom: 15px;">Your Login Credentials:</h3>
+              <p style="color: #666; font-size: 14px; margin: 8px 0;">
+                <strong>Organization Email:</strong> <span style="color: #00B512;">${
+                  data.email
+                }</span>
+              </p>
+              <p style="color: #666; font-size: 14px; margin: 8px 0;">
+                <strong>Password:</strong> <span style="color: #00B512; font-family: monospace;">${
+                  data.password
+                }</span>
+              </p>
+            </div>
+            <p style="color: #ff6b6b; font-size: 14px; margin-bottom: 20px;">
+              ⚠️ For security reasons, please change your password after your first login.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}" style="
+                display: inline-block;
+                padding: 15px 30px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                text-align: center;
+                background: #00B512;
+                color: white;
+                font-size: 16px;
+              ">Login to Organization Account</a>
+            </div>
           </div>
         `;
       case "success":
@@ -140,8 +219,8 @@ const sendEmail = async ({
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(
         () => reject(new Error("Email sending timeout after 10 seconds")),
-        10000
-      )
+        10000,
+      ),
     );
 
     console.log(`📧 Sending email...`);
@@ -153,7 +232,7 @@ const sendEmail = async ({
     const duration = Date.now() - startTime;
     console.error(
       `❌ Failed to send email to ${to} after ${duration}ms:`,
-      error.message
+      error.message,
     );
     throw new Error(`Email sending failed: ${error.message}`);
   } finally {

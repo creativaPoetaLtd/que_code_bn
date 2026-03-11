@@ -58,7 +58,6 @@ class EmailService {
     try {
       await this.transporter.verify();
       this.isConnected = true;
-      console.log("SMTP connection verified successfully");
     } catch (error) {
       console.error("SMTP connection verification failed:", error);
       this.isConnected = false;
@@ -531,17 +530,13 @@ class EmailService {
     type,
     data,
   }: EmailOptions): Promise<void> {
-    console.log(`📧 Starting email send to: ${to}`);
-    console.log(`📧 Email subject: ${subject}`);
-    console.log(`📧 Email type: ${type}`);
+  
 
     // Verify connection if not connected
     if (!this.isConnected) {
-      console.log(`📧 Connection not verified, verifying...`);
       await this.verifyConnection();
     }
 
-    console.log(`📧 Generating email template...`);
     const htmlTemplate = `
       <div style="
         font-family: Arial, sans-serif;
@@ -577,7 +572,6 @@ class EmailService {
       </div>
     `;
 
-    console.log(`📧 Template generated, preparing to send...`);
     const startTime = Date.now();
 
     try {
@@ -594,18 +588,16 @@ class EmailService {
           setTimeout(() => reject(new Error("Email sending timeout")), 15000) // 15 second timeout
       );
 
-      console.log(`📧 Sending email to transporter...`);
       await Promise.race([emailPromise, timeoutPromise]);
 
       const duration = Date.now() - startTime;
-      console.log(`✅ Email sent successfully to ${to} in ${duration}ms`);
     } catch (error: any) {
       const duration = Date.now() - startTime;
       console.error(
-        `❌ Failed to send email to ${to} after ${duration}ms:`,
+        `Failed to send email to ${to} after ${duration}ms:`,
         error.message
       );
-      console.error(`❌ Full error:`, error);
+      console.error(`Full error:`, error);
 
       // Try to reconnect on failure
       this.isConnected = false;
@@ -616,7 +608,6 @@ class EmailService {
   // Method to close connections gracefully
   public async close(): Promise<void> {
     this.transporter.close();
-    console.log("Email transporter closed");
   }
 }
 

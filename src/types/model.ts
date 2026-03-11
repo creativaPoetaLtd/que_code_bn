@@ -647,3 +647,37 @@ export type QRObjectCreationAttributes = Omit<
   QRObjectModelAttributes,
   "id" | "createdAt" | "updatedAt" | "issuedAt"
 >;
+
+export interface AuditLogModelAttributes {
+  id: string;
+  userId: string | null;
+  organizationId: string | null;
+  action: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestBody: Record<string, any> | null;
+  responseBody: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  duration: number | null;
+  level: "info" | "warning" | "error" | "critical";
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type AuditLogCreationAttributes = Optional<
+  AuditLogModelAttributes,
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "userId"
+  | "organizationId"
+  | "ipAddress"
+  | "userAgent"
+  | "requestBody"
+  | "responseBody"
+  | "metadata"
+  | "duration"
+>;

@@ -26,6 +26,7 @@ import action_model from "./action.model";
 import subAction_model from "./subAction.model";
 import actionPurchase_model from "./actionPurchase.model";
 import qrObject_model from "./qrObject.model";
+import auditLog_model from "./auditLog.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -62,6 +63,9 @@ const Models = (sequelize: Sequelize) => {
   const SubAction = subAction_model(sequelize);
   const ActionPurchase = actionPurchase_model(sequelize);
   const QRObject = qrObject_model(sequelize);
+
+  // Audit model
+  const AuditLog = auditLog_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
 
@@ -154,7 +158,10 @@ const Models = (sequelize: Sequelize) => {
     as: "subAction",
   });
 
-  User.hasMany(ActionPurchase, { foreignKey: "buyerId", as: "actionPurchases" });
+  User.hasMany(ActionPurchase, {
+    foreignKey: "buyerId",
+    as: "actionPurchases",
+  });
   ActionPurchase.belongsTo(User, { foreignKey: "buyerId", as: "buyer" });
 
   Organization.hasMany(ActionPurchase, {
@@ -385,6 +392,19 @@ const Models = (sequelize: Sequelize) => {
     as: "permission",
   });
 
+  // Audit log associations
+  User.hasMany(AuditLog, { foreignKey: "userId", as: "auditLogs" });
+  AuditLog.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  Organization.hasMany(AuditLog, {
+    foreignKey: "organizationId",
+    as: "auditLogs",
+  });
+  AuditLog.belongsTo(Organization, {
+    foreignKey: "organizationId",
+    as: "organization",
+  });
+
   return {
     sequelize, // Add sequelize instance
     User,
@@ -414,6 +434,7 @@ const Models = (sequelize: Sequelize) => {
     SubAction,
     ActionPurchase,
     QRObject,
+    AuditLog,
   };
 };
 

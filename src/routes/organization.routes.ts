@@ -1,6 +1,10 @@
 import { organizationFileUpload } from "../middleware/multer";
 import orgController from "../controllers/orgController";
 import express from "express";
+import {
+  authenticate,
+  requirePermission,
+} from "../middleware/auth.unified.middleware";
 
 const orgRouter = express.Router();
 
@@ -28,6 +32,14 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
   }
   next(err);
 };
+
+// Admin create organization (must come before general POST route)
+orgRouter.post(
+  "/admin/create",
+  authenticate as any,
+  requirePermission("create_organizations") as any,
+  orgController.admin_create_organization,
+);
 
 // Create organization (standard REST endpoint)
 orgRouter.post("/", orgController.create_organization);
