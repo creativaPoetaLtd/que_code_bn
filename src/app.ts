@@ -11,6 +11,7 @@ import pgSession from "connect-pg-simple";
 import { setupSwagger } from "./swagger/swaggerConfig";
 import * as path from "path";
 import FirebaseService from "./services/firebaseService";
+import auditLogger from "./middleware/audit.middleware";
 
 const app = express();
 
@@ -78,6 +79,9 @@ app.use(passport.session());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Audit logging middleware (logs all API requests)
+app.use(auditLogger);
 
 // Setup Swagger documentation
 setupSwagger(app);

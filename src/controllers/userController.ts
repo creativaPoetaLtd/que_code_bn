@@ -12,11 +12,11 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
-import { 
-  notifyAccountVerified, 
+import {
+  notifyAccountVerified,
   notifyWelcome,
   notifyPasswordChanged,
-  notifyWalletCreated 
+  notifyWalletCreated,
 } from "../utils/notificationHelpers";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
@@ -139,8 +139,9 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       { expiresIn: "2d", algorithm: "HS256" },
     );
     // Verification URL - point to frontend verification page
-    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"
-      }/auth/verify?token=${verificationToken}&otp=${otp}`;
+    const verificationUrl = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/auth/verify?token=${verificationToken}&otp=${otp}`;
     // Send verification email with OTP
     let emailSent = false;
     try {
@@ -164,26 +165,23 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
 
     // Send welcome notification
     try {
-      await notifyWelcome(
-        req.app,
-        newUser.id,
-        `${firstName} ${lastName}`
-      );
+      await notifyWelcome(req.app, newUser.id, `${firstName} ${lastName}`);
     } catch (notificationError) {
-      console.error("❌ Failed to send welcome notification:", notificationError);
+      console.error(
+        "❌ Failed to send welcome notification:",
+        notificationError,
+      );
     }
 
     // Send wallet created notification
     if (walletCreated && walletId) {
       try {
-        await notifyWalletCreated(
-          req.app,
-          newUser.id,
-          walletId,
-          'RWF'
-        );
+        await notifyWalletCreated(req.app, newUser.id, walletId, "RWF");
       } catch (notificationError) {
-        console.error("❌ Failed to send wallet notification:", notificationError);
+        console.error(
+          "❌ Failed to send wallet notification:",
+          notificationError,
+        );
       }
     }
 
@@ -211,7 +209,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     console.error("❌ Full error:", error);
     res.status(500).json({
       message: "An error occurred while registering the user",
-      error: error.megssage,
+      error: error.message,
     });
   }
 };
@@ -315,10 +313,13 @@ const verify_user_email = async (
       await notifyAccountVerified(
         req.app,
         plainUser.id,
-        `${plainUser.firstName} ${plainUser.lastName}`
+        `${plainUser.firstName} ${plainUser.lastName}`,
       );
     } catch (notificationError) {
-      console.error("❌ Failed to send account verified notification:", notificationError);
+      console.error(
+        "❌ Failed to send account verified notification:",
+        notificationError,
+      );
     }
 
     res.status(200).json({
@@ -926,6 +927,159 @@ const assign_role_to_user = async (
   }
 };
 
+// Admin creates a new user (auto-approved, sends credentials via email)
+const admin_create_user = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { firstName, lastName, phone, email, password, roleId } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !phone || !email) {
+      res.status(400).json({
+        message: "Missing required fields",
+        required: ["firstName", "lastName", "phone", "email"],
+      });
+      return;
+    }
+
+    // Check if user already exists by email
+    const existingUser = await read_function<UserModelAttributes>(
+      "User",
+      "findOne",
+      { where: { email: email.toLowerCase() } },
+    );
+
+    if (existingUser) {
+      res.status(400).json({ message: "User with this email already exists" });
+      return;
+    }
+
+    // Check if phone number already exists
+    const existingPhone = await read_function<UserModelAttributes>(
+      "User",
+      "findOne",
+      { where: { phone: phone } },
+    );
+
+    if (existingPhone) {
+      res
+        .status(400)
+        .json({ message: "User with this phone number already exists" });
+      return;
+    }
+
+    // Generate password if not provided
+    const userPassword =
+      password || Math.random().toString(36).slice(-10) + "A1!";
+
+    // Hash password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(userPassword, saltRounds);
+
+    // Create user (auto-approved by admin, no OTP needed)
+    const userData: UserCreationAttributes = {
+      firstName,
+      lastName,
+      phone,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      otp: "", // Not used for admin-created users (auto-verified)
+      otpExpires: new Date(), // Not used for admin-created users (auto-verified)
+      isVerified: true, // Auto-verified when created by admin
+      approvalStatus: true, // Auto-approved when created by admin
+    };
+
+    const newUser = await insert_function<UserModelAttributes>(
+      "User",
+      "create",
+      userData,
+    );
+
+    // Generate QR Code for user profile
+    const userProfileLink = `${process.env.FRONTEND_URL}/welcome/${newUser.id}`;
+    const qrCodeData = await QRCode.toDataURL(userProfileLink);
+
+    // Create profile
+    const profileData: ProfileCreationAttributes = {
+      type: "individual",
+      userId: newUser.id,
+      qrCode: qrCodeData,
+    };
+    await insert_function<ProfileModelAttributes>(
+      "Profile",
+      "create",
+      profileData,
+    );
+
+    // Create wallet
+    try {
+      const walletData: WalletCreationAttributes = {
+        userId: newUser.id,
+        balance: 0,
+      };
+      await insert_function("Wallet", "create", walletData);
+    } catch (walletError) {
+      console.error("❌ Error creating wallet for user:", walletError);
+    }
+
+    // Assign role if provided
+    if (roleId) {
+      try {
+        await insert_function("UserRole", "create", {
+          userId: newUser.id,
+          roleId,
+        });
+      } catch (roleError) {
+        console.error("❌ Error assigning role to user:", roleError);
+      }
+    }
+
+    // Send welcome email with credentials
+    let emailSent = false;
+    try {
+      await sendEmail({
+        to: email.toLowerCase(),
+        subject: "Your Account Has Been Created - Welcome to QueCode!",
+        type: "admin_user_creation",
+        data: {
+          name: `${firstName} ${lastName}`,
+          email: email.toLowerCase(),
+          password: userPassword,
+          loginUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`,
+        },
+      });
+      emailSent = true;
+    } catch (emailError: any) {
+      console.error("❌ Failed to send welcome email:", emailError.message);
+    }
+
+    const plainUser = isSequelizeInstance(newUser)
+      ? newUser.get({ plain: true })
+      : newUser;
+    const { password: _, ...userWithoutPassword } = plainUser;
+
+    const message = emailSent
+      ? "User created successfully. Login credentials have been sent to their email."
+      : "User created successfully. However, we couldn't send the welcome email. Please provide credentials manually.";
+
+    res.status(201).json({
+      message,
+      data: userWithoutPassword,
+      emailSent,
+      // Only return password in response if email failed
+      ...(!emailSent && { temporaryPassword: userPassword }),
+    });
+  } catch (error: any) {
+    console.error("❌ Admin user creation error:", error.message);
+    res.status(500).json({
+      message: "An error occurred while creating the user",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   create_user,
   verify_user_email,
@@ -943,4 +1097,5 @@ export default {
   get_user_statistics,
   update_user_status,
   assign_role_to_user,
+  admin_create_user,
 };

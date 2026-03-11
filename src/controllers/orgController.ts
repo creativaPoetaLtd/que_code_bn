@@ -9,7 +9,7 @@ import {
   ProfileModelAttributes,
 } from "../types/model";
 import bcrypt from "bcrypt";
-import sendEmail from "../helpers/email";
+import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
 import cloudinary from "../helpers/cloudinary";
@@ -318,8 +318,9 @@ const create_organization = async (
     );
 
     // Verification URL
-    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"
-      }/verify?token=${verificationToken}`;
+    const verificationUrl = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/verify?token=${verificationToken}`;
 
     // Send verification email to organization's email
     try {
@@ -779,11 +780,213 @@ const get_organization_category = async (
     res.status(200).json(plainOrg.category);
   } catch (error) {
     console.error("Error fetching organization category:", error);
-    res
-      .status(500)
-      .json({
-        message: "An error occurred while fetching the organization category",
+    res.status(500).json({
+      message: "An error occurred while fetching the organization category",
+    });
+  }
+};
+
+// Admin creates a new organization (auto-approved, sends credentials via email)
+const admin_create_organization = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const {
+      name,
+      type,
+      email,
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      contactPhone,
+      tinNumber,
+      password,
+      categoryId,
+    } = req.body;
+
+    // Map the type field to categoryId since frontend sends category ID as type
+    const actualCategoryId = type || categoryId;
+
+    // Validate required fields
+    if (
+      !name ||
+      !email ||
+      !ownerName ||
+      !ownerPhone ||
+      !ownerEmail ||
+      !contactPhone ||
+      !tinNumber
+    ) {
+      res.status(400).json({
+        message: "Missing required fields",
+        required: [
+          "name",
+          "email",
+          "ownerName",
+          "ownerPhone",
+          "ownerEmail",
+          "contactPhone",
+          "tinNumber",
+        ],
       });
+      return;
+    }
+
+    // Validate categoryId
+    if (actualCategoryId) {
+      const category = await read_function<any>("Category", "findOne", {
+        where: { id: actualCategoryId },
+      });
+
+      if (!category) {
+        res.status(400).json({
+          message: "Invalid organization category",
+          providedCategoryId: actualCategoryId,
+        });
+        return;
+      }
+
+      const plainCategory = isSequelizeInstance(category)
+        ? category.get({ plain: true })
+        : category;
+
+      if (plainCategory.isActive === false) {
+        res.status(400).json({
+          message: "Organization category is not active",
+        });
+        return;
+      }
+    } else {
+      res.status(400).json({
+        message: "Organization category is required",
+      });
+      return;
+    }
+
+    // Check if organization already exists
+    const existingOrg = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      { where: { email: email.toLowerCase() } },
+    );
+
+    if (existingOrg) {
+      res.status(400).json({ message: "Organization already exists" });
+      return;
+    }
+
+    // Generate password if not provided
+    const orgPassword =
+      password || Math.random().toString(36).slice(-10) + "A1!";
+
+    // Hash password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(orgPassword, saltRounds);
+
+    // Create organization (auto-approved by admin)
+    const orgData: OrganizationCreationAttributes = {
+      name,
+      email: email.toLowerCase(),
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      contactPhone,
+      tinNumber,
+      password: hashedPassword,
+      categoryId: actualCategoryId || undefined,
+      status: "active", // Auto-approved when created by admin
+    };
+
+    const newOrg = await insert_function<OrganizationModelAttributes>(
+      "Organization",
+      "create",
+      orgData,
+    );
+
+    const orgId = isSequelizeInstance(newOrg) ? newOrg.get("id") : newOrg.id;
+
+    // Generate QR Code for organization profile
+    let qrCodeData: string;
+    try {
+      const orgProfileLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/welcome/${orgId}`;
+      qrCodeData = await QRCode.toDataURL(orgProfileLink);
+    } catch (qrError) {
+      console.error("Error generating QR code:", qrError);
+      qrCodeData = `placeholder-qr-${orgId}`;
+    }
+
+    // Create profile for the new organization
+    try {
+      const profileData: ProfileCreationAttributes = {
+        type: "organization",
+        organizationId: orgId,
+        qrCode: qrCodeData,
+      };
+
+      await insert_function<ProfileModelAttributes>(
+        "Profile",
+        "create",
+        profileData,
+      );
+    } catch (profileError: any) {
+      console.error("Error creating profile for organization:", profileError);
+    }
+
+    // Create wallet for the new organization
+    try {
+      const walletData: WalletCreationAttributes = {
+        organizationId: orgId,
+        balance: 0,
+      };
+
+      await insert_function("Wallet", "create", walletData);
+    } catch (walletError) {
+      console.error("Error creating wallet for organization:", walletError);
+    }
+
+    // Send welcome email with credentials to organization owner
+    let emailSent = false;
+    try {
+      await sendEmail({
+        to: ownerEmail.toLowerCase(),
+        subject:
+          "Your Organization Account Has Been Created - Welcome to QueCode!",
+        type: "admin_organization_creation",
+        data: {
+          organizationName: name,
+          email: email.toLowerCase(),
+          password: orgPassword,
+          loginUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`,
+        },
+      });
+      emailSent = true;
+    } catch (emailError: any) {
+      console.error("Failed to send welcome email:", emailError);
+    }
+
+    const plainOrg = isSequelizeInstance(newOrg)
+      ? newOrg.get({ plain: true })
+      : newOrg;
+    const { password: _, ...orgWithoutPassword } = plainOrg;
+
+    const message = emailSent
+      ? "Organization created successfully. Login credentials have been sent to the owner's email."
+      : "Organization created successfully. However, we couldn't send the welcome email. Please provide credentials manually.";
+
+    res.status(201).json({
+      message,
+      data: orgWithoutPassword,
+      emailSent,
+      // Only return password in response if email failed
+      ...(!emailSent && { temporaryPassword: orgPassword }),
+    });
+  } catch (error: any) {
+    console.error("Admin organization creation error:", error);
+    res.status(500).json({
+      message: "An error occurred while creating the organization",
+      error: error.message,
+    });
   }
 };
 
@@ -800,4 +1003,5 @@ export default {
   get_pending_organizations,
   verify_organization_email_token,
   get_organization_category,
+  admin_create_organization,
 };

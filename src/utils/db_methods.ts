@@ -27,7 +27,8 @@ type ModelTypes =
   | "Action"
   | "SubAction"
   | "ActionPurchase"
-  | "QRObject";
+  | "QRObject"
+  | "AuditLog";
 // Updated MethodTypes to include "findByPk"
 type MethodTypes =
   | "findAll"
@@ -40,20 +41,20 @@ type MethodTypes =
 export const read_function = async <T>(
   model: ModelTypes,
   method: MethodTypes,
-  condition?: FindOptions | string // Accept a string for findByPk
+  condition?: FindOptions | string, // Accept a string for findByPk
 ) => {
   if (!database_models[model] || !database_models[model][method]) {
     throw new Error(
       `Invalid ${!database_models[model] ? "modelName" : ""} ${
         !database_models[model] && !database_models[model][method] ? "and" : ""
-      } ${!database_models[model][method] ? "method" : ""}`
+      } ${!database_models[model][method] ? "method" : ""}`,
     );
   }
 
   const result =
     method === "findByPk"
       ? await (database_models[model][method] as (id: string) => Promise<T>)(
-          condition as string
+          condition as string,
         )
       : await (
           database_models[model][method] as (options: FindOptions) => Promise<T>
@@ -66,13 +67,13 @@ export const insert_function = async <T>(
   model: ModelTypes,
   method: MethodTypes,
   data: any,
-  condition?: FindOptions | UpdateOptions
+  condition?: FindOptions | UpdateOptions,
 ): Promise<T> => {
   if (!database_models[model] || !database_models[model][method]) {
     throw new Error(
       `Invalid ${!database_models[model] ? "modelName" : ""} ${
         !database_models[model] && !database_models[model][method] ? "and" : ""
-      } ${!database_models[model][method] ? "method" : ""}`
+      } ${!database_models[model][method] ? "method" : ""}`,
     );
   }
 
@@ -80,7 +81,7 @@ export const insert_function = async <T>(
     const result = await (
       database_models[model][method] as (
         data: any,
-        options?: CreateOptions
+        options?: CreateOptions,
       ) => Promise<T>
     )(data, condition as CreateOptions);
     return result;
@@ -91,7 +92,7 @@ export const insert_function = async <T>(
     const result = await (
       database_models[model][method] as (
         values: any,
-        options?: UpdateOptions
+        options?: UpdateOptions,
       ) => Promise<T>
     )(data, condition as UpdateOptions);
     return result;
@@ -104,14 +105,14 @@ export const update_function = async <T>(
   model: ModelTypes,
   method: MethodTypes,
   values: Partial<T>, // Data to update
-  condition: UpdateOptions // Condition for updating
+  condition: UpdateOptions, // Condition for updating
 ): Promise<[number, T[]]> => {
   // Validate model and method
   if (!database_models[model] || !database_models[model][method]) {
     throw new Error(
       `Invalid ${!database_models[model] ? "modelName" : ""} ${
         !database_models[model] && !database_models[model][method] ? "and" : ""
-      } ${!database_models[model][method] ? "method" : ""}`
+      } ${!database_models[model][method] ? "method" : ""}`,
     );
   }
 
@@ -120,7 +121,7 @@ export const update_function = async <T>(
     const result = await (
       database_models[model][method] as (
         values: Partial<T>,
-        options: UpdateOptions
+        options: UpdateOptions,
       ) => Promise<[number, T[]]>
     )(values, condition);
 
