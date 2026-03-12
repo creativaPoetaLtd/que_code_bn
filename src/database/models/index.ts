@@ -151,6 +151,9 @@ const Models = (sequelize: Sequelize) => {
   Action.hasMany(SubAction, { foreignKey: "actionId", as: "subActions" });
   SubAction.belongsTo(Action, { foreignKey: "actionId", as: "action" });
 
+  SubAction.hasOne(Wallet, { foreignKey: "subActionId", as: "wallet" });
+  Wallet.belongsTo(SubAction, { foreignKey: "subActionId", as: "subAction" });
+
   Action.hasMany(ActionPurchase, {
     foreignKey: "actionId",
     as: "purchases",

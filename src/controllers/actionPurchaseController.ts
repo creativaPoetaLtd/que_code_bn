@@ -205,12 +205,6 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       transaction: dbTransaction,
     });
 
-    const organizationWallet = await Wallet.findOne({
-      where: { organizationId: action.organizationId, isActive: true },
-      lock: dbTransaction?.LOCK.UPDATE,
-      transaction: dbTransaction,
-    });
-
     if (!buyerWallet) {
       await dbTransaction?.rollback();
       res.status(404).json({
@@ -220,13 +214,36 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (!organizationWallet) {
-      await dbTransaction?.rollback();
-      res.status(404).json({
-        success: false,
-        message: "Organization wallet not found",
+    // Determine receiver wallet: sub-action wallet when subActionId is given, else org wallet
+    let receiverWallet: any = null;
+    if (subActionId) {
+      receiverWallet = await Wallet.findOne({
+        where: { subActionId, isActive: true },
+        lock: dbTransaction?.LOCK.UPDATE,
+        transaction: dbTransaction,
       });
-      return;
+      if (!receiverWallet) {
+        await dbTransaction?.rollback();
+        res.status(404).json({
+          success: false,
+          message: "Sub-action wallet not found. Ensure the sub-action was created correctly.",
+        });
+        return;
+      }
+    } else {
+      receiverWallet = await Wallet.findOne({
+        where: { organizationId: action.organizationId, isActive: true },
+        lock: dbTransaction?.LOCK.UPDATE,
+        transaction: dbTransaction,
+      });
+      if (!receiverWallet) {
+        await dbTransaction?.rollback();
+        res.status(404).json({
+          success: false,
+          message: "Organization wallet not found",
+        });
+        return;
+      }
     }
 
     // 6. Check balance (if not free)
@@ -269,9 +286,9 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         { transaction: dbTransaction }
       );
 
-      await organizationWallet.update(
+      await receiverWallet.update(
         {
-          balance: parseFloat(organizationWallet.balance.toString()) + totalAmount,
+          balance: parseFloat(receiverWallet.balance.toString()) + totalAmount,
         },
         { transaction: dbTransaction }
       );
@@ -281,7 +298,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         {
           referenceId,
           senderWalletId: buyerWallet.id,
-          receiverWalletId: organizationWallet.id,
+          receiverWalletId: receiverWallet.id,
           amount: totalAmount,
           fee: 0,
           totalAmount: totalAmount,
@@ -300,7 +317,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         {
           referenceId,
           senderWalletId: buyerWallet.id,
-          receiverWalletId: organizationWallet.id,
+          receiverWalletId: receiverWallet.id,
           amount: 0,
           fee: 0,
           totalAmount: 0,
@@ -430,7 +447,23 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           id: transaction.id,
           referenceId: transaction.referenceId,
           amount: transaction.amount,
+          currency: transaction.currency,
           status: transaction.status,
+          type: transaction.type,
+          description: transaction.description,
+        },
+        wallets: {
+          buyer: {
+            id: buyerWallet.id,
+            balanceAfter: parseFloat(buyerWallet.balance.toString()),
+            currency: buyerWallet.currency,
+          },
+          receiver: {
+            id: receiverWallet.id,
+            balanceAfter: parseFloat(receiverWallet.balance.toString()),
+            currency: receiverWallet.currency,
+            type: subActionId ? "subAction" : "organization",
+          },
         },
         qrObject: qrObject
           ? {

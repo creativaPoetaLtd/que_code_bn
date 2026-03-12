@@ -572,6 +572,7 @@ export interface WalletAttributes {
   userId?: string;
   organizationId?: string;
   groupId?: string;
+  subActionId?: string;
   balance: number;
   currency: string;
   isActive: boolean;
