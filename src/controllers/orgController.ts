@@ -12,6 +12,10 @@ import bcrypt from "bcrypt";
 import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
+import {
+  buildAccountPasswordSetupUrl,
+  generateAccountSetupToken,
+} from "../auth/reset_password";
 import cloudinary from "../helpers/cloudinary";
 import fs from "fs";
 
@@ -786,7 +790,7 @@ const get_organization_category = async (
   }
 };
 
-// Admin creates a new organization (auto-approved, sends credentials via email)
+// Admin creates a new organization (auto-approved, sends password setup email)
 const admin_create_organization = async (
   req: Request,
   res: Response,
@@ -945,24 +949,34 @@ const admin_create_organization = async (
       console.error("Error creating wallet for organization:", walletError);
     }
 
-    // Send welcome email with credentials to organization owner
+    const passwordSetupToken = generateAccountSetupToken({
+      id: orgId,
+      email: email.toLowerCase(),
+      accountType: "organization",
+      expiresIn: "7d",
+    });
+    const passwordSetupUrl = buildAccountPasswordSetupUrl(passwordSetupToken);
+
+    // Send password setup email to organization owner
     let emailSent = false;
     try {
       await sendEmail({
         to: ownerEmail.toLowerCase(),
-        subject:
-          "Your Organization Account Has Been Created - Welcome to QueCode!",
-        type: "admin_organization_creation",
+        subject: "Set Up Your Organization QueCode Password",
+        type: "password_reset",
         data: {
-          organizationName: name,
+          name: ownerName,
           email: email.toLowerCase(),
-          password: orgPassword,
-          loginUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`,
+          title: `Set Password for ${name}`,
+          message: `An administrator created the organization account for ${name}. Use the secure link below to set the password and access the account.`,
+          buttonText: "Set Organization Password",
+          resetUrl: passwordSetupUrl,
+          expiryTime: "7 days",
         },
       });
       emailSent = true;
     } catch (emailError: any) {
-      console.error("Failed to send welcome email:", emailError);
+      console.error("Failed to send password setup email:", emailError);
     }
 
     const plainOrg = isSequelizeInstance(newOrg)
@@ -971,15 +985,13 @@ const admin_create_organization = async (
     const { password: _, ...orgWithoutPassword } = plainOrg;
 
     const message = emailSent
-      ? "Organization created successfully. Login credentials have been sent to the owner's email."
-      : "Organization created successfully. However, we couldn't send the welcome email. Please provide credentials manually.";
+      ? "Organization created successfully. A password setup email has been sent to the owner's email."
+      : "Organization created successfully. However, we couldn't send the password setup email. Ask the owner to use forgot password to create their password.";
 
     res.status(201).json({
       message,
       data: orgWithoutPassword,
       emailSent,
-      // Only return password in response if email failed
-      ...(!emailSent && { temporaryPassword: orgPassword }),
     });
   } catch (error: any) {
     console.error("Admin organization creation error:", error);

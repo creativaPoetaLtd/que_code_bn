@@ -8,6 +8,7 @@ export interface EmailOptions {
     | "code"
     | "success"
     | "notification"
+    | "password_reset"
     | "contact_invitation"
     | "invitation_response"
     | "group_invitation"
@@ -26,7 +27,6 @@ const sendEmail = async ({
   type,
   data,
 }: EmailOptions): Promise<void> => {
-
   // Create transporter for each email to avoid connection issues
   const transportOptions: SMTPTransport.Options = {
     host: "smtp.gmail.com",
@@ -164,6 +164,53 @@ const sendEmail = async ({
                 font-size: 16px;
               ">Login to Organization Account</a>
             </div>
+          </div>
+        `;
+      case "password_reset":
+        return `
+          <div style="text-align: center;">
+            <h2 style="color: #333; font-size: 22px; font-weight: bold;">
+              ${data.title || "Set Your Password"}
+            </h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Hello ${data.name || "there"},
+            </p>
+            <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              ${
+                data.message ||
+                "Use the secure link below to set a new password for your account."
+              }
+            </p>
+            ${
+              data.email
+                ? `
+            <div style="background-color: #f5f5f5; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left;">
+              <p style="color: #666; font-size: 14px; margin: 0;">
+                <strong>Account Email:</strong> <span style="color: #00B512;">${data.email}</span>
+              </p>
+            </div>`
+                : ""
+            }
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.resetUrl}" style="
+                display: inline-block;
+                padding: 15px 30px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                text-align: center;
+                background: #00B512;
+                color: white;
+                font-size: 16px;
+              ">${data.buttonText || "Set Password"}</a>
+            </div>
+            <p style="color: #999; font-size: 14px; margin-bottom: 20px;">
+              This link will expire in ${data.expiryTime || "1 hour"}.
+            </p>
+            <p style="color: #999; font-size: 12px; line-height: 1.6; margin-top: 30px;">
+              If the button doesn't work, copy and paste this link into your browser:<br/>
+              <span style="color: #00B512; word-break: break-all; display: block; margin-top: 10px;">${data.resetUrl}</span>
+            </p>
           </div>
         `;
       case "success":

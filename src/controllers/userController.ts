@@ -13,6 +13,10 @@ import sendEmail from "../helpers/email.simple";
 import QRCode from "qrcode";
 import jwt from "jsonwebtoken";
 import {
+  buildAccountPasswordSetupUrl,
+  generateAccountSetupToken,
+} from "../auth/reset_password";
+import {
   notifyAccountVerified,
   notifyWelcome,
   notifyPasswordChanged,
@@ -927,7 +931,7 @@ const assign_role_to_user = async (
   }
 };
 
-// Admin creates a new user (auto-approved, sends credentials via email)
+// Admin creates a new user (auto-approved, sends password setup email)
 const admin_create_user = async (
   req: Request,
   res: Response,
@@ -1036,23 +1040,38 @@ const admin_create_user = async (
       }
     }
 
-    // Send welcome email with credentials
+    const passwordSetupToken = generateAccountSetupToken({
+      id: newUser.id,
+      email: email.toLowerCase(),
+      accountType: "user",
+      expiresIn: "7d",
+    });
+    const passwordSetupUrl = buildAccountPasswordSetupUrl(passwordSetupToken);
+
+    // Send password setup email
     let emailSent = false;
     try {
       await sendEmail({
         to: email.toLowerCase(),
-        subject: "Your Account Has Been Created - Welcome to QueCode!",
-        type: "admin_user_creation",
+        subject: "Set Up Your QueCode Account Password",
+        type: "password_reset",
         data: {
           name: `${firstName} ${lastName}`,
           email: email.toLowerCase(),
-          password: userPassword,
-          loginUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`,
+          title: "Set Your Password",
+          message:
+            "An administrator created your QueCode account. Use the secure link below to set your password and activate your account.",
+          buttonText: "Set Password",
+          resetUrl: passwordSetupUrl,
+          expiryTime: "7 days",
         },
       });
       emailSent = true;
     } catch (emailError: any) {
-      console.error("❌ Failed to send welcome email:", emailError.message);
+      console.error(
+        "❌ Failed to send password setup email:",
+        emailError.message,
+      );
     }
 
     const plainUser = isSequelizeInstance(newUser)
@@ -1061,15 +1080,13 @@ const admin_create_user = async (
     const { password: _, ...userWithoutPassword } = plainUser;
 
     const message = emailSent
-      ? "User created successfully. Login credentials have been sent to their email."
-      : "User created successfully. However, we couldn't send the welcome email. Please provide credentials manually.";
+      ? "User created successfully. A password setup email has been sent to the user."
+      : "User created successfully. However, we couldn't send the password setup email. Ask the user to use forgot password to create their password.";
 
     res.status(201).json({
       message,
       data: userWithoutPassword,
       emailSent,
-      // Only return password in response if email failed
-      ...(!emailSent && { temporaryPassword: userPassword }),
     });
   } catch (error: any) {
     console.error("❌ Admin user creation error:", error.message);
