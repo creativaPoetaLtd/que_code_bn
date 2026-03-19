@@ -1021,7 +1021,7 @@ const admin_create_user = async (
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
-        balance: 0,
+        balance: 67000,
       };
       await insert_function("Wallet", "create", walletData);
     } catch (walletError) {

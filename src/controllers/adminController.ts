@@ -3,7 +3,10 @@ import Models from "../database/models";
 import { Op, fn, col } from "sequelize";
 
 // Get all users with their roles
-export const getAllUsers: RequestHandler = async (req: Request, res: Response) => {
+export const getAllUsers: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { page = 1, limit = 10, search = "", status = "all" } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
@@ -73,7 +76,10 @@ export const getAllUsers: RequestHandler = async (req: Request, res: Response) =
 };
 
 // Get user by ID
-export const getUserById: RequestHandler = async (req: Request, res: Response) => {
+export const getUserById: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
 
@@ -132,7 +138,10 @@ export const getUserById: RequestHandler = async (req: Request, res: Response) =
 };
 
 // Update user status (approve/reject, verify)
-export const updateUserStatus: RequestHandler = async (req: Request, res: Response) => {
+export const updateUserStatus: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
     const { approvalStatus, isVerified } = req.body;
@@ -172,7 +181,10 @@ export const updateUserStatus: RequestHandler = async (req: Request, res: Respon
 };
 
 // Assign role to user
-export const assignUserRole: RequestHandler = async (req: Request, res: Response) => {
+export const assignUserRole: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { userId, roleId } = req.body;
 
@@ -229,7 +241,10 @@ export const assignUserRole: RequestHandler = async (req: Request, res: Response
 };
 
 // Delete user
-export const deleteUser: RequestHandler = async (req: Request, res: Response) => {
+export const deleteUser: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
 
@@ -259,7 +274,10 @@ export const deleteUser: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Get all roles
-export const getAllRoles: RequestHandler = async (req: Request, res: Response) => {
+export const getAllRoles: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const roles = await models.Role.findAll({
@@ -292,7 +310,10 @@ export const getAllRoles: RequestHandler = async (req: Request, res: Response) =
 };
 
 // Get all permissions
-export const getAllPermissions: RequestHandler = async (req: Request, res: Response) => {
+export const getAllPermissions: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const permissions = await models.Permission.findAll({
@@ -313,7 +334,10 @@ export const getAllPermissions: RequestHandler = async (req: Request, res: Respo
 };
 
 // Create new user
-export const createUser: RequestHandler = async (req: Request, res: Response) => {
+export const createUser: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { email, phone, firstName, lastName, password, roleId } = req.body;
@@ -361,12 +385,28 @@ export const createUser: RequestHandler = async (req: Request, res: Response) =>
       approvalStatus: true,
     });
 
+    // Create wallet with initial balance
+    try {
+      await models.Wallet.create({
+        userId: user.id,
+        balance: 67000,
+      });
+    } catch (walletError) {
+      console.error("Error creating wallet for user:", walletError);
+      // Don't fail the entire operation if wallet creation fails
+    }
+
     // Assign role if provided
     if (roleId) {
-      await models.UserRole.create({
-        userId: user.id,
-        roleId,
-      });
+      try {
+        await models.UserRole.create({
+          userId: user.id,
+          roleId,
+        });
+      } catch (roleError) {
+        console.error("Error assigning role to user:", roleError);
+        // Don't fail the entire operation if role assignment fails
+      }
     }
 
     res.status(201).json({
@@ -384,7 +424,10 @@ export const createUser: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Update user
-export const updateUser: RequestHandler = async (req: Request, res: Response) => {
+export const updateUser: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -450,7 +493,10 @@ export const updateUser: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Create new role
-export const createRole: RequestHandler = async (req: Request, res: Response) => {
+export const createRole: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { name, description, permissionIds } = req.body;
@@ -504,7 +550,10 @@ export const createRole: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Update role
-export const updateRole: RequestHandler = async (req: Request, res: Response) => {
+export const updateRole: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -576,7 +625,10 @@ export const updateRole: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Delete role
-export const deleteRole: RequestHandler = async (req: Request, res: Response) => {
+export const deleteRole: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -632,7 +684,10 @@ export const deleteRole: RequestHandler = async (req: Request, res: Response) =>
 };
 
 // Create new permission
-export const createPermission: RequestHandler = async (req: Request, res: Response) => {
+export const createPermission: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { name, description } = req.body;
@@ -676,7 +731,10 @@ export const createPermission: RequestHandler = async (req: Request, res: Respon
 };
 
 // Update permission
-export const updatePermission: RequestHandler = async (req: Request, res: Response) => {
+export const updatePermission: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -724,7 +782,10 @@ export const updatePermission: RequestHandler = async (req: Request, res: Respon
 };
 
 // Delete permission
-export const deletePermission: RequestHandler = async (req: Request, res: Response) => {
+export const deletePermission: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
@@ -765,7 +826,10 @@ export const deletePermission: RequestHandler = async (req: Request, res: Respon
 };
 
 // Get role with permissions
-export const getRoleWithPermissions: RequestHandler = async (req: Request, res: Response) => {
+export const getRoleWithPermissions: RequestHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const { id } = req.params;
