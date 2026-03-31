@@ -4,6 +4,7 @@ import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
 import transactionRouter from "./transaction.routes";
 import actionRouter from "./admin.action.routes";
+import adminGroupsRouter from "./admin.groups.routes";
 
 const router = express.Router();
 
@@ -31,5 +32,8 @@ router.use("/transactions", transactionRouter);
 
 // Action management (admin only)
 router.use("/actions", actionRouter);
+
+// Group management (admin only)
+router.use("/groups", adminGroupsRouter);
 
 export default router;
