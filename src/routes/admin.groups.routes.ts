@@ -1,23 +1,21 @@
 import express, { RequestHandler } from "express";
-import { getAllGroups, deleteGroup } from "../controllers/admin.groups.controller";
+import { getAllGroups, deleteGroup, getGroupMembers, removeGroupMember } from "../controllers/admin.groups.controller";
 import { authenticate, requireRole } from "../middleware/auth.unified.middleware";
 
 const router = express.Router();
 
-// GET /api/v1/admin/groups - list all groups with wallets
-router.get(
-  "/",
-  authenticate as RequestHandler,
-  requireRole("admin", "super_admin") as RequestHandler,
-  getAllGroups,
-);
+const guard = [authenticate as RequestHandler, requireRole("admin", "super_admin") as RequestHandler];
 
-// DELETE /api/v1/admin/groups/:id - delete a group
-router.delete(
-  "/:id",
-  authenticate as RequestHandler,
-  requireRole("admin", "super_admin") as RequestHandler,
-  deleteGroup,
-);
+// GET  /api/v1/admin/groups
+router.get("/", ...guard, getAllGroups);
+
+// DELETE /api/v1/admin/groups/:id
+router.delete("/:id", ...guard, deleteGroup);
+
+// GET  /api/v1/admin/groups/:id/members
+router.get("/:id/members", ...guard, getGroupMembers);
+
+// DELETE /api/v1/admin/groups/:id/members/:userId
+router.delete("/:id/members/:userId", ...guard, removeGroupMember);
 
 export default router;
