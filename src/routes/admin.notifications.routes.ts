@@ -4,6 +4,8 @@ import {
   broadcastNotification,
   deleteNotification,
   getNotificationTypes,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from "../controllers/admin.notifications.controller";
 import { authenticate, requireRole } from "../middleware/auth.unified.middleware";
 
@@ -21,5 +23,11 @@ router.post("/broadcast", ...guard, broadcastNotification);
 
 // DELETE /api/v1/admin/notifications/:id    — hard delete a notification
 router.delete("/:id", ...guard, deleteNotification);
+
+// PATCH  /api/v1/admin/notifications/mark-all-read — mark all notifications as read
+router.patch("/mark-all-read", ...guard, markAllNotificationsRead);
+
+// PATCH  /api/v1/admin/notifications/:id/read — mark a single notification as read
+router.patch("/:id/read", ...guard, markNotificationRead);
 
 export default router;
