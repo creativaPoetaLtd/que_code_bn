@@ -707,7 +707,7 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const wallet = await Wallet.findByPk(walletId);
+    const wallet = await Wallet.findByPk(String(walletId));
 
     if (!wallet) {
       res.status(404).json({
@@ -918,7 +918,7 @@ const getTransactionDetails = async (
   try {
     const { transactionId } = req.params;
 
-    const transaction = await TransactionModel.findByPk(transactionId, {
+    const transaction = await TransactionModel.findByPk(String(transactionId), {
       include: [
         {
           model: Category,
@@ -1170,7 +1170,7 @@ const getWalletBalanceBreakdown = async (
       return;
     }
 
-    const wallet = await Wallet.findByPk(walletId);
+    const wallet = await Wallet.findByPk(String(walletId));
     if (!wallet) {
       res.status(404).json({
         success: false,
@@ -1726,7 +1726,7 @@ const getTransactionById = async (
     const { id } = req.params;
 
     const models = req.app.get("models") as typeof database_models;
-    const transaction = await models.Transaction.findByPk(id, {
+    const transaction = await models.Transaction.findByPk(String(id), {
       include: [
         {
           model: models.Wallet,
@@ -2401,7 +2401,7 @@ export const updateRestriction: RequestHandler = async (req, res) => {
 
     const models = req.app.get("models") as typeof database_models;
 
-    const restriction = await models.WalletRestriction.findByPk(id);
+    const restriction = await models.WalletRestriction.findByPk(String(id));
     if (!restriction) {
       res.status(404).json({
         success: false,
@@ -2414,7 +2414,7 @@ export const updateRestriction: RequestHandler = async (req, res) => {
     await restriction.update({ amount: restrictionAmount });
 
     // Fetch with associations for response
-    const updatedRestriction = await models.WalletRestriction.findByPk(id, {
+    const updatedRestriction = await models.WalletRestriction.findByPk(String(id), {
       include: [
         {
           model: models.Category,
@@ -2473,7 +2473,7 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
 
     const models = req.app.get("models") as typeof database_models;
 
-    const restriction = await models.WalletRestriction.findByPk(id);
+    const restriction = await models.WalletRestriction.findByPk(String(id));
     if (!restriction) {
       res.status(404).json({
         success: false,

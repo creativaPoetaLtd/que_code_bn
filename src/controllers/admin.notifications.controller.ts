@@ -166,4 +166,40 @@ export const getNotificationTypes: RequestHandler = async (req: Request, res: Re
   }
 };
 
-export default { getAllNotifications, broadcastNotification, deleteNotification, getNotificationTypes };
+// PATCH /api/v1/admin/notifications/:id/read — mark a single notification as read
+export const markNotificationRead: RequestHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const notification = await models.Notification.findByPk(id);
+    if (!notification) {
+      res.status(404).json({ success: false, message: "Notification not found" });
+      return;
+    }
+
+    await notification.update({ isRead: true });
+    res.status(200).json({ success: true, message: "Notification marked as read" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: "Error marking notification as read", error: error.message });
+  }
+};
+
+// PATCH /api/v1/admin/notifications/mark-all-read — mark all (or filtered) notifications as read
+export const markAllNotificationsRead: RequestHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId, type } = req.query;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const whereClause: any = { isRead: false };
+    if (userId) whereClause.userId = userId;
+    if (type) whereClause.type = type;
+
+    const [count] = await models.Notification.update({ isRead: true }, { where: whereClause });
+    res.status(200).json({ success: true, message: `${count} notification(s) marked as read`, count });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: "Error marking notifications as read", error: error.message });
+  }
+};
+
+export default { getAllNotifications, broadcastNotification, deleteNotification, getNotificationTypes, markNotificationRead, markAllNotificationsRead };

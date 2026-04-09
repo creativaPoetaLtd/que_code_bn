@@ -27,7 +27,7 @@ const getNotifications = async (req: AuthenticatedRequest, res: Response, next: 
 
 const markNotificationRead = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { notificationId } = req.params;
+        const notificationId = req.params.notificationId as string;
         const success = await markNotificationAsRead(req.app, notificationId, req.user.id);
         if (success) {
             res.json({ message: 'Notification marked as read' });
@@ -53,7 +53,7 @@ const markAllNotificationsRead = async (req: AuthenticatedRequest, res: Response
 
 const deleteNotification = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { notificationId } = req.params;
+        const notificationId = req.params.notificationId as string;
         const models = req.app.get("models") as ReturnType<typeof Models>;
 
         const result = await models.Notification.destroy({
