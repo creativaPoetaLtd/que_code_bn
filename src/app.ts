@@ -39,6 +39,7 @@ const allowedOrigins = [
   "http://localhost:3003",
   process.env.ADMIN_FRONTEND_URL,
   process.env.FRONTEND_URL,
+  "https://deploy-preview-58--qiew-code-dev2.netlify.app",
 ].filter(Boolean);
 
 // CORS configuration - allow credentials with specific origin
