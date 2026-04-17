@@ -11,6 +11,10 @@ type StoredPushSubscription = {
     p256dh?: string;
     auth?: string;
   };
+  preferences?: {
+    soundEnabled?: boolean;
+    vibrationEnabled?: boolean;
+  };
 };
 
 type PushMessage = {
@@ -22,6 +26,8 @@ type PushMessage = {
   tag: string;
   renotify: boolean;
   requireInteraction: boolean;
+  silent: boolean;
+  vibrate: number[];
   data: Record<string, unknown>;
 };
 
@@ -121,7 +127,11 @@ class WebPushService {
   private buildMessage(
     payload: NotificationPayload,
     notificationId?: string,
+    preferences?: StoredPushSubscription["preferences"],
   ): PushMessage {
+    const soundEnabled = preferences?.soundEnabled !== false;
+    const vibrationEnabled = preferences?.vibrationEnabled !== false;
+
     return {
       title: this.buildTitle(payload),
       body: this.buildBody(payload),
@@ -131,6 +141,8 @@ class WebPushService {
       tag: this.buildTag(payload, notificationId),
       renotify: true,
       requireInteraction: false,
+      silent: !soundEnabled && !vibrationEnabled,
+      vibrate: vibrationEnabled ? [200, 100, 200] : [],
       data: {
         notificationId,
         type: payload.type,
@@ -159,7 +171,6 @@ class WebPushService {
       return { sent: 0, failed: subscriptions.length };
     }
 
-    const message = JSON.stringify(this.buildMessage(payload, notificationId));
     let sent = 0;
     let failed = 0;
 
@@ -177,7 +188,16 @@ class WebPushService {
       }
 
       try {
-        await webpush.sendNotification(subscription, message, {
+        const pushTarget = {
+          endpoint: subscription.endpoint,
+          expirationTime: subscription.expirationTime ?? null,
+          keys: subscription.keys,
+        };
+        const message = JSON.stringify(
+          this.buildMessage(payload, notificationId, subscription.preferences),
+        );
+
+        await webpush.sendNotification(pushTarget, message, {
           TTL: 60,
           urgency: "high",
         });

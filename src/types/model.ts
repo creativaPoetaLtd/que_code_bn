@@ -353,6 +353,10 @@ export interface PushSubscriptionAttributes {
       p256dh: string;
       auth: string;
     };
+    preferences?: {
+      soundEnabled?: boolean;
+      vibrationEnabled?: boolean;
+    };
   };
   userAgent?: string | null;
   isActive: boolean;

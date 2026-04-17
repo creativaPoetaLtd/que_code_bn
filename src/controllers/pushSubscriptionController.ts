@@ -9,10 +9,15 @@ type PushSubscriptionBody = {
     p256dh: string;
     auth: string;
   };
+  preferences?: {
+    soundEnabled?: boolean;
+    vibrationEnabled?: boolean;
+  };
 };
 
 const normalizeSubscription = (input: any): PushSubscriptionBody | null => {
   const subscription = input?.subscription || input;
+  const preferences = input?.preferences;
 
   if (
     !subscription?.endpoint ||
@@ -31,6 +36,16 @@ const normalizeSubscription = (input: any): PushSubscriptionBody | null => {
     keys: {
       p256dh: subscription.keys.p256dh,
       auth: subscription.keys.auth,
+    },
+    preferences: {
+      soundEnabled:
+        typeof preferences?.soundEnabled === "boolean"
+          ? preferences.soundEnabled
+          : true,
+      vibrationEnabled:
+        typeof preferences?.vibrationEnabled === "boolean"
+          ? preferences.vibrationEnabled
+          : true,
     },
   };
 };
