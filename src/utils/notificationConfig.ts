@@ -125,6 +125,7 @@ export interface NotificationPayload {
     // Chat-related data
     chatId?: string;
     messageId?: string;
+    notificationId?: string;
     messageContent?: string;
     messageType?: string;
     senderId?: string;

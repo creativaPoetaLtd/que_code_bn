@@ -342,6 +342,40 @@ export type NotificationCreationAttributes = Omit<
   "id" | "createdAt" | "updatedAt"
 >;
 
+export interface PushSubscriptionAttributes {
+  id: string;
+  userId: string;
+  endpoint: string;
+  subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  };
+  userAgent?: string | null;
+  isActive: boolean;
+  lastSeenAt?: Date | null;
+  lastSuccessfulAt?: Date | null;
+  lastFailureAt?: Date | null;
+  lastFailureReason?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type PushSubscriptionCreationAttributes = Optional<
+  PushSubscriptionAttributes,
+  | "id"
+  | "userAgent"
+  | "isActive"
+  | "lastSeenAt"
+  | "lastSuccessfulAt"
+  | "lastFailureAt"
+  | "lastFailureReason"
+  | "createdAt"
+  | "updatedAt"
+>;
+
 export interface OrganizationCategoryAttributes {
   id: string;
   name: string;

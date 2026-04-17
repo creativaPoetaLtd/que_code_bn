@@ -18,6 +18,7 @@ import Category_model from "./categories.model";
 import ExternalAccount_model from "./externalAccounts.model";
 import ContactInvitation_model from "./contactInvitations.model";
 import notification_model from "./notification.model";
+import pushSubscription_model from "./pushSubscription.model";
 import role_model from "./role.model";
 import permission_model from "./permission.model";
 import rolePermission_model from "./rolePermission.model";
@@ -52,6 +53,7 @@ const Models = (sequelize: Sequelize) => {
   const UserKey = userKey_model(sequelize);
 
   const Notification = notification_model(sequelize);
+  const PushSubscription = pushSubscription_model(sequelize);
 
   const Role = role_model(sequelize);
   const Permission = permission_model(sequelize);
@@ -323,6 +325,11 @@ const Models = (sequelize: Sequelize) => {
   // Notifications
   User.hasMany(Notification, { foreignKey: "userId", as: "notifications" });
   Notification.belongsTo(User, { foreignKey: "userId", as: "user" });
+  User.hasMany(PushSubscription, {
+    foreignKey: "userId",
+    as: "pushSubscriptions",
+  });
+  PushSubscription.belongsTo(User, { foreignKey: "userId", as: "user" });
 
   // External Accounts
   User.hasMany(ExternalAccount, {
@@ -426,6 +433,7 @@ const Models = (sequelize: Sequelize) => {
     ChatKey,
     UserKey,
     Notification,
+    PushSubscription,
     Role,
     Permission,
     RolePermission,

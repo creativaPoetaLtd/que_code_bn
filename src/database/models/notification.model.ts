@@ -10,6 +10,8 @@ class Notification extends Model<
   public type!: string;
   public data!: object;
   public isRead!: boolean;
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
 }
 
 const Notification_model = (sequelize: Sequelize) => {

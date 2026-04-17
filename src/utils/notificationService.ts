@@ -2,6 +2,14 @@ import Models from "../database/models";
 import { NotificationType, NotificationPayload } from "./notificationConfig";
 import { Application } from "express";
 import { Op } from "sequelize";
+import { webPushService } from "../services/webPush.service";
+
+type RealtimeNotificationPayload = NotificationPayload & {
+  id?: string;
+  isRead?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
 
 /**
  * Emits a notification event to a specific user or group of users via Socket.IO
@@ -10,7 +18,7 @@ import { Op } from "sequelize";
  */
 export function sendNotification(
   app: Application,
-  payload: NotificationPayload
+  payload: RealtimeNotificationPayload
 ) {
   const io = app.get("io");
   if (!io) return;
@@ -24,7 +32,7 @@ export function sendNotification(
  */
 export function sendBulkNotification(
   app: Application,
-  payloads: NotificationPayload[]
+  payloads: RealtimeNotificationPayload[]
 ) {
   const io = app.get("io");
   if (!io) return;
@@ -49,8 +57,28 @@ export async function createAndSendNotification(
     data: payload.data,
     isRead: false,
   });
+
+  const realtimePayload: RealtimeNotificationPayload = {
+    ...payload,
+    id: notification.id,
+    isRead: notification.isRead,
+    createdAt: notification.createdAt,
+    updatedAt: notification.updatedAt,
+    data: {
+      ...payload.data,
+      notificationId: notification.id,
+    },
+  };
+
   // Send via socket
-  sendNotification(app, payload);
+  sendNotification(app, realtimePayload);
+
+  void webPushService
+    .sendToUser(app, payload.recipientId, realtimePayload, notification.id)
+    .catch((error) => {
+      console.error("Web push delivery failed:", error);
+    });
+
   return notification;
 }
 
