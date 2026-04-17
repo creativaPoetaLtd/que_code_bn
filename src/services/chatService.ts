@@ -254,7 +254,7 @@ export class ChatService {
 
         // TEMPORARY: Send unencrypted message to all participants
         for (const participant of participants) {
-          io.to(`user:${participant.userId}`).emit('new_message', {
+          io.to(`user_${participant.userId}`).emit('new_message', {
             ...messageWithSender.toJSON(),
             content: encryptedContent // This is actually unencrypted content now
           });
@@ -409,7 +409,7 @@ export class ChatService {
         const broadcastMessage = messageWithSender.toJSON();
 
         for (const participant of participants) {
-          io.to(`user:${participant.userId}`).emit('new_message', broadcastMessage);
+          io.to(`user_${participant.userId}`).emit('new_message', broadcastMessage);
 
           // Send notification to other participants (not the sender)
           if (participant.userId !== senderId && app) {
@@ -589,7 +589,7 @@ export class ChatService {
         // Notify participants via Socket.IO
         if (io) {
           participants.forEach((participant: any) => {
-            io.to(`user:${participant.userId}`).emit('chat_deleted', {
+            io.to(`user_${participant.userId}`).emit('chat_deleted', {
               chatId,
               deletedBy: userId
             });
@@ -641,7 +641,7 @@ export class ChatService {
         });
 
         participants.forEach((participant: any) => {
-          io.to(`user:${participant.userId}`).emit('messages_read', {
+          io.to(`user_${participant.userId}`).emit('messages_read', {
             chatId,
             readBy: userId,
             readAt: now

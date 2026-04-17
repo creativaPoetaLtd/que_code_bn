@@ -528,12 +528,12 @@ export const sendMoneyInChat = async (
             });
 
             for (const p of participants) {
-                io.to(`user:${p.userId}`).emit('new_message', broadcastMessage);
+                io.to(`user_${p.userId}`).emit('new_message', broadcastMessage);
 
                 // Send notification to recipient (for DMs) or all group members (for groups)
                 if (isGroupFundraising || p.userId === recipientId) {
                     const notificationEvent = isGroupFundraising ? 'group_donation_received' : 'money_received';
-                    io.to(`user:${p.userId}`).emit(notificationEvent, {
+                    io.to(`user_${p.userId}`).emit(notificationEvent, {
                         amount: transferAmount,
                         currency: 'RWF',
                         from: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,

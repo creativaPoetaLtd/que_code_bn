@@ -202,8 +202,18 @@ class WebPushService {
           continue;
         }
 
+        if (statusCode === 400 || statusCode === 401 || statusCode === 403) {
+          await record.update({
+            isActive: false,
+            lastFailureAt: new Date(),
+            lastFailureReason: failureReason,
+          });
+          continue;
+        }
+
         await record.update({
-          isActive: false,
+          isActive: true,
+          lastSeenAt: new Date(),
           lastFailureAt: new Date(),
           lastFailureReason: failureReason,
         });
