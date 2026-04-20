@@ -34,6 +34,9 @@ type PushMessage = {
 class WebPushService {
   private configured = false;
   private warnedMissingConfig = false;
+  private readonly pushTtlSeconds = Number(
+    process.env.WEB_PUSH_TTL_SECONDS || 7 * 24 * 60 * 60,
+  );
 
   private configure() {
     const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
@@ -113,12 +116,12 @@ class WebPushService {
   }
 
   private buildTag(payload: NotificationPayload, notificationId?: string) {
-    if (payload.data.chatId) {
-      return `chat-${payload.data.chatId}`;
-    }
-
     if (notificationId) {
       return `notification-${notificationId}`;
+    }
+
+    if (payload.data.chatId) {
+      return `chat-${payload.data.chatId}`;
     }
 
     return `notification-${payload.type.toLowerCase()}`;
@@ -198,7 +201,7 @@ class WebPushService {
         );
 
         await webpush.sendNotification(pushTarget, message, {
-          TTL: 60,
+          TTL: this.pushTtlSeconds,
           urgency: "high",
         });
 
