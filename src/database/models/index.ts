@@ -19,6 +19,7 @@ import ExternalAccount_model from "./externalAccounts.model";
 import ContactInvitation_model from "./contactInvitations.model";
 import notification_model from "./notification.model";
 import pushSubscription_model from "./pushSubscription.model";
+import deviceSession_model from "./deviceSession.model";
 import role_model from "./role.model";
 import permission_model from "./permission.model";
 import rolePermission_model from "./rolePermission.model";
@@ -54,6 +55,7 @@ const Models = (sequelize: Sequelize) => {
 
   const Notification = notification_model(sequelize);
   const PushSubscription = pushSubscription_model(sequelize);
+  const DeviceSession = deviceSession_model(sequelize);
 
   const Role = role_model(sequelize);
   const Permission = permission_model(sequelize);
@@ -330,6 +332,19 @@ const Models = (sequelize: Sequelize) => {
     as: "pushSubscriptions",
   });
   PushSubscription.belongsTo(User, { foreignKey: "userId", as: "user" });
+  User.hasMany(DeviceSession, {
+    foreignKey: "userId",
+    as: "deviceSessions",
+  });
+  DeviceSession.belongsTo(User, { foreignKey: "userId", as: "user" });
+  Organization.hasMany(DeviceSession, {
+    foreignKey: "organizationId",
+    as: "deviceSessions",
+  });
+  DeviceSession.belongsTo(Organization, {
+    foreignKey: "organizationId",
+    as: "organization",
+  });
 
   // External Accounts
   User.hasMany(ExternalAccount, {
@@ -434,6 +449,7 @@ const Models = (sequelize: Sequelize) => {
     UserKey,
     Notification,
     PushSubscription,
+    DeviceSession,
     Role,
     Permission,
     RolePermission,

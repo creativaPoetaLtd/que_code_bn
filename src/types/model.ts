@@ -380,6 +380,35 @@ export type PushSubscriptionCreationAttributes = Optional<
   | "updatedAt"
 >;
 
+export interface DeviceSessionAttributes {
+  id: string;
+  userId?: string | null;
+  organizationId?: string | null;
+  accountType: "user" | "organization";
+  refreshTokenHash: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+  isActive: boolean;
+  lastUsedAt?: Date | null;
+  revokedAt?: Date | null;
+  expiresAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type DeviceSessionCreationAttributes = Optional<
+  DeviceSessionAttributes,
+  | "id"
+  | "userId"
+  | "organizationId"
+  | "userAgent"
+  | "ipAddress"
+  | "isActive"
+  | "lastUsedAt"
+  | "revokedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
 export interface OrganizationCategoryAttributes {
   id: string;
   name: string;

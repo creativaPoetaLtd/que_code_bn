@@ -2,12 +2,17 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Request, Response } from "express";
 import { insert_function } from "../utils/db_methods";
-import {
-  UserModelAttributes,
-  OrganizationModelAttributes,
-} from "../types/model";
+import { UserModelAttributes } from "../types/model";
 import sendEmail from "../helpers/email.simple";
 import Models from "../database/models";
+import {
+  buildAccessToken,
+  createDeviceSession,
+  extendDeviceSession,
+  findActiveDeviceSession,
+  getAccountForSession,
+  revokeDeviceSession,
+} from "../services/authSession.service";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -17,7 +22,7 @@ const generateOTP = (): string => {
 
 const login_user = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       res.status(400).json({ message: "Email and password are required" });
@@ -135,21 +140,14 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       : null;
     const accountData = userPlain || orgPlain;
 
-    const tokenPayload = {
-      id: accountData.id,
-      email: accountData.email,
-      name: user
-        ? `${accountData.firstName} ${accountData.lastName}`
-        : accountData.name,
-      accountType: accountType,
-      role: (userPlain && userPlain.userRoles?.[0]?.role?.name) || "user",
-    };
-
-    const tokenExpiry = rememberMe ? "30d" : "1d";
-    const token = jwt.sign(tokenPayload, JWT_SECRET, {
-      expiresIn: tokenExpiry,
-      algorithm: "HS256",
-    });
+    const token = buildAccessToken(accountData, accountType);
+    const { refreshToken, expiresAt: refreshExpiresAt } =
+      await createDeviceSession(models, {
+        accountId: accountData.id,
+        accountType,
+        userAgent: req.header("user-agent") || null,
+        ipAddress: req.ip || null,
+      });
 
     // Remove sensitive data
     const {
@@ -173,6 +171,8 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
       message: "Login successful",
       user: accountWithoutPassword,
       token,
+      refreshToken,
+      refreshExpiresAt,
       accountType,
       role: roleData,
     });
@@ -184,4 +184,111 @@ const login_user = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export default { login_user };
+const refresh_session = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({ message: "Refresh token is required" });
+      return;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const session = await findActiveDeviceSession(models, refreshToken);
+
+    if (!session) {
+      res.status(401).json({ message: "Invalid or expired session" });
+      return;
+    }
+
+    const account = await getAccountForSession(models, session);
+    if (!account) {
+      await session.update({ isActive: false, revokedAt: new Date() });
+      res.status(401).json({ message: "Account not found" });
+      return;
+    }
+
+    const accountData = account.get({ plain: true });
+    const token = buildAccessToken(accountData, session.accountType);
+    const refreshExpiresAt = await extendDeviceSession(session);
+
+    res.status(200).json({
+      message: "Session refreshed",
+      token,
+      refreshToken,
+      refreshExpiresAt,
+      accountType: session.accountType,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: "An error occurred while refreshing the session",
+      error: error.message,
+    });
+  }
+};
+
+const unlock_session = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken, password } = req.body;
+
+    if (!refreshToken || !password) {
+      res
+        .status(400)
+        .json({ message: "Refresh token and password are required" });
+      return;
+    }
+
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const session = await findActiveDeviceSession(models, refreshToken);
+
+    if (!session) {
+      res.status(401).json({ message: "Invalid or expired session" });
+      return;
+    }
+
+    const account = await getAccountForSession(models, session);
+    if (!account) {
+      await session.update({ isActive: false, revokedAt: new Date() });
+      res.status(401).json({ message: "Account not found" });
+      return;
+    }
+
+    const accountData = account.get({ plain: true });
+    const isPasswordValid = await bcrypt.compare(password, accountData.password);
+
+    if (!isPasswordValid) {
+      res.status(401).json({ message: "Invalid password" });
+      return;
+    }
+
+    await session.update({ lastUsedAt: new Date() });
+
+    res.status(200).json({
+      message: "App unlocked",
+      token: buildAccessToken(accountData, session.accountType),
+      accountType: session.accountType,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: "An error occurred while unlocking the session",
+      error: error.message,
+    });
+  }
+};
+
+const logout_session = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken } = req.body;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    await revokeDeviceSession(models, refreshToken);
+
+    res.status(200).json({ message: "Session logged out" });
+  } catch (error: any) {
+    res.status(500).json({
+      message: "An error occurred during logout",
+      error: error.message,
+    });
+  }
+};
+
+export default { login_user, refresh_session, unlock_session, logout_session };
