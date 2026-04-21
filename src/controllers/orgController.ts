@@ -1083,28 +1083,6 @@ const get_organization_gallery = async (
       order: [["createdAt", "DESC"]],
     });
 
-    const actions = await database_models.Action.findAll({
-      where: {
-        organizationId: orgId,
-        status: "published",
-        visibility: { mode: "public" },
-      },
-      include: [
-        {
-          model: database_models.SubAction,
-          as: "subActions",
-          required: false,
-          where: {
-            isActive: true,
-            coverImage: { [Op.ne]: null },
-          },
-          attributes: ["id", "name", "coverImage", "createdAt"],
-        },
-      ],
-      attributes: ["id", "name", "coverImage", "createdAt"],
-      order: [["createdAt", "DESC"]],
-    });
-
     const items: Array<{
       id: string;
       imageUrl: string;
@@ -1124,39 +1102,6 @@ const get_organization_gallery = async (
         createdAt: toIsoString(galleryItem.createdAt),
       });
     }
-
-    for (const actionRow of actions) {
-      const action: any = isSequelizeInstance(actionRow)
-        ? actionRow.get({ plain: true })
-        : actionRow;
-
-      if (action.coverImage) {
-        items.push({
-          id: action.id,
-          imageUrl: action.coverImage,
-          caption: action.name || "Action",
-          createdAt: toIsoString(action.createdAt),
-        });
-      }
-
-      const subActions = Array.isArray(action.subActions) ? action.subActions : [];
-      for (const subAction of subActions) {
-        if (!subAction.coverImage) {
-          continue;
-        }
-
-        items.push({
-          id: subAction.id,
-          imageUrl: subAction.coverImage,
-          caption: subAction.name || action.name || "Sub-action",
-          createdAt: toIsoString(subAction.createdAt),
-        });
-      }
-    }
-
-    items.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
 
     res.status(200).json({ items });
   } catch (error: any) {
