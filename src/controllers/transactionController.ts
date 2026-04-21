@@ -24,6 +24,8 @@ const {
   Organization,
   Profile,
   PaymentRequest,
+  Action,
+  SubAction,
 } = database_models;
 
 // Helper function to calculate fee
@@ -47,8 +49,10 @@ const transferMoney = async (
     const {
       senderUserId,
       senderOrganizationId,
+      senderSubActionId,
       receiverUserId,
       receiverOrganizationId,
+      receiverWalletId,
       amount,
       description = "",
       categoryId,
@@ -58,15 +62,23 @@ const transferMoney = async (
       paymentRequestId, // ID of the request being fulfilled
     } = req.body;
 
-    // Validation - must have either user or organization for sender and receiver
-    const hasSender = senderUserId || senderOrganizationId;
-    const hasReceiver = receiverUserId || receiverOrganizationId;
+    // Validation - exactly one sender target and one receiver target must be provided
+    const senderTargets = [
+      senderUserId,
+      senderOrganizationId,
+      senderSubActionId,
+    ].filter(Boolean).length;
+    const receiverTargets = [
+      receiverUserId,
+      receiverOrganizationId,
+      receiverWalletId,
+    ].filter(Boolean).length;
 
-    if (!hasSender || !hasReceiver || !amount) {
+    if (senderTargets !== 1 || receiverTargets !== 1 || !amount) {
       res.status(400).json({
         success: false,
         message:
-          "Sender (user or organization), receiver (user or organization), and amount are required",
+          "Exactly one sender (user, organization, or sub-action), one receiver (user, organization, or wallet), and amount are required",
       });
       return;
     }
@@ -95,6 +107,11 @@ const transferMoney = async (
 
     // SECURITY FIX: Authenticated user must be the sender
     const authenticatedUserId = req.user.id;
+    const authUser = (req as unknown as AuthRequest).user;
+    const requesterOrganizationId =
+      authUser?.accountType === "organization"
+        ? authUser.id
+        : authUser?.organizationId || null;
 
     // For user-to-user transfers, authenticated user must be the sender
     if (senderUserId && senderUserId !== authenticatedUserId) {
@@ -105,8 +122,54 @@ const transferMoney = async (
       return;
     }
 
-    // For organization transfers, we need to check if user is authorized for that organization
-    // TODO: Add organization authorization check
+    // For organization transfers, authenticated identity must belong to the sender organization
+    if (senderOrganizationId) {
+      if (!requesterOrganizationId || senderOrganizationId !== requesterOrganizationId) {
+        res.status(403).json({
+          success: false,
+          message: "You are not authorized to send money from this organization",
+        });
+        return;
+      }
+    }
+
+    // For sub-action transfers, authenticated identity must belong to the owning organization
+    if (senderSubActionId) {
+      if (!requesterOrganizationId) {
+        res.status(403).json({
+          success: false,
+          message: "Organization context is required to send from a sub-action wallet",
+        });
+        return;
+      }
+
+      const subActionRecord: any = await SubAction.findByPk(senderSubActionId, {
+        include: [
+          {
+            model: Action,
+            as: "action",
+            attributes: ["id", "organizationId"],
+          },
+        ],
+      });
+
+      if (!subActionRecord) {
+        res.status(404).json({
+          success: false,
+          message: "Sender sub-action not found",
+        });
+        return;
+      }
+
+      const ownerOrganizationId = subActionRecord.action?.organizationId;
+      if (!ownerOrganizationId || ownerOrganizationId !== requesterOrganizationId) {
+        res.status(403).json({
+          success: false,
+          message: "You are not authorized to send money from this sub-action wallet",
+        });
+        return;
+      }
+    }
 
     // PIN check for authenticated user senders (organizations don't require PIN)
     if (senderUserId) {
@@ -241,11 +304,15 @@ const transferMoney = async (
     // Build wallet search conditions for sender and receiver
     const senderWhere = senderUserId
       ? { userId: senderUserId, isActive: true }
-      : { organizationId: senderOrganizationId, isActive: true };
+      : senderOrganizationId
+        ? { organizationId: senderOrganizationId, isActive: true }
+        : { subActionId: senderSubActionId, isActive: true };
 
     const receiverWhere = receiverUserId
       ? { userId: receiverUserId, isActive: true }
-      : { organizationId: receiverOrganizationId, isActive: true };
+      : receiverOrganizationId
+        ? { organizationId: receiverOrganizationId, isActive: true }
+        : { id: receiverWalletId, isActive: true };
 
     // First find the wallets to get their IDs
     const [checkSenderWallet, checkReceiverWallet] = await Promise.all([
@@ -318,6 +385,17 @@ const transferMoney = async (
       return;
     }
 
+    if (senderWallet.id === receiverWallet.id) {
+      await transaction?.rollback();
+      res.status(400).json({
+        success: false,
+        message: "Cannot transfer to the same wallet",
+      });
+      return;
+    }
+
+    const receiverIsUser = !!receiverWallet.userId;
+
     // Check sufficient balance
     if (senderWallet.balance < totalAmount) {
       await transaction?.rollback();
@@ -356,7 +434,7 @@ const transferMoney = async (
     );
 
     // Rule: When sending to an individual user, only unrestricted funds can be used
-    if (receiverUserId) {
+    if (receiverIsUser) {
       if (availableUnrestrictedAmount < transferAmount) {
         await transaction?.rollback();
         res.status(400).json({
@@ -540,7 +618,7 @@ const transferMoney = async (
 
     // Update wallet restrictions for sender based on spending source
     // Do NOT reduce restricted funds when sending to a user (unrestricted-only rule)
-    if (categoryId && !receiverUserId) {
+    if (categoryId && !receiverIsUser) {
       const matchingRestriction = restrictions.find(
         (restriction) => restriction.categoryId === categoryId,
       );
@@ -690,8 +768,11 @@ const transferMoney = async (
         senderBalance: senderWallet.balance,
         senderUserId: senderUserId || null,
         senderOrganizationId: senderOrganizationId || null,
+        senderSubActionId: senderSubActionId || null,
         receiverUserId: receiverUserId || null,
         receiverOrganizationId: receiverOrganizationId || null,
+        receiverWalletId: receiverWalletId || null,
+        resolvedReceiverWalletId: receiverWallet.id,
         description,
         categoryId,
         spendConstraintType,

@@ -377,10 +377,10 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       );
     }
 
-    // 12. Create QR Object if fulfillment requires it
+    // 12. Create QR Object for every purchase
     let qrObject: any = null;
-    if (action.fulfillment.storeOnBuyerQR) {
-      const qrObjectType = action.fulfillment.objectType || "eticket";
+    {
+      const qrObjectType = action.fulfillment?.objectType || "eticket";
       
       // Generate QR code data
       const qrData = {
@@ -423,7 +423,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         { transaction: dbTransaction }
       );
 
-      // Update action purchase with qrObjectId
+      // Update action purchase with qrObjectId (in DB and in-memory)
       await insert_function<ActionPurchaseModelAttributes>(
         "ActionPurchase",
         "update",
@@ -433,6 +433,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           transaction: dbTransaction,
         }
       );
+      (actionPurchase as any).qrObjectId = qrObject.id;
     }
 
     // Commit transaction
