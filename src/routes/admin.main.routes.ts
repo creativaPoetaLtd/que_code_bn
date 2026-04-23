@@ -8,6 +8,7 @@ import adminGroupsRouter from "./admin.groups.routes";
 import adminWalletsRouter from "./admin.wallets.routes";
 import adminNotificationsRouter from "./admin.notifications.routes";
 import adminAnalyticsRouter from "./admin.analytics.routes";
+import adminSupportRouter from "./admin.support.routes";
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use("/groups", adminGroupsRouter);
 router.use("/wallets", adminWalletsRouter);
 router.use("/notifications", adminNotificationsRouter);
 router.use("/analytics", adminAnalyticsRouter);
+router.use("/support", adminSupportRouter);
 
 export default router;

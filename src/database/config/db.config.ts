@@ -64,6 +64,36 @@ export const connectionToDatabase = async () => {
 		await sequelizeConnection.authenticate();
 		console.log("Database authentication successful!");
 
+		// Repair stale wallet->group references before Sequelize applies FK constraints.
+		await sequelizeConnection.query(`
+			DO $$
+			BEGIN
+				IF EXISTS (
+					SELECT 1
+					FROM information_schema.tables
+					WHERE table_schema = 'public' AND table_name = 'Wallets'
+				) AND EXISTS (
+					SELECT 1
+					FROM information_schema.columns
+					WHERE table_schema = 'public' AND table_name = 'Wallets' AND column_name = 'groupId'
+				) AND EXISTS (
+					SELECT 1
+					FROM information_schema.tables
+					WHERE table_schema = 'public' AND table_name = 'Groups'
+				) THEN
+					UPDATE "Wallets" w
+					SET "groupId" = NULL
+					WHERE w."groupId" IS NOT NULL
+						AND NOT EXISTS (
+							SELECT 1
+							FROM "Groups" g
+							WHERE g."id" = w."groupId"
+						);
+				END IF;
+			END
+			$$;
+		`);
+
 		// Sync models with force: true in development to recreate tables
 		const syncOptions = APP_MODE === 'development' 
 			? { force: false, alter: false } 

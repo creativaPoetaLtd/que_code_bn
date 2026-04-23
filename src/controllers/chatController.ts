@@ -24,7 +24,7 @@ export const getUserChats = async (
         {
           model: models.Chat,
           as: "chat",
-          attributes: ['id', 'isGroup', 'groupId', 'createdAt', 'updatedAt'], // Explicitly include groupId
+          attributes: ['id', 'isGroup', 'groupId', 'type', 'createdAt', 'updatedAt'], // Explicitly include groupId + chat type
           include: [
             {
               model: models.ChatParticipant,
@@ -67,8 +67,19 @@ export const getUserChats = async (
       ]
     });
 
+    // Deduplicate by chatId — a user may have multiple ChatParticipant rows for
+    // the same chat (e.g. they joined both as a regular user and as admin in a
+    // support chat). Keep only the first occurrence per chatId.
+    const seenChatIds = new Set<string>();
+    const uniqueChats = chats.filter((cp) => {
+      const chatId = (cp.get("chat") as any)?.id;
+      if (!chatId || seenChatIds.has(chatId)) return false;
+      seenChatIds.add(chatId);
+      return true;
+    });
+
     // Sort chats by latest message timestamp
-    const sortedChats = chats.sort((a, b) => {
+    const sortedChats = uniqueChats.sort((a, b) => {
       const aChat = a.get("chat") as any;
       const bChat = b.get("chat") as any;
 
@@ -82,9 +93,23 @@ export const getUserChats = async (
       return new Date(bLatestMessage.createdAt).getTime() - new Date(aLatestMessage.createdAt).getTime();
     });
 
+    // If the DB contains multiple support Chat rows for this user (legacy duplicates
+    // created before idempotency was enforced), keep only the most active one.
+    // Since the array is already sorted by latest message DESC, the first support
+    // chat encountered is the most active — drop any subsequent ones.
+    let supportChatSeen = false;
+    const finalChats = sortedChats.filter((cp) => {
+      const chat = (cp.get("chat") as any);
+      if (chat?.type === "support") {
+        if (supportChatSeen) return false;
+        supportChatSeen = true;
+      }
+      return true;
+    });
+
     // Calculate unread counts for all chats in parallel
     const unreadCounts = await Promise.all(
-      sortedChats.map(async (chatParticipant) => {
+      finalChats.map(async (chatParticipant) => {
         const chat = chatParticipant.get("chat") as any;
         const lastReadAt = (chatParticipant as any).lastReadAt;
 
@@ -108,7 +133,7 @@ export const getUserChats = async (
     }, {} as Record<string, number>);
 
     // Format the response
-    const formattedChats = sortedChats.map(chatParticipant => {
+    const formattedChats = finalChats.map(chatParticipant => {
       const chatData = chatParticipant.get("chat") as any;
       // Use plain() or toJSON() to get actual data values from Sequelize model
       const chat = chatData.dataValues || chatData;
@@ -149,6 +174,7 @@ export const getUserChats = async (
         id: chat.id,
         name: chatName,
         isGroup: chat.isGroup,
+        type: chat.type,
         groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {

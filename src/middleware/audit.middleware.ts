@@ -18,23 +18,51 @@ const SENSITIVE_FIELDS = [
 // Endpoints to skip logging (health checks, etc.)
 const SKIP_ENDPOINTS = ["/health", "/api-docs", "/favicon.ico"];
 
-// Filter sensitive data from objects
-const filterSensitiveData = (obj: any): any => {
-  if (!obj || typeof obj !== "object") return obj;
+// Filter sensitive data from objects (cycle-safe)
+const filterSensitiveData = (
+  obj: any,
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== "object") return obj;
+
+  // Guard against very deep payloads from third-party libs or cyclic refs.
+  if (depth > 8) return "[MAX_DEPTH_REACHED]";
+
+  if (obj instanceof Date) return obj.toISOString();
+  if (obj instanceof Error) {
+    return {
+      name: obj.name,
+      message: obj.message,
+    };
+  }
+
+  if (seen.has(obj)) {
+    return "[CIRCULAR]";
+  }
+  seen.add(obj);
 
   if (Array.isArray(obj)) {
-    return obj.map((item) => filterSensitiveData(item));
+    return obj.map((item) => filterSensitiveData(item, seen, depth + 1));
   }
 
   const filtered: any = {};
   for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+
+    const value = obj[key];
     if (SENSITIVE_FIELDS.includes(key.toLowerCase())) {
       filtered[key] = "[REDACTED]";
-    } else if (typeof obj[key] === "object") {
-      filtered[key] = filterSensitiveData(obj[key]);
-    } else {
-      filtered[key] = obj[key];
+      continue;
     }
+
+    if (typeof value === "function") {
+      filtered[key] = "[FUNCTION]";
+      continue;
+    }
+
+    filtered[key] = filterSensitiveData(value, seen, depth + 1);
   }
   return filtered;
 };

@@ -153,6 +153,7 @@ export interface ChatAttributes {
   id: string;
   isGroup: boolean;
   groupId?: string;
+  type?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
