@@ -246,10 +246,33 @@ export const getChatMessages = async (
       ]
     });
 
-    const formattedMessages = result.rows.reverse().map((message: any) => ({
+    const messagesInOrder = result.rows.reverse();
+    const replyTargetIds = [...new Set(
+      messagesInOrder
+        .map((message: any) => message.replyToMessageId)
+        .filter((id: string | undefined): id is string => !!id)
+    )];
+
+    const replyTargets = replyTargetIds.length > 0
+      ? await models.ChatMessage.findAll({
+          where: { id: { [Op.in]: replyTargetIds } },
+          include: [{
+            model: models.User,
+            as: "sender",
+            attributes: ["id", "firstName", "lastName"]
+          }]
+        })
+      : [];
+
+    const replyTargetMap = new Map(
+      replyTargets.map((msg: any) => [msg.id, msg])
+    );
+
+    const formattedMessages = messagesInOrder.map((message: any) => ({
       id: message.id,
       content: message.content, // Already decrypted by service
       messageType: message.messageType,
+      replyToMessageId: message.replyToMessageId,
       status: message.status,
       deliveredAt: message.deliveredAt,
       readAt: message.readAt,
@@ -262,6 +285,22 @@ export const getChatMessages = async (
       fileName: message.fileName,
       mimeType: message.mimeType,
       duration: message.duration,
+      mentions: message.mentions,
+      replyTo: message.replyToMessageId
+        ? (() => {
+            const target = replyTargetMap.get(message.replyToMessageId);
+            if (!target) return null;
+            const senderName = target.sender
+              ? `${target.sender.firstName || ""} ${target.sender.lastName || ""}`.trim() || "Unknown"
+              : "Unknown";
+            return {
+              id: target.id,
+              content: target.content,
+              messageType: target.messageType,
+              senderName,
+            };
+          })()
+        : null,
       sender: {
         id: message.senderId,
         name: message.sender ?
@@ -464,7 +503,7 @@ export const sendMessage = async (
   try {
     const userId = req.user.id;
     const { chatId } = req.params;
-    const { content, messageType = "text", transactionId } = req.body;
+    const { content, messageType = "text", transactionId, replyToMessageId } = req.body;
     const models = req.app.get("models") as ReturnType<typeof Models>;
     const chatService = ChatService.getInstance();
 
@@ -492,7 +531,8 @@ export const sendMessage = async (
       messageType,
       models,
       io,
-      req.app // Pass Express app for notifications
+      req.app, // Pass Express app for notifications
+      replyToMessageId
     );
 
     // Send push notifications to other participants
@@ -522,6 +562,7 @@ export const sendMessage = async (
         chatId,
         content, // Return original content for sender
         messageType,
+        replyToMessageId: message.replyToMessageId,
         status: message.status,
         createdAt: message.createdAt,
         sender: message.get("sender")

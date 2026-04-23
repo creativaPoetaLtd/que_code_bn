@@ -25,6 +25,7 @@ router.put("/:groupId",
 router.delete("/:groupId", groupController.deleteGroup as RequestHandler);
 
 //Member management endpoints
+router.get("/:groupId/members/search", groupController.searchGroupMembers as RequestHandler);
 router.get("/:groupId/members", groupController.getGroupMembers as RequestHandler);
 router.post("/invite", validateGroupInvitation as RequestHandler[], groupController.inviteToGroup as RequestHandler);
 router.post("/respond/:membershipId", validateGroupResponse as RequestHandler[], groupController.respondToGroupInvitation as RequestHandler);

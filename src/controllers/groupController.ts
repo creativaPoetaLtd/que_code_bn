@@ -1677,6 +1677,90 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
     }
 };
 
+/**
+ * GET /api/v1/groups/:groupId/members/search?q=<query>&limit=10
+ *
+ * Fuzzy-search active group members by name or username.
+ * Used by the @mention autocomplete on the frontend.
+ * Requesting user must be an active member of the group.
+ */
+const searchGroupMembers = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { groupId } = req.params;
+        const q           = String(req.query.q || "").trim().toLowerCase();
+        const limit       = Math.min(parseInt(String(req.query.limit || "10"), 10) || 10, 20);
+        const userId      = req.user.id;
+
+        const models = req.app.get("models") as ReturnType<typeof Models>;
+
+        // Verify requesting user is an active member
+        const requesterMembership = await models.GroupMember.findOne({
+            where: { groupId, userId, status: "active" },
+        });
+        if (!requesterMembership) {
+            res.status(403).json({ message: "You are not a member of this group" });
+            return;
+        }
+
+        // Fetch all active members (exclude self), then filter in JS for portability
+        // (JSONB-agnostic — works across Postgres versions)
+        const members = await models.GroupMember.findAll({
+            where: {
+                groupId,
+                status: "active",
+                userId: { [Op.ne]: userId },
+            },
+            include: [
+                {
+                    model: models.User,
+                    as:         "user",
+                    attributes: ["id", "firstName", "lastName", "email"],
+                    include: [
+                        {
+                            model:      models.Profile,
+                            as:         "profile",
+                            attributes: ["profileImage"],
+                            required:   false,
+                        },
+                    ],
+                },
+            ],
+            limit: 100, // Fetch more, filter in-memory for partial-match quality
+        });
+
+        const results = members
+            .map((m: any) => {
+                const user     = m.user;
+                const profile  = user?.profile;
+                const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
+                const emailHandle = String(user?.email || "")
+                    .split("@")[0]
+                    .toLowerCase()
+                    .replace(/[^a-z0-9._]/g, "");
+                const mentionLabel = fullName || emailHandle || `user.${String(user?.id || "").slice(0, 8)}`;
+                return {
+                    userId:   user?.id,
+                    username: mentionLabel,
+                    name:     fullName || mentionLabel,
+                    avatar:   profile?.profileImage || null,
+                };
+            })
+            .filter((u: any) => {
+                if (!u.userId) return false;
+                if (!q) return true;
+                return (
+                    u.name.toLowerCase().includes(q) ||
+                    u.username.toLowerCase().includes(q)
+                );
+            })
+            .slice(0, limit);
+
+        res.status(200).json({ data: results });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export {
     createGroup,
     inviteToGroup,
@@ -1691,5 +1775,6 @@ export {
     deleteGroup,
     requestToJoinGroup,
     getJoinRequests,
-    respondToJoinRequest
+    respondToJoinRequest,
+    searchGroupMembers,
 };
