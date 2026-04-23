@@ -109,6 +109,37 @@ router.get(
   transactionController.getAllTransactions as express.RequestHandler
 );
 
+// Payment requests
+router.post(
+  "/request",
+  transactionController.createPaymentRequest as express.RequestHandler
+);
+
+router.get(
+  "/requests",
+  transactionController.getUserPaymentRequests as express.RequestHandler
+);
+
+router.get(
+  "/request/:id",
+  transactionController.getPaymentRequestById as express.RequestHandler
+);
+
+router.get(
+  "/request/:id/qr",
+  transactionController.getPaymentRequestQR as express.RequestHandler
+);
+
+router.patch(
+  "/request/:id/accept",
+  transactionController.acceptPaymentRequest as express.RequestHandler
+);
+
+router.patch(
+  "/request/:id/decline",
+  transactionController.declinePaymentRequest as express.RequestHandler
+);
+
 // Get single transaction by ID with role-based access control (must be last)
 router.get(
   "/:id",

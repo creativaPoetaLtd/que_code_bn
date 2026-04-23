@@ -8,7 +8,10 @@ import {
   notifyPaymentSent,
   notifyPaymentFailed,
   notifyTransactionCompleted,
-  notifyLargeTransaction
+  notifyLargeTransaction,
+  notifyPaymentRequestReceived,
+  notifyPaymentRequestDeclined,
+  notifyPaymentRequestAccepted,
 } from '../utils/notificationHelpers';
 import { AuthRequest } from '../middleware/auth.unified.middleware';
 
@@ -20,6 +23,7 @@ const {
   User,
   Organization,
   Profile,
+  PaymentRequest,
 } = database_models;
 
 // Helper function to calculate fee
@@ -51,6 +55,7 @@ const transferMoney = async (
       type = "transfer",
       applyConstraints = false, // New parameter to control constraint application
       pin, // PIN for verification
+      paymentRequestId, // ID of the request being fulfilled
     } = req.body;
 
     // Validation - must have either user or organization for sender and receiver
@@ -565,7 +570,23 @@ const transferMoney = async (
 
     // Commit the transaction
     await transaction?.commit();
-
+    
+    // Update payment request if fulfilling one
+    if (paymentRequestId) {
+      try {
+        const paymentRequest = await PaymentRequest.findByPk(paymentRequestId as string);
+        if (paymentRequest && paymentRequest.recipientId === authenticatedUserId) {
+          await paymentRequest.update({
+            status: 'paid',
+            transactionId: newTransaction.id
+          });
+          console.log(`Payment request ${paymentRequestId} marked as paid`);
+        }
+      } catch (err) {
+        console.error("Error updating payment request status:", err);
+      }
+    }
+    
     // Send notifications to both sender and receiver
     try {
       // Get sender and receiver names for notification
@@ -707,7 +728,7 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const wallet = await Wallet.findByPk(String(walletId));
+    const wallet = await Wallet.findByPk(walletId as string);
 
     if (!wallet) {
       res.status(404).json({
@@ -916,9 +937,9 @@ const getTransactionDetails = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { transactionId } = req.params;
+    const { id } = req.params;
 
-    const transaction = await TransactionModel.findByPk(String(transactionId), {
+    const transaction = await TransactionModel.findByPk(id as string, {
       include: [
         {
           model: Category,
@@ -1170,7 +1191,7 @@ const getWalletBalanceBreakdown = async (
       return;
     }
 
-    const wallet = await Wallet.findByPk(String(walletId));
+    const wallet = await Wallet.findByPk(walletId as string);
     if (!wallet) {
       res.status(404).json({
         success: false,
@@ -1726,7 +1747,7 @@ const getTransactionById = async (
     const { id } = req.params;
 
     const models = req.app.get("models") as typeof database_models;
-    const transaction = await models.Transaction.findByPk(String(id), {
+    const transaction = await models.Transaction.findByPk(id as string, {
       include: [
         {
           model: models.Wallet,
@@ -2401,7 +2422,7 @@ export const updateRestriction: RequestHandler = async (req, res) => {
 
     const models = req.app.get("models") as typeof database_models;
 
-    const restriction = await models.WalletRestriction.findByPk(String(id));
+    const restriction = await models.WalletRestriction.findByPk(id as string);
     if (!restriction) {
       res.status(404).json({
         success: false,
@@ -2414,7 +2435,7 @@ export const updateRestriction: RequestHandler = async (req, res) => {
     await restriction.update({ amount: restrictionAmount });
 
     // Fetch with associations for response
-    const updatedRestriction = await models.WalletRestriction.findByPk(String(id), {
+    const updatedRestriction = await models.WalletRestriction.findByPk(id as string, {
       include: [
         {
           model: models.Category,
@@ -2473,7 +2494,7 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
 
     const models = req.app.get("models") as typeof database_models;
 
-    const restriction = await models.WalletRestriction.findByPk(String(id));
+    const restriction = await models.WalletRestriction.findByPk(id as string);
     if (!restriction) {
       res.status(404).json({
         success: false,
@@ -2515,12 +2536,652 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
       success: false,
       message: "Internal server error",
     });
+    return;
+  }
+};
+
+// Create a payment request
+const createPaymentRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const {
+      recipientId,
+      amount,
+      note,
+      allowEditAmount = false,
+      currency = "RWF"
+    } = req.body;
+
+    const senderId = req.user.id;
+
+    if (!recipientId || !amount) {
+      res.status(400).json({
+        success: false,
+        message: "Recipient and amount are required",
+      });
+      return;
+    }
+
+    if (amount <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Amount must be greater than 0",
+      });
+      return;
+    }
+
+    if (recipientId === senderId) {
+      res.status(400).json({
+        success: false,
+        message: "You cannot request money from yourself",
+      });
+      return;
+    }
+
+    // Verify recipient exists
+    const recipient = await User.findByPk(recipientId);
+    if (!recipient) {
+      res.status(404).json({
+        success: false,
+        message: "Recipient not found",
+      });
+      return;
+    }
+
+    // Check for duplicate requests in the last minute
+    const oneMinuteAgo = new Date(Date.now() - 60000);
+    const recentRequest = await PaymentRequest.findOne({
+      where: {
+        senderId,
+        recipientId,
+        amount: parseFloat(amount),
+        createdAt: { [Op.gte]: oneMinuteAgo },
+        status: "pending"
+      }
+    });
+
+    if (recentRequest) {
+      res.status(400).json({
+        success: false,
+        message: "A similar request was recently sent. Please wait.",
+      });
+      return;
+    }
+
+    // Create the request
+    const paymentRequest = await PaymentRequest.create({
+      senderId,
+      recipientId,
+      amount: parseFloat(amount),
+      currency,
+      note,
+      allowEditAmount,
+      status: "pending"
+    });
+
+    // Notify the recipient
+    const sender = await User.findByPk(senderId);
+    const senderName = sender ? `${sender.firstName} ${sender.lastName}` : "Someone";
+
+    await notifyPaymentRequestReceived(
+      req.app,
+      recipientId,
+      paymentRequest.id,
+      paymentRequest.amount,
+      paymentRequest.currency,
+      senderName,
+      note
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Payment request sent successfully",
+      data: paymentRequest
+    });
+  } catch (error) {
+    console.error("Create payment request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get payment requests for the authenticated user
+const getUserPaymentRequests = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { type = "received" } = req.query; // 'sent' or 'received'
+
+    const where: any = type === "sent" 
+      ? { senderId: userId } 
+      : { recipientId: userId };
+
+    const requests = await PaymentRequest.findAll({
+      where,
+      include: [
+        { model: User, as: "sender", attributes: ["id", "firstName", "lastName", "email"] },
+        { model: User, as: "recipient", attributes: ["id", "firstName", "lastName", "email"] }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: requests
+    });
+  } catch (error) {
+    console.error("Get payment requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get a single payment request by ID
+const getPaymentRequestById = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const request = await PaymentRequest.findByPk(id as string, {
+      include: [
+        { 
+          model: User, 
+          as: "sender", 
+          attributes: ["id", "firstName", "lastName", "email"],
+          include: [{ model: Profile, as: "profile", attributes: ["profileImage"] }] 
+        },
+        { 
+          model: User, 
+          as: "recipient", 
+          attributes: ["id", "firstName", "lastName", "email"],
+          include: [{ model: Profile, as: "profile", attributes: ["profileImage"] }]
+        }
+      ]
+    });
+
+    if (!request) {
+      res.status(404).json({
+        success: false,
+        message: "Payment request not found"
+      });
+      return;
+    }
+
+    // Verify user is either sender or recipient
+    if (request.senderId !== userId && request.recipientId !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to view this request"
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: request
+    });
+  } catch (error) {
+    console.error("Get payment request by ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
+// Accept a received payment request and process the payment
+const acceptPaymentRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  const dbTransaction = await TransactionModel.sequelize!.transaction();
+
+  try {
+    const { id } = req.params;
+    const { pin, chatId, customAmount } = req.body;
+    const userId = req.user.id; // The payer (recipient of the request)
+
+    if (!pin) {
+      await dbTransaction.rollback();
+      res.status(400).json({ success: false, message: "PIN is required" });
+      return;
+    }
+
+    if (!/^\d{4}$/.test(pin)) {
+      await dbTransaction.rollback();
+      res.status(400).json({ success: false, message: "PIN must be exactly 4 digits" });
+      return;
+    }
+
+    const request = await PaymentRequest.findByPk(id as string);
+    if (!request) {
+      await dbTransaction.rollback();
+      res.status(404).json({ success: false, message: "Payment request not found" });
+      return;
+    }
+
+    if (request.recipientId !== userId) {
+      await dbTransaction.rollback();
+      res.status(403).json({ success: false, message: "Only the recipient can accept this request" });
+      return;
+    }
+
+    if (request.status !== "pending") {
+      await dbTransaction.rollback();
+      res.status(400).json({ success: false, message: "Only pending requests can be accepted" });
+      return;
+    }
+
+    // Verify payer's PIN
+    const payer = await User.findByPk(userId, { transaction: dbTransaction });
+    if (!payer) {
+      await dbTransaction.rollback();
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+
+    if (!payer.hasPinSet || !payer.transactionPin) {
+      await dbTransaction.rollback();
+      res.status(403).json({
+        success: false,
+        message: "PIN not set up. Please set up your transaction PIN before making payments.",
+        requiresPinSetup: true,
+      });
+      return;
+    }
+
+    if (payer.pinLockedUntil && payer.pinLockedUntil > new Date()) {
+      const remainingTime = Math.ceil((payer.pinLockedUntil.getTime() - Date.now()) / 60000);
+      await dbTransaction.rollback();
+      res.status(429).json({
+        success: false,
+        message: `PIN is temporarily locked. Try again in ${remainingTime} minutes.`,
+        lockedUntil: payer.pinLockedUntil,
+        remainingMinutes: remainingTime,
+      });
+      return;
+    }
+
+    const isValidPin = await bcrypt.compare(pin, payer.transactionPin);
+    if (!isValidPin) {
+      const newAttempts = (payer.pinAttempts || 0) + 1;
+      const maxAttempts = 5;
+      const lockoutMinutes = 15;
+
+      if (newAttempts >= maxAttempts) {
+        const lockedUntil = new Date(Date.now() + lockoutMinutes * 60000);
+        await payer.update({ pinAttempts: newAttempts, pinLockedUntil: lockedUntil }, { transaction: dbTransaction });
+        await dbTransaction.rollback();
+        res.status(429).json({
+          success: false,
+          message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
+          attemptsRemaining: 0,
+          lockedUntil,
+          remainingMinutes: lockoutMinutes,
+        });
+        return;
+      }
+
+      await payer.update({ pinAttempts: newAttempts }, { transaction: dbTransaction });
+      await dbTransaction.rollback();
+      res.status(400).json({
+        success: false,
+        message: `Invalid PIN. ${maxAttempts - newAttempts} attempts remaining.`,
+        attemptsRemaining: maxAttempts - newAttempts,
+      });
+      return;
+    }
+
+    // Reset PIN attempts on success
+    await payer.update({ pinAttempts: 0, pinLockedUntil: null }, { transaction: dbTransaction });
+
+    // Use customAmount if the request allows it, otherwise use the original amount
+    let amount = Number(request.amount);
+    if (request.allowEditAmount && customAmount && Number(customAmount) > 0) {
+      amount = Number(customAmount);
+    }
+    const fee = 0;
+    const totalAmount = amount + fee;
+
+    // Lock and fetch payer wallet (debit)
+    const payerWallet = await Wallet.findOne({
+      where: { userId, isActive: true },
+      lock: dbTransaction.LOCK.UPDATE,
+      transaction: dbTransaction,
+    });
+
+    if (!payerWallet) {
+      await dbTransaction.rollback();
+      res.status(404).json({ success: false, message: "Your wallet not found or inactive" });
+      return;
+    }
+
+    if (Number(payerWallet.balance) < totalAmount) {
+      await dbTransaction.rollback();
+      res.status(400).json({
+        success: false,
+        message: `Insufficient balance. You have ${payerWallet.balance} RWF but need ${totalAmount} RWF`,
+      });
+      return;
+    }
+
+    // Lock and fetch requester wallet (credit)
+    const requesterWallet = await Wallet.findOne({
+      where: { userId: request.senderId, isActive: true },
+      lock: dbTransaction.LOCK.UPDATE,
+      transaction: dbTransaction,
+    });
+
+    if (!requesterWallet) {
+      await dbTransaction.rollback();
+      res.status(404).json({ success: false, message: "Requester wallet not found or inactive" });
+      return;
+    }
+
+    // Create transaction record
+    const referenceId = `REQ-${(id as string).substring(0, 8)}-${Date.now()}`;
+    const transactionRecord = await TransactionModel.create({
+      senderWalletId: payerWallet.id,
+      receiverWalletId: requesterWallet.id,
+      amount,
+      fee,
+      totalAmount,
+      currency: request.currency || "RWF",
+      referenceId,
+      type: "payment",
+      description: request.note || "Payment for money request",
+      status: "completed",
+    } as any, { transaction: dbTransaction });
+
+    // Update wallet balances
+    await payerWallet.update({
+      balance: Number(payerWallet.balance) - totalAmount,
+    }, { transaction: dbTransaction });
+
+    await requesterWallet.update({
+      balance: Number(requesterWallet.balance) + amount,
+    }, { transaction: dbTransaction });
+
+    // Mark request as paid
+    await request.update({ status: "paid", transactionId: transactionRecord.id }, { transaction: dbTransaction });
+
+    await dbTransaction.commit();
+
+    // Update the ChatMessage content in DB so fresh loads reflect the paid status
+    if (chatId) {
+      try {
+        const chatMessages = await (database_models.ChatMessage as any).findAll({
+          where: { chatId, messageType: "money" },
+        });
+        for (const chatMsg of chatMessages) {
+          try {
+            const parsed = JSON.parse(chatMsg.content);
+            if (parsed?.type === "money_request" && parsed?.requestId === (id as string)) {
+              await chatMsg.update({
+                content: JSON.stringify({ ...parsed, status: "paid", amount }),
+              });
+              break;
+            }
+          } catch {
+            // skip non-JSON messages
+          }
+        }
+      } catch {
+        // Non-critical: don't fail the whole request if DB update fails
+      }
+    }
+
+    // Fetch names for notifications/events
+    const requester = await User.findByPk(request.senderId);
+    const payerName = `${payer.firstName} ${payer.lastName}`;
+    const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : "Requester";
+
+    // Send in-app notification to the requester
+    await notifyPaymentRequestAccepted(
+      req.app,
+      request.senderId,
+      request.id,
+      amount,
+      request.currency || "RWF",
+      payerName,
+    );
+
+    // Emit real-time socket events so both parties' message cards update instantly
+    const io = req.app.get("io");
+    if (io) {
+      const eventData = {
+        requestId: request.id,
+        status: "paid",
+        transactionId: transactionRecord.id,
+        referenceId,
+        amount,
+        currency: request.currency || "RWF",
+        chatId: chatId || null,
+        payerName,
+        requesterName,
+      };
+
+      io.to(`user:${userId}`).emit("payment_request_updated", eventData);
+      io.to(`user:${request.senderId}`).emit("payment_request_updated", eventData);
+
+      // Also emit money_received so the requester gets a push notification
+      io.to(`user:${request.senderId}`).emit("money_received", {
+        amount,
+        currency: request.currency || "RWF",
+        from: payerName,
+        transactionId: transactionRecord.id,
+        referenceId,
+        chatId: chatId || null,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Payment request accepted and paid successfully",
+      data: {
+        requestId: request.id,
+        transactionId: transactionRecord.id,
+        referenceId,
+        amount,
+        currency: request.currency || "RWF",
+      },
+    });
+  } catch (error) {
+    await dbTransaction.rollback();
+    console.error("Accept payment request error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// Decline a received payment request
+const declinePaymentRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { chatId } = req.body;
+    const userId = req.user.id;
+
+    const request = await PaymentRequest.findByPk(id as string);
+    if (!request) {
+      res.status(404).json({
+        success: false,
+        message: "Payment request not found",
+      });
+      return;
+    }
+
+    if (request.recipientId !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "Only the recipient can decline this request",
+      });
+      return;
+    }
+
+    if (request.status !== "pending") {
+      res.status(400).json({
+        success: false,
+        message: "Only pending requests can be declined",
+      });
+      return;
+    }
+
+    await request.update({ status: "cancelled" });
+
+    // Update the ChatMessage content in DB so fresh loads reflect the cancelled status
+    if (chatId) {
+      try {
+        const chatMessages = await (database_models.ChatMessage as any).findAll({
+          where: { chatId, messageType: "money" },
+        });
+        for (const chatMsg of chatMessages) {
+          try {
+            const parsed = JSON.parse(chatMsg.content);
+            if (parsed?.type === "money_request" && parsed?.requestId === (id as string)) {
+              await chatMsg.update({
+                content: JSON.stringify({ ...parsed, status: "cancelled" }),
+              });
+              break;
+            }
+          } catch {
+            // skip
+          }
+        }
+      } catch {
+        // Non-critical
+      }
+    }
+
+    // Notify sender that recipient declined
+    const recipient = await User.findByPk(userId);
+    const recipientName = recipient
+      ? `${recipient.firstName} ${recipient.lastName}`
+      : "Recipient";
+
+    await notifyPaymentRequestDeclined(
+      req.app,
+      request.senderId,
+      request.id,
+      Number(request.amount),
+      request.currency,
+      recipientName,
+    );
+
+    // Emit real-time socket event so both parties' cards update instantly
+    const io = req.app.get("io");
+    if (io) {
+      const eventData = {
+        requestId: request.id,
+        status: "cancelled",
+        chatId: chatId || null,
+        recipientName,
+      };
+      io.to(`user:${userId}`).emit("payment_request_updated", eventData);
+      io.to(`user:${request.senderId}`).emit("payment_request_updated", eventData);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Payment request declined successfully",
+      data: request,
+    });
+  } catch (error) {
+    console.error("Decline payment request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Generate a QR code image for a payment request
+const getPaymentRequestQR = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const request = await PaymentRequest.findByPk(id as string, {
+      include: [
+        {
+          model: User,
+          as: "sender",
+          attributes: ["id", "firstName", "lastName"],
+        },
+      ],
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, message: "Payment request not found" });
+      return;
+    }
+
+    if (request.senderId !== userId) {
+      res.status(403).json({ success: false, message: "Only the requester can generate a QR code" });
+      return;
+    }
+
+    if (request.status !== "pending") {
+      res.status(400).json({ success: false, message: "QR code can only be generated for pending requests" });
+      return;
+    }
+
+    const QRCode = await import("qrcode");
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
+    const deepLink = `${frontendUrl}/home/transfer/amount?requestId=${id}`;
+
+    const qrDataUrl = await QRCode.default.toDataURL(deepLink, {
+      width: 300,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+    });
+
+    const sender = (request as any).sender;
+    res.status(200).json({
+      success: true,
+      data: {
+        qrCode: qrDataUrl,
+        deepLink,
+        requestId: id,
+        amount: request.amount,
+        currency: request.currency,
+        note: request.note,
+        allowEditAmount: request.allowEditAmount,
+        senderName: sender ? `${sender.firstName} ${sender.lastName}`.trim() : "Unknown",
+      },
+    });
+  } catch (error) {
+    console.error("Get payment request QR error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
 export default {
   transferMoney,
   getWalletBalance,
+  getTransactionHistory,
+  getTransactionDetails,
+  createPaymentRequest,
+  getUserPaymentRequests,
+  getPaymentRequestById,
+  getPaymentRequestQR,
+  acceptPaymentRequest,
+  declinePaymentRequest,
   getAllWallets,
   getAllRestrictions,
   createRestriction,
@@ -2528,8 +3189,6 @@ export default {
   deleteRestriction,
   getUserWallet,
   getOrganizationWallet,
-  getTransactionHistory,
-  getTransactionDetails,
   getTransactionCategories,
   getWalletRestrictions,
   getWalletBalanceBreakdown,

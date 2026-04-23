@@ -738,7 +738,8 @@ export interface AuditLogModelAttributes {
   updatedAt?: Date;
 }
 
-export type AuditLogCreationAttributes = Optional<
+
+export interface AuditLogCreationAttributes extends Optional<
   AuditLogModelAttributes,
   | "id"
   | "createdAt"
@@ -751,4 +752,23 @@ export type AuditLogCreationAttributes = Optional<
   | "responseBody"
   | "metadata"
   | "duration"
+> {}
+
+export interface PaymentRequestAttributes {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  amount: number;
+  currency: string;
+  note: string | null;
+  status: "pending" | "paid" | "cancelled" | "expired";
+  allowEditAmount: boolean;
+  transactionId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PaymentRequestCreationAttributes = Optional<
+  PaymentRequestAttributes,
+  "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "createdAt" | "updatedAt"
 >;

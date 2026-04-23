@@ -53,6 +53,9 @@ export enum NotificationType {
   TRANSACTION_REFUNDED = "TRANSACTION_REFUNDED",
   TRANSACTION_DISPUTED = "TRANSACTION_DISPUTED",
   LARGE_TRANSACTION_ALERT = "LARGE_TRANSACTION_ALERT",
+  PAYMENT_REQUEST_RECEIVED = "PAYMENT_REQUEST_RECEIVED",
+  PAYMENT_REQUEST_DECLINED = "PAYMENT_REQUEST_DECLINED",
+  PAYMENT_REQUEST_ACCEPTED = "PAYMENT_REQUEST_ACCEPTED",
   
   // Wallet-related notifications
   WALLET_CREATED = "WALLET_CREATED",
@@ -389,6 +392,18 @@ const notificationConfig = {
   },
   [NotificationType.LARGE_TRANSACTION_ALERT]: {
     description: "Large transaction detected",
+    priority: "high",
+  },
+  [NotificationType.PAYMENT_REQUEST_RECEIVED]: {
+    description: "You have received a payment request",
+    priority: "high",
+  },
+  [NotificationType.PAYMENT_REQUEST_DECLINED]: {
+    description: "Your payment request was declined",
+    priority: "normal",
+  },
+  [NotificationType.PAYMENT_REQUEST_ACCEPTED]: {
+    description: "Your payment request was accepted",
     priority: "high",
   },
   

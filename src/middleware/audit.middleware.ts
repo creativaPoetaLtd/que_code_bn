@@ -26,8 +26,6 @@ const filterSensitiveData = (
 ): any => {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj !== "object") return obj;
-
-  // Guard against very deep payloads from third-party libs or cyclic refs.
   if (depth > 8) return "[MAX_DEPTH_REACHED]";
 
   if (obj instanceof Date) return obj.toISOString();
@@ -37,11 +35,21 @@ const filterSensitiveData = (
       message: obj.message,
     };
   }
+  if (Buffer.isBuffer(obj)) return `[Buffer:${obj.length}]`;
 
   if (seen.has(obj)) {
     return "[CIRCULAR]";
   }
   seen.add(obj);
+
+  if (typeof (obj as any).toJSON === "function") {
+    try {
+      const jsonObj = (obj as any).toJSON();
+      if (jsonObj && jsonObj !== obj) {
+        return filterSensitiveData(jsonObj, seen, depth + 1);
+      }
+    } catch (_error) {}
+  }
 
   if (Array.isArray(obj)) {
     return obj.map((item) => filterSensitiveData(item, seen, depth + 1));
@@ -64,6 +72,7 @@ const filterSensitiveData = (
 
     filtered[key] = filterSensitiveData(value, seen, depth + 1);
   }
+
   return filtered;
 };
 
