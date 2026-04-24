@@ -341,7 +341,6 @@ export const getAdminSupportUnreadCount: RequestHandler = async (req, res, next)
     const adminId = (req as any as AuthenticatedRequest).user.id;
     const models = req.app.get("models") as ReturnType<typeof Models>;
 
-    // Use the same canonical-chat filter as getAllSupportChats:
     // one chat per regular user (earliest created), so the badge count matches
     // exactly what is shown in the admin support list.
     const rows: any[] = await models.sequelize.query(
