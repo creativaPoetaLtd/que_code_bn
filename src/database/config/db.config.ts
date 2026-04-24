@@ -6,8 +6,8 @@ import path from "path";
 config({ path: path.resolve(process.cwd(), '.env') });
 
 let db_uri: string = "";
-const APP_MODE: string = process.env.DEV_MODE || "development";
-const DB_HOST_MODE: string = process.env.DB_HOSTED_MODE || "local";
+const APP_MODE: string = (process.env.DEV_MODE || "development").trim();
+const DB_HOST_MODE: string = (process.env.DB_HOSTED_MODE || "local").trim();
 
 
 switch (APP_MODE) {

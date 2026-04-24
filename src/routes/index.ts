@@ -21,6 +21,7 @@ import auditLogRouter from "./auditLog.routes";
 import fcmRouter from "./fcm.routes";
 import pushSubscriptionRouter from "./pushSubscription.routes";
 import supportRouter from "./support.routes";
+import linkPreviewRouter from "./link-preview.routes";
 
 // Admin routes (unified authentication with role/permission middleware)
 import adminAuthRouter from "./admin.auth.routes";
@@ -55,6 +56,7 @@ router.use("/chats", chatRouter);
 router.use("/support", supportRouter);
 router.use("/fcm", fcmRouter);
 router.use("/push-subscriptions", pushSubscriptionRouter);
+router.use("/link-preview", linkPreviewRouter);
 router.use("", actionRouter);
 
 // Role and Permission management (admin-only with middleware)

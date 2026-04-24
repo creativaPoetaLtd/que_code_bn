@@ -31,6 +31,9 @@ interface TypingUser {
   timestamp: Date;
 }
 
+const ALL_MENTION_USER_ID = "__all__";
+const ALL_MENTION_USERNAME = "all";
+
 class SocketManager {
   private io: SocketIOServer;
   private app: Application;
@@ -185,12 +188,14 @@ class SocketManager {
     content: string;
     messageType: "text" | "image" | "file" | "money";
     transactionId?: string;
+    replyToMessageId?: string;
+    mentions?: Array<{ userId: string; username: string }>;
   }) {
     if (!socket.userId) return;
 
     const models = this.app.get("models") as ReturnType<typeof Models>;
     const chatService = ChatService.getInstance();
-    
+
     try {
       // Verify user is participant in the chat
       const participant = await models.ChatParticipant.findOne({
@@ -202,6 +207,36 @@ class SocketManager {
         return;
       }
 
+      const chat = await models.Chat.findByPk(data.chatId, {
+        attributes: ["id", "isGroup"]
+      });
+
+      // Sanitize mentions: deduplicate, remove self-mentions, cap at 20
+      const hasAllMentionInPayload = !!data.mentions?.some(
+        (m) => m.username?.toLowerCase() === ALL_MENTION_USERNAME || m.userId === ALL_MENTION_USER_ID
+      );
+      const hasAllMentionInText = /(^|\s)@all\b/i.test(data.content || "");
+      const hasAllMention = !!chat?.isGroup && (hasAllMentionInPayload || hasAllMentionInText);
+
+      const safeMentions = data.mentions
+        ? [...new Map(
+            data.mentions
+              .filter((m) => {
+                if (!m.userId || !m.username) return false;
+                if (m.userId === socket.userId) return false;
+                if (m.userId === ALL_MENTION_USER_ID || m.username.toLowerCase() === ALL_MENTION_USERNAME) {
+                  return false;
+                }
+                return true;
+              })
+              .map((m) => [m.userId, m])
+          ).values()].slice(0, 20)
+        : [];
+
+      if (hasAllMention) {
+        safeMentions.unshift({ userId: ALL_MENTION_USER_ID, username: ALL_MENTION_USERNAME });
+      }
+
       // Send encrypted message using ChatService
       const message = await chatService.sendMessage(
         socket.userId,
@@ -210,8 +245,29 @@ class SocketManager {
         data.messageType,
         models,
         this.io,
-        this.app
+        this.app,
+        data.replyToMessageId
       );
+
+      const repliedMessage = data.replyToMessageId
+        ? await models.ChatMessage.findByPk(data.replyToMessageId, {
+            include: [{
+              model: models.User,
+              as: "sender",
+              attributes: ["id", "firstName", "lastName"]
+            }]
+          })
+        : null;
+
+      const repliedMessageData = repliedMessage ? (repliedMessage as any).get({ plain: true }) : null;
+
+      // Persist mentions on the saved message
+      if (safeMentions.length > 0) {
+        await models.ChatMessage.update(
+          { mentions: safeMentions },
+          { where: { id: message.id } }
+        );
+      }
 
       // Get message with sender info
       const messageWithSender = await models.ChatMessage.findByPk(message.id, {
@@ -231,23 +287,143 @@ class SocketManager {
         ]
       });
 
-      // Broadcast message to all chat participants
+      // Broadcast message (including mentions) to all chat participants
       this.io.to(`chat_${data.chatId}`).emit("new_message", {
-        id: message.id,
-        chatId: data.chatId,
-        senderId: socket.userId,
-        content: data.content,
-        messageType: data.messageType,
+        id:            message.id,
+        chatId:        data.chatId,
+        senderId:      socket.userId,
+        content:       data.content,
+        messageType:   data.messageType,
         transactionId: data.transactionId,
-        createdAt: message.createdAt,
-        sender: messageWithSender?.get("sender")
+        replyToMessageId: data.replyToMessageId || null,
+        replyTo: repliedMessage
+          ? {
+              id: repliedMessageData.id,
+              content: repliedMessageData.content,
+              messageType: repliedMessageData.messageType,
+              senderName: repliedMessageData.sender
+                ? `${repliedMessageData.sender.firstName || ""} ${repliedMessageData.sender.lastName || ""}`.trim() || "Unknown"
+                : "Unknown",
+            }
+          : null,
+        mentions:      safeMentions,
+        createdAt:     message.createdAt,
+        sender:        messageWithSender?.get("sender"),
       });
 
-      // Note: Notifications are now sent from chatService.sendMessage
+      // Notify all group members for @all, otherwise notify only explicitly mentioned users.
+      if (hasAllMention) {
+        await this.notifyAllMentionedUsers(
+          data.chatId,
+          message.id,
+          socket.userId,
+          socket.user,
+          models
+        );
+      } else if (safeMentions.length > 0) {
+        await this.notifyMentionedUsers(
+          data.chatId,
+          message.id,
+          socket.userId,
+          socket.user,
+          safeMentions,
+          models
+        );
+      }
 
     } catch (error) {
       console.error("Error sending message:", error);
       socket.emit("error", { message: "Failed to send message" });
+    }
+  }
+
+  private async notifyAllMentionedUsers(
+    chatId: string,
+    messageId: string,
+    senderId: string,
+    senderUser: AuthenticatedUser | undefined,
+    models: ReturnType<typeof Models>
+  ) {
+    const senderName = senderUser
+      ? `${senderUser.firstName || ""} ${senderUser.lastName || ""}`.trim() || "Someone"
+      : "Someone";
+
+    const participants = await models.ChatParticipant.findAll({
+      where: { chatId },
+      attributes: ["userId"],
+    });
+
+    for (const participant of participants) {
+      const mentionedUserId = (participant as any).userId as string;
+      if (!mentionedUserId || mentionedUserId === senderId) continue;
+
+      try {
+        await models.Notification.create({
+          userId: mentionedUserId,
+          type: "mention",
+          data: { chatId, messageId, senderId, senderName, mentionedUsername: ALL_MENTION_USERNAME, isAll: true },
+          isRead: false,
+        });
+      } catch {
+        // Non-fatal: notification creation failure should not abort the message
+      }
+
+      this.io.to(`user_${mentionedUserId}`).emit("mention_notification", {
+        chatId,
+        messageId,
+        senderId,
+        senderName,
+        mentionedUsername: ALL_MENTION_USERNAME,
+        isAll: true,
+      });
+    }
+  }
+
+  private async notifyMentionedUsers(
+    chatId: string,
+    messageId: string,
+    senderId: string,
+    senderUser: AuthenticatedUser | undefined,
+    mentions: Array<{ userId: string; username: string }>,
+    models: ReturnType<typeof Models>
+  ) {
+    const senderName = senderUser
+      ? `${senderUser.firstName || ""} ${senderUser.lastName || ""}`.trim() || "Someone"
+      : "Someone";
+
+    // Verify each mentioned user is actually a participant of this chat
+    const participantIds = new Set(
+      (
+        await models.ChatParticipant.findAll({
+          where:      { chatId },
+          attributes: ["userId"],
+        })
+      ).map((p: any) => p.userId as string)
+    );
+
+    for (const mention of mentions) {
+      if (!participantIds.has(mention.userId)) continue;
+
+      // Persist an in-app notification
+      try {
+        await models.Notification.create({
+          userId: mention.userId,
+          type:   "mention",
+          data:   { chatId, messageId, senderId, senderName },
+          isRead: false,
+        });
+      } catch {
+        // Non-fatal: notification creation failure should not abort the message
+      }
+
+      // Live notification to mentioned user's personal room
+      this.io.to(`user_${mention.userId}`).emit("mention_notification", {
+        chatId,
+        messageId,
+        senderId,
+        senderName,
+        mentionedUsername: mention.username,
+      });
     }
   }
 

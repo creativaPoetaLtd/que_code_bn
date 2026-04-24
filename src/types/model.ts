@@ -175,6 +175,7 @@ export interface ChatMessageAttributes {
     | "audio"
     | "video"
     | "document";
+  replyToMessageId?: string;
   transactionId?: string;
   isEncrypted: boolean;
   encryptionIv?: string;
@@ -189,6 +190,8 @@ export interface ChatMessageAttributes {
   fileName?: string;
   mimeType?: string;
   duration?: number;
+  // @mention data
+  mentions?: Array<{ userId: string; username: string }>;
   createdAt?: Date;
   updatedAt?: Date;
 }

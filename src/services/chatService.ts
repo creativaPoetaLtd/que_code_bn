@@ -169,7 +169,16 @@ export class ChatService {
   }
 
   // Send encrypted message
-  async sendMessage(senderId: string, chatId: string, content: string, messageType: string, models: any, io?: any, app?: Application) {
+  async sendMessage(
+    senderId: string,
+    chatId: string,
+    content: string,
+    messageType: string,
+    models: any,
+    io?: any,
+    app?: Application,
+    replyToMessageId?: string
+  ) {
     try {
       // Get chat key for encryption
       let chatKeyRecord = await models.ChatKey.findOne({
@@ -196,12 +205,23 @@ export class ChatService {
       const encryptedContent = content; // Store as plain text temporarily
       const iv = ''; // Empty IV for unencrypted content
 
+      if (replyToMessageId) {
+        const repliedMessage = await models.ChatMessage.findOne({
+          where: { id: replyToMessageId, chatId }
+        });
+
+        if (!repliedMessage) {
+          throw new Error('Reply target message was not found in this chat');
+        }
+      }
+
       // Save message to database (temporarily unencrypted)
       const message = await models.ChatMessage.create({
         chatId,
         senderId,
         content: encryptedContent, // This is actually unencrypted content
         messageType,
+        replyToMessageId: replyToMessageId || null,
         isEncrypted: false, // Temporarily disabled
         encryptionIv: iv,
         status: 'sent',

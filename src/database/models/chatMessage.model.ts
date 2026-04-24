@@ -11,6 +11,7 @@ class ChatMessage extends Model<
   public senderId!: string;
   public content!: string;
   public messageType!: "text" | "image" | "file" | "money" | "audio" | "video" | "document";
+  public replyToMessageId?: string;
   public transactionId?: string;
   public isEncrypted!: boolean;
   public encryptionIv?: string;
@@ -25,6 +26,7 @@ class ChatMessage extends Model<
   public fileName?: string;
   public mimeType?: string;
   public duration?: number;
+  public mentions?: Array<{ userId: string; username: string }>;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -40,6 +42,7 @@ const ChatMessage_model = (sequelize: Sequelize) => {
         type: DataTypes.ENUM("text", "image", "file", "money", "audio", "video", "document"),
         allowNull: false,
       },
+      replyToMessageId: { type: DataTypes.UUID, allowNull: true },
       transactionId: DataTypes.UUID,
       isEncrypted: { type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false },
       encryptionIv: { type: DataTypes.STRING, allowNull: true },
@@ -58,6 +61,7 @@ const ChatMessage_model = (sequelize: Sequelize) => {
       fileName: { type: DataTypes.STRING, allowNull: true },
       mimeType: { type: DataTypes.STRING, allowNull: true },
       duration: { type: DataTypes.INTEGER, allowNull: true },
+      mentions: { type: DataTypes.JSONB, allowNull: true, defaultValue: null },
     },
     { 
       sequelize, 
