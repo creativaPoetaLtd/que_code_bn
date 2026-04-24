@@ -19,12 +19,9 @@ import adminDashboardRouter from "./admin.dashboard.routes";
 import auditLogRouter from "./auditLog.routes";
 
 import fcmRouter from "./fcm.routes";
-<<<<<<< HEAD
 import pushSubscriptionRouter from "./pushSubscription.routes";
 import supportRouter from "./support.routes";
-=======
 import linkPreviewRouter from "./link-preview.routes";
->>>>>>> 8bcee20 (feat(LinkPreview): Adding link message preview)
 
 // Admin routes (unified authentication with role/permission middleware)
 import adminAuthRouter from "./admin.auth.routes";
@@ -58,11 +55,8 @@ router.use("/notifications", notificationRouter);
 router.use("/chats", chatRouter);
 router.use("/support", supportRouter);
 router.use("/fcm", fcmRouter);
-<<<<<<< HEAD
 router.use("/push-subscriptions", pushSubscriptionRouter);
-=======
 router.use("/link-preview", linkPreviewRouter);
->>>>>>> 8bcee20 (feat(LinkPreview): Adding link message preview)
 router.use("", actionRouter);
 
 // Role and Permission management (admin-only with middleware)
