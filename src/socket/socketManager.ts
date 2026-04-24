@@ -259,6 +259,8 @@ class SocketManager {
           })
         : null;
 
+      const repliedMessageData = repliedMessage ? (repliedMessage as any).get({ plain: true }) : null;
+
       // Persist mentions on the saved message
       if (safeMentions.length > 0) {
         await models.ChatMessage.update(
@@ -296,11 +298,11 @@ class SocketManager {
         replyToMessageId: data.replyToMessageId || null,
         replyTo: repliedMessage
           ? {
-              id: repliedMessage.id,
-              content: repliedMessage.content,
-              messageType: repliedMessage.messageType,
-              senderName: repliedMessage.sender
-                ? `${repliedMessage.sender.firstName || ""} ${repliedMessage.sender.lastName || ""}`.trim() || "Unknown"
+              id: repliedMessageData.id,
+              content: repliedMessageData.content,
+              messageType: repliedMessageData.messageType,
+              senderName: repliedMessageData.sender
+                ? `${repliedMessageData.sender.firstName || ""} ${repliedMessageData.sender.lastName || ""}`.trim() || "Unknown"
                 : "Unknown",
             }
           : null,

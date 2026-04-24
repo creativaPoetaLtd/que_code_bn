@@ -247,11 +247,13 @@ export const getChatMessages = async (
     });
 
     const messagesInOrder = result.rows.reverse();
-    const replyTargetIds = [...new Set(
-      messagesInOrder
-        .map((message: any) => message.replyToMessageId)
-        .filter((id: string | undefined): id is string => !!id)
-    )];
+    const replyTargetIds = messagesInOrder.reduce((acc: string[], message: any) => {
+      const id = message.replyToMessageId as string | undefined;
+      if (id && !acc.includes(id)) {
+        acc.push(id);
+      }
+      return acc;
+    }, []);
 
     const replyTargets = replyTargetIds.length > 0
       ? await models.ChatMessage.findAll({
