@@ -25,9 +25,12 @@ export const getAllSupportChats: RequestHandler = async (req, res, next) => {
           [Op.in]: literal(`(
             SELECT DISTINCT ON (cp."userId") cp."chatId"
             FROM "ChatParticipants" cp
-            INNER JOIN "UserRoles" ur ON ur."userId" = cp."userId"
-            INNER JOIN "Roles" r ON r."id" = ur."roleId"
-            WHERE r."name" = 'user'
+            WHERE NOT EXISTS (
+              SELECT 1 FROM "UserRoles" ur
+              INNER JOIN "Roles" r ON r."id" = ur."roleId"
+              WHERE ur."userId" = cp."userId"
+                AND r."name" IN ('admin', 'super_admin')
+            )
             ORDER BY cp."userId", cp."createdAt" ASC
           )`),
         },
@@ -187,11 +190,21 @@ export const getAdminSupportChatMessages: RequestHandler = async (req, res, next
     const { page = "1", limit = "50" } = req.query as Record<string, string>;
     const models = req.app.get("models") as ReturnType<typeof Models>;
 
+    const adminId = (req as any as AuthenticatedRequest).user.id;
+
     const chat = await models.Chat.findOne({ where: { id: chatId, type: "support" } });
     if (!chat) {
       res.status(404).json({ success: false, message: "Support chat not found" });
       return;
     }
+
+    // Auto-join the admin as a participant when they open the chat.
+    // This is idempotent — findOrCreate does nothing if already joined.
+    // Means the frontend never needs a separate explicit join step.
+    await models.ChatParticipant.findOrCreate({
+      where: { chatId, userId: adminId },
+      defaults: { chatId, userId: adminId } as any,
+    });
 
     const offset = (Number(page) - 1) * Number(limit);
     const messages = await models.ChatMessage.findAll({
@@ -328,7 +341,6 @@ export const getAdminSupportUnreadCount: RequestHandler = async (req, res, next)
     const adminId = (req as any as AuthenticatedRequest).user.id;
     const models = req.app.get("models") as ReturnType<typeof Models>;
 
-    // Use the same canonical-chat filter as getAllSupportChats:
     // one chat per regular user (earliest created), so the badge count matches
     // exactly what is shown in the admin support list.
     const rows: any[] = await models.sequelize.query(
@@ -339,9 +351,12 @@ export const getAdminSupportUnreadCount: RequestHandler = async (req, res, next)
          AND cm."chatId" IN (
            SELECT DISTINCT ON (cp."userId") cp."chatId"
            FROM "ChatParticipants" cp
-           INNER JOIN "UserRoles" ur ON ur."userId" = cp."userId"
-           INNER JOIN "Roles" r ON r."id" = ur."roleId"
-           WHERE r."name" = 'user'
+           WHERE NOT EXISTS (
+             SELECT 1 FROM "UserRoles" ur
+             INNER JOIN "Roles" r ON r."id" = ur."roleId"
+             WHERE ur."userId" = cp."userId"
+               AND r."name" IN ('admin', 'super_admin')
+           )
            ORDER BY cp."userId", cp."createdAt" ASC
          )
          AND (
