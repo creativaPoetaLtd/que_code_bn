@@ -2972,11 +2972,11 @@ const acceptPaymentRequest = async (
         requesterName,
       };
 
-      io.to(`user:${userId}`).emit("payment_request_updated", eventData);
-      io.to(`user:${request.senderId}`).emit("payment_request_updated", eventData);
+      io.to(`user_${userId}`).emit("payment_request_updated", eventData);
+      io.to(`user_${request.senderId}`).emit("payment_request_updated", eventData);
 
       // Also emit money_received so the requester gets a push notification
-      io.to(`user:${request.senderId}`).emit("money_received", {
+      io.to(`user_${request.senderId}`).emit("money_received", {
         amount,
         currency: request.currency || "RWF",
         from: payerName,
@@ -3089,8 +3089,8 @@ const declinePaymentRequest = async (
         chatId: chatId || null,
         recipientName,
       };
-      io.to(`user:${userId}`).emit("payment_request_updated", eventData);
-      io.to(`user:${request.senderId}`).emit("payment_request_updated", eventData);
+      io.to(`user_${userId}`).emit("payment_request_updated", eventData);
+      io.to(`user_${request.senderId}`).emit("payment_request_updated", eventData);
     }
 
     res.status(200).json({
