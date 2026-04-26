@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { insert_function, read_function } from "../utils/db_methods";
+import database_models from "../database/config/db.config";
 import {
   ActionCreationAttributes,
   ActionModelAttributes,
@@ -274,6 +275,18 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Fetch parent action for currency
+    const parentAction = await read_function<ActionModelAttributes>(
+      "Action",
+      "findOne",
+      { where: { id: actionId } }
+    );
+
+    if (!parentAction) {
+      res.status(404).json({ message: "Parent action not found" });
+      return;
+    }
+
     // Handle cover image upload to Cloudinary
     let coverImageUrl: string | null = coverImage || null;
 
@@ -347,6 +360,12 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       subActionData
     );
 
+    // Create a dedicated wallet for this sub-action
+    const subActionWallet = await insert_function("Wallet", "create", {
+      subActionId: newSubAction.id,
+      currency: (parentAction as any).currency || "RWF",
+    } as any);
+
     // Generate QR code for the sub-action
     try {
       const subActionQrLink = `${process.env.FRONTEND_URL || 'https://app.quecode.ai'}/action/${actionId}/subactions/${newSubAction.id}`;
@@ -369,14 +388,28 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
 
       res.status(201).json({
         message: "Sub-action created successfully",
-        data: updatedSubAction,
+        data: {
+          ...(updatedSubAction as any),
+          wallet: {
+            id: (subActionWallet as any).id,
+            balance: (subActionWallet as any).balance,
+            currency: (subActionWallet as any).currency,
+          },
+        },
       });
     } catch (qrError: any) {
       console.error("Error generating QR code for sub-action:", qrError);
       // Still return the sub-action even if QR code generation fails
       res.status(201).json({
         message: "Sub-action created successfully - QR code generation failed",
-        data: newSubAction,
+        data: {
+          ...((newSubAction as any).toJSON ? (newSubAction as any).toJSON() : newSubAction),
+          wallet: {
+            id: (subActionWallet as any).id,
+            balance: (subActionWallet as any).balance,
+            currency: (subActionWallet as any).currency,
+          },
+        },
         qrError: qrError.message,
       });
     }
@@ -678,12 +711,38 @@ const getOrganizationActions = async (
       {
         where,
         order: [["createdAt", "DESC"]],
+        include: [
+          {
+            model: database_models.SubAction,
+            as: "subActions",
+            where: { isActive: true },
+            required: false,
+            include: [
+              {
+                model: database_models.Wallet,
+                as: "wallet",
+                attributes: ["id", "balance", "currency"],
+              },
+            ],
+          },
+        ],
       }
     );
 
+    // Attach totalSubActionBalance to each action
+    const enriched = (actions as unknown as any[]).map((action: any) => {
+      const plain = action.toJSON ? action.toJSON() : action;
+      const subActions: any[] = plain.subActions || [];
+      const totalSubActionBalance = subActions.reduce(
+        (sum: number, sa: any) => sum + parseFloat((sa.wallet?.balance ?? 0).toString()),
+        0
+      );
+      return { ...plain, totalSubActionBalance };
+    });
+
     res.status(200).json({
       message: "Actions retrieved successfully",
-      data: actions,
+      data: enriched,
     });
   } catch (error: any) {
     console.error("Error in getOrganizationActions:", error);
@@ -709,6 +768,21 @@ const getActionById = async (req: Request, res: Response): Promise<void> => {
       "findOne",
       {
         where: { id: actionId },
+        include: [
+          {
+            model: database_models.SubAction,
+            as: "subActions",
+            where: { isActive: true },
+            required: false,
+            include: [
+              {
+                model: database_models.Wallet,
+                as: "wallet",
+                attributes: ["id", "balance", "currency"],
+              },
+            ],
+          },
+        ],
       }
     );
 
@@ -717,9 +791,16 @@ const getActionById = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const plain = (action as any).toJSON ? (action as any).toJSON() : action;
+    const subActions: any[] = plain.subActions || [];
+    const totalSubActionBalance = subActions.reduce(
+      (sum: number, sa: any) => sum + parseFloat((sa.wallet?.balance ?? 0).toString()),
+      0
+    );
+
     res.status(200).json({
       message: "Action retrieved successfully",
-      data: action,
+      data: { ...plain, totalSubActionBalance },
     });
   } catch (error: any) {
     console.error("Error in getActionById:", error);
@@ -921,6 +1002,13 @@ const getSubActions = async (req: Request, res: Response): Promise<void> => {
       {
         where: { actionId, isActive: true },
         order: [["sortOrder", "ASC"]],
+        include: [
+          {
+            model: database_models.Wallet,
+            as: "wallet",
+            attributes: ["id", "balance", "currency"],
+          },
+        ],
       }
     );
 
@@ -945,7 +1033,16 @@ const getSubActionById = async (req: Request, res: Response): Promise<void> => {
     const subAction = await read_function<SubActionModelAttributes>(
       "SubAction",
       "findOne",
-      { where: { id: subActionId } }
+      {
+        where: { id: subActionId },
+        include: [
+          {
+            model: database_models.Wallet,
+            as: "wallet",
+            attributes: ["id", "balance", "currency"],
+          },
+        ],
+      }
     );
 
     if (!subAction) {

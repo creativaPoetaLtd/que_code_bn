@@ -70,5 +70,23 @@ const actionCoverImageUpload = multer({
 	},
 });
 
-export { organizationFileUpload, actionCoverImageUpload };
+const galleryImageUpload = multer({
+	storage: multer.diskStorage({}),
+	limits: {
+		fileSize: 10 * 1024 * 1024,
+		files: 1,
+	},
+	fileFilter: (_req, file, callback) => {
+		const ext = path.extname(file.originalname).toLowerCase();
+		const allowedImageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.jfif', '.tif'];
+
+		if (!allowedImageExts.includes(ext)) {
+			return callback(new Error(`File type ${ext} is not allowed. Allowed types: ${allowedImageExts.join(', ')}`));
+		}
+
+		callback(null, true);
+	},
+});
+
+export { organizationFileUpload, actionCoverImageUpload, galleryImageUpload };
 export default fileUpload;

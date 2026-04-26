@@ -9,6 +9,10 @@ class Profile extends Model<ProfileModelAttributes, ProfileCreationAttributes> {
   public type!: "individual" | "organization";
   public userId?: string;
   public organizationId?: string;
+  public instagram?: string;
+  public facebook?: string;
+  public twitter?: string;
+  public linkedin?: string;
   public province?: string;
   public district?: string;
   public sector?: string;
@@ -26,6 +30,15 @@ class Profile extends Model<ProfileModelAttributes, ProfileCreationAttributes> {
   public showLocationOnWelcome!: boolean;
   public showTinOnWelcome!: boolean;
   public showLogoOnWelcome!: boolean;
+  public showCategoryOnWelcome!: boolean;
+  public showSocialLinksOnWelcome!: boolean;
+  public showGalleryOnWelcome!: boolean;
+  public showOrgStatsOnWelcome!: boolean;
+  public showActionsOnWelcome!: boolean;
+  public showSendMoneyOnWelcome!: boolean;
+  public showContactFormOnWelcome!: boolean;
+  public showOtherInfoOnWelcome!: boolean;
+  public showFriendRequestOnWelcome!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -41,6 +54,10 @@ const Profile_model = (sequelize: Sequelize) => {
       },
       userId: { type: DataTypes.UUID, allowNull: true },
       organizationId: { type: DataTypes.UUID, allowNull: true },
+      instagram: DataTypes.STRING,
+      facebook: DataTypes.STRING,
+      twitter: DataTypes.STRING,
+      linkedin: DataTypes.STRING,
       province: DataTypes.STRING,
       district: DataTypes.STRING,
       sector: DataTypes.STRING,
@@ -73,6 +90,42 @@ const Profile_model = (sequelize: Sequelize) => {
         defaultValue: true,
       },
       showLogoOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showCategoryOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showSocialLinksOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showGalleryOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showOrgStatsOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showActionsOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showSendMoneyOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showContactFormOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showOtherInfoOnWelcome: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      showFriendRequestOnWelcome: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },

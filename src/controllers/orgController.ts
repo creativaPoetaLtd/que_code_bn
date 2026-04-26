@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Op } from "sequelize";
 import { insert_function, read_function } from "../utils/db_methods";
 import database_models from "../database/config/db.config";
 import {
@@ -23,6 +24,73 @@ import fs from "fs";
 function isSequelizeInstance(obj: any): obj is { get: (opts?: any) => any } {
   return obj && typeof obj.get === "function";
 }
+
+const toIsoString = (dateValue: any): string => {
+  if (!dateValue) {
+    return new Date(0).toISOString();
+  }
+
+  const date = new Date(dateValue);
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
+};
+
+const uploadOrgGalleryImageToCloudinary = async (file: Express.Multer.File) => {
+  let uploadResult: unknown;
+
+  if ((file as any).buffer && (file as any).buffer.length > 0) {
+    uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "gallery/organizations",
+          transformation: [{ quality: "auto" }],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      stream.end((file as any).buffer);
+    });
+  } else if ((file as any).path) {
+    uploadResult = await cloudinary.uploader.upload((file as any).path, {
+      folder: "gallery/organizations",
+      transformation: [{ quality: "auto" }],
+    });
+  } else {
+    throw new Error("Empty file");
+  }
+
+  return (uploadResult as any).secure_url as string;
+};
+
+const extractCloudinaryPublicId = (imageUrl: string): string | null => {
+  if (!imageUrl || !imageUrl.includes("cloudinary")) {
+    return null;
+  }
+
+  const fileName = imageUrl.split("/").pop();
+  if (!fileName) {
+    return null;
+  }
+
+  const withoutExtension = fileName.split(".")[0];
+  const parts = imageUrl.split("/upload/");
+  if (parts.length < 2) {
+    return withoutExtension;
+  }
+
+  const pathAfterUpload = parts[1].replace(/^v\d+\//, "");
+  const pathParts = pathAfterUpload.split("/");
+  pathParts[pathParts.length - 1] = withoutExtension;
+  return pathParts.join("/");
+};
+
+const deleteGalleryImageFromCloudinary = async (imageUrl: string) => {
+  const publicId = extractCloudinaryPublicId(imageUrl);
+  if (publicId) {
+    await cloudinary.uploader.destroy(publicId);
+  }
+};
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
@@ -1002,6 +1070,316 @@ const admin_create_organization = async (
   }
 };
 
+const get_organization_gallery = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { orgId } = req.params;
+
+    const uploadedGalleryItems = await database_models.GalleryItem.findAll({
+      where: { organizationId: orgId },
+      attributes: ["id", "imageUrl", "caption", "createdAt"],
+      order: [["createdAt", "DESC"]],
+    });
+
+    const items: Array<{
+      id: string;
+      imageUrl: string;
+      caption: string;
+      createdAt: string;
+    }> = [];
+
+    for (const galleryItemRow of uploadedGalleryItems) {
+      const galleryItem = isSequelizeInstance(galleryItemRow)
+        ? galleryItemRow.get({ plain: true })
+        : galleryItemRow;
+
+      items.push({
+        id: galleryItem.id,
+        imageUrl: galleryItem.imageUrl,
+        caption: galleryItem.caption || "Gallery image",
+        createdAt: toIsoString(galleryItem.createdAt),
+      });
+    }
+
+    res.status(200).json({ items });
+  } catch (error: any) {
+    console.error("Error fetching organization gallery:", error);
+    res.status(500).json({
+      message: "An error occurred while fetching organization gallery",
+      error: error.message,
+    });
+  }
+};
+
+const upload_organization_gallery_item = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { orgId } = req.params;
+    const authUser = (req as any).user;
+
+    if (!authUser) {
+      res.status(401).json({ message: "Authentication required" });
+      return;
+    }
+
+    const canUpload = authUser.isAdmin
+      || authUser.id === orgId
+      || authUser.organizationId === orgId;
+
+    if (!canUpload) {
+      res.status(403).json({
+        message: "You are not authorized to upload gallery items for this organization",
+      });
+      return;
+    }
+
+    const organization = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      { where: { id: orgId } },
+    );
+
+    if (!organization) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) {
+      res.status(400).json({ message: "Image file is required" });
+      return;
+    }
+
+    const imageUrl = await uploadOrgGalleryImageToCloudinary(file);
+    const caption = req.body.caption ? String(req.body.caption).trim() : "";
+
+    const createdItem = await database_models.GalleryItem.create({
+      organizationId: orgId,
+      imageUrl,
+      caption: caption || undefined,
+    });
+
+    const plainItem = isSequelizeInstance(createdItem)
+      ? createdItem.get({ plain: true })
+      : createdItem;
+
+    res.status(201).json({
+      message: "Gallery image uploaded successfully",
+      item: {
+        id: plainItem.id,
+        imageUrl: plainItem.imageUrl,
+        caption: plainItem.caption || "",
+        createdAt: toIsoString(plainItem.createdAt),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error uploading organization gallery image:", error);
+    res.status(500).json({
+      message: "An error occurred while uploading gallery image",
+      error: error.message,
+    });
+  }
+};
+
+const update_organization_gallery_item = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { orgId, itemId } = req.params;
+    const authUser = (req as any).user;
+
+    if (!authUser) {
+      res.status(401).json({ message: "Authentication required" });
+      return;
+    }
+
+    const canManage = authUser.isAdmin
+      || authUser.id === orgId
+      || authUser.organizationId === orgId;
+
+    if (!canManage) {
+      res.status(403).json({
+        message: "You are not authorized to update this gallery item",
+      });
+      return;
+    }
+
+    const galleryItem = await database_models.GalleryItem.findOne({
+      where: { id: itemId, organizationId: orgId },
+    });
+
+    if (!galleryItem) {
+      res.status(404).json({ message: "Gallery item not found" });
+      return;
+    }
+
+    const file = (req as any).file as Express.Multer.File | undefined;
+    const caption = req.body.caption !== undefined
+      ? String(req.body.caption).trim()
+      : undefined;
+
+    const updateData: { imageUrl?: string; caption?: string } = {};
+
+    if (file) {
+      const newImageUrl = await uploadOrgGalleryImageToCloudinary(file);
+      await deleteGalleryImageFromCloudinary((galleryItem as any).imageUrl);
+      updateData.imageUrl = newImageUrl;
+    }
+
+    if (caption !== undefined) {
+      updateData.caption = caption;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({ message: "No fields provided for update" });
+      return;
+    }
+
+    await galleryItem.update(updateData);
+    const plainItem = galleryItem.get({ plain: true });
+
+    res.status(200).json({
+      message: "Gallery item updated successfully",
+      item: {
+        id: plainItem.id,
+        imageUrl: plainItem.imageUrl,
+        caption: plainItem.caption || "",
+        createdAt: toIsoString(plainItem.createdAt),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error updating organization gallery image:", error);
+    res.status(500).json({
+      message: "An error occurred while updating gallery image",
+      error: error.message,
+    });
+  }
+};
+
+const delete_organization_gallery_item = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { orgId, itemId } = req.params;
+    const authUser = (req as any).user;
+
+    if (!authUser) {
+      res.status(401).json({ message: "Authentication required" });
+      return;
+    }
+
+    const canManage = authUser.isAdmin
+      || authUser.id === orgId
+      || authUser.organizationId === orgId;
+
+    if (!canManage) {
+      res.status(403).json({
+        message: "You are not authorized to delete this gallery item",
+      });
+      return;
+    }
+
+    const galleryItem = await database_models.GalleryItem.findOne({
+      where: { id: itemId, organizationId: orgId },
+    });
+
+    if (!galleryItem) {
+      res.status(404).json({ message: "Gallery item not found" });
+      return;
+    }
+
+    await deleteGalleryImageFromCloudinary((galleryItem as any).imageUrl);
+    await galleryItem.destroy();
+
+    res.status(200).json({ message: "Gallery item deleted successfully" });
+  } catch (error: any) {
+    console.error("Error deleting organization gallery image:", error);
+    res.status(500).json({
+      message: "An error occurred while deleting gallery image",
+      error: error.message,
+    });
+  }
+};
+
+const get_organization_stats = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { orgId } = req.params;
+
+    const org = await read_function<OrganizationModelAttributes>(
+      "Organization",
+      "findOne",
+      { where: { id: orgId } },
+    );
+
+    if (!org) {
+      res.status(404).json({ message: "Organization not found" });
+      return;
+    }
+
+    const startOfWeek = new Date();
+    const dayOffset = (startOfWeek.getDay() + 6) % 7;
+    startOfWeek.setDate(startOfWeek.getDate() - dayOffset);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const scansThisWeek = await database_models.QRObject.count({
+      where: {
+        status: "used",
+        usedAt: {
+          [Op.gte]: startOfWeek,
+        },
+      },
+      include: [
+        {
+          model: database_models.Action,
+          as: "action",
+          attributes: [],
+          required: true,
+          where: { organizationId: orgId },
+        },
+      ],
+    });
+
+    const totalBookings = await database_models.ActionPurchase.count({
+      where: {
+        organizationId: orgId,
+        status: "completed",
+      },
+    });
+
+    const liveActionsCount = await database_models.Action.count({
+      where: {
+        organizationId: orgId,
+        status: "published",
+        visibility: {
+          mode: "public",
+        },
+      },
+    });
+
+    res.status(200).json({
+      scansThisWeek,
+      totalBookings,
+      audienceRating: 0,
+      liveActionsCount,
+    });
+  } catch (error: any) {
+    console.error("Error fetching organization stats:", error);
+    res.status(500).json({
+      message: "An error occurred while fetching organization stats",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   create_organization,
   get_all_organizations,
@@ -1016,4 +1394,9 @@ export default {
   verify_organization_email_token,
   get_organization_category,
   admin_create_organization,
+  get_organization_gallery,
+  upload_organization_gallery_item,
+  update_organization_gallery_item,
+  delete_organization_gallery_item,
+  get_organization_stats,
 };

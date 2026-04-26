@@ -1,10 +1,11 @@
-import { organizationFileUpload } from "../middleware/multer";
+import { organizationFileUpload, galleryImageUpload } from "../middleware/multer";
 import orgController from "../controllers/orgController";
 import express from "express";
 import {
   authenticate,
   requirePermission,
 } from "../middleware/auth.unified.middleware";
+import { RequestHandler } from "express";
 
 const orgRouter = express.Router();
 
@@ -54,6 +55,27 @@ orgRouter.post("/register", orgController.create_organization);
 orgRouter.get("/active", orgController.get_active_organizations);
 orgRouter.get("/pending", orgController.get_pending_organizations);
 orgRouter.get("/verify", orgController.verify_organization_email_token);
+orgRouter.get("/:orgId/gallery", orgController.get_organization_gallery);
+orgRouter.post(
+  "/:orgId/gallery",
+  authenticate as RequestHandler,
+  galleryImageUpload.single("image"),
+  handleMulterError,
+  orgController.upload_organization_gallery_item,
+);
+orgRouter.put(
+  "/:orgId/gallery/:itemId",
+  authenticate as RequestHandler,
+  galleryImageUpload.single("image"),
+  handleMulterError,
+  orgController.update_organization_gallery_item,
+);
+orgRouter.delete(
+  "/:orgId/gallery/:itemId",
+  authenticate as RequestHandler,
+  orgController.delete_organization_gallery_item,
+);
+orgRouter.get("/:orgId/stats", orgController.get_organization_stats);
 
 // Parameterized routes (should come last)
 orgRouter.get("/:id", orgController.get_organization_by_id);

@@ -30,6 +30,8 @@ import actionPurchase_model from "./actionPurchase.model";
 import qrObject_model from "./qrObject.model";
 import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
+import galleryItem_model from "./galleryItem.model";
+import outsideMessage_model from "./outsideMessage.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -68,6 +70,8 @@ const Models = (sequelize: Sequelize) => {
   const SubAction = subAction_model(sequelize);
   const ActionPurchase = actionPurchase_model(sequelize);
   const QRObject = qrObject_model(sequelize);
+  const GalleryItem = galleryItem_model(sequelize);
+  const OutsideMessage = outsideMessage_model(sequelize);
 
   // Audit model
   const AuditLog = auditLog_model(sequelize);
@@ -150,6 +154,9 @@ const Models = (sequelize: Sequelize) => {
 
   Action.hasMany(SubAction, { foreignKey: "actionId", as: "subActions" });
   SubAction.belongsTo(Action, { foreignKey: "actionId", as: "action" });
+
+  SubAction.hasOne(Wallet, { foreignKey: "subActionId", as: "wallet" });
+  Wallet.belongsTo(SubAction, { foreignKey: "subActionId", as: "subAction" });
 
   Action.hasMany(ActionPurchase, {
     foreignKey: "actionId",
@@ -375,6 +382,18 @@ const Models = (sequelize: Sequelize) => {
     as: "organization",
   });
 
+  User.hasMany(GalleryItem, { foreignKey: "userId", as: "galleryItems" });
+  GalleryItem.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  Organization.hasMany(GalleryItem, {
+    foreignKey: "organizationId",
+    as: "galleryItems",
+  });
+  GalleryItem.belongsTo(Organization, {
+    foreignKey: "organizationId",
+    as: "organization",
+  });
+
   // Organization Categories
   Category.hasMany(Organization, {
     foreignKey: "categoryId",
@@ -473,6 +492,8 @@ const Models = (sequelize: Sequelize) => {
     QRObject,
     AuditLog,
     PaymentRequest,
+    OutsideMessage,
+    GalleryItem,
   };
 };
 

@@ -81,6 +81,10 @@ export interface ProfileModelAttributes {
   type: "individual" | "organization";
   userId?: string;
   organizationId?: string;
+  instagram?: string;
+  facebook?: string;
+  twitter?: string;
+  linkedin?: string;
   province?: string;
   district?: string;
   sector?: string;
@@ -98,6 +102,15 @@ export interface ProfileModelAttributes {
   showLocationOnWelcome: boolean;
   showTinOnWelcome: boolean;
   showLogoOnWelcome: boolean;
+  showCategoryOnWelcome: boolean;
+  showSocialLinksOnWelcome: boolean;
+  showGalleryOnWelcome: boolean;
+  showOrgStatsOnWelcome: boolean;
+  showActionsOnWelcome: boolean;
+  showSendMoneyOnWelcome: boolean;
+  showContactFormOnWelcome: boolean;
+  showOtherInfoOnWelcome: boolean;
+  showFriendRequestOnWelcome: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -114,10 +127,53 @@ export type ProfileCreationAttributes = Optional<
   | "showLocationOnWelcome"
   | "showTinOnWelcome"
   | "showLogoOnWelcome"
+  | "showCategoryOnWelcome"
+  | "showSocialLinksOnWelcome"
+  | "showGalleryOnWelcome"
+  | "showOrgStatsOnWelcome"
+  | "showActionsOnWelcome"
+  | "showSendMoneyOnWelcome"
+  | "showContactFormOnWelcome"
+  | "showOtherInfoOnWelcome"
+  | "showFriendRequestOnWelcome"
 > & {
   type: "individual" | "organization";
   qrCode: string;
 };
+
+export interface GalleryItemModelAttributes {
+  id: string;
+  userId?: string;
+  organizationId?: string;
+  imageUrl: string;
+  caption?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type GalleryItemCreationAttributes = Omit<
+  GalleryItemModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+export interface OutsideMessageModelAttributes {
+  id: string;
+  receiverId: string;
+  senderName: string;
+  senderContact: string;
+  message: string;
+  status: "unread" | "read";
+  readAt?: Date | null;
+  source?: string;
+  meta?: any;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type OutsideMessageCreationAttributes = Omit<
+  OutsideMessageModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 export interface WalletModelAttributes {
   id: string;
@@ -572,6 +628,7 @@ export interface WalletAttributes {
   userId?: string;
   organizationId?: string;
   groupId?: string;
+  subActionId?: string;
   balance: number;
   currency: string;
   isActive: boolean;
