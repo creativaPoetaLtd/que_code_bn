@@ -17,6 +17,7 @@ import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
 import adminDashboardRouter from "./admin.dashboard.routes";
 import auditLogRouter from "./auditLog.routes";
+import outsideMessageRouter from "./outsideMessage.routes";
 
 import fcmRouter from "./fcm.routes";
 import pushSubscriptionRouter from "./pushSubscription.routes";
@@ -54,6 +55,7 @@ router.use("/groups", groupRouter);
 router.use("/notifications", notificationRouter);
 router.use("/chats", chatRouter);
 router.use("/support", supportRouter);
+router.use("/outside-messages", outsideMessageRouter);
 router.use("/fcm", fcmRouter);
 router.use("/push-subscriptions", pushSubscriptionRouter);
 router.use("/link-preview", linkPreviewRouter);

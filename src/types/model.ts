@@ -156,6 +156,25 @@ export type GalleryItemCreationAttributes = Omit<
   "id" | "createdAt" | "updatedAt"
 >;
 
+export interface OutsideMessageModelAttributes {
+  id: string;
+  receiverId: string;
+  senderName: string;
+  senderContact: string;
+  message: string;
+  status: "unread" | "read";
+  readAt?: Date | null;
+  source?: string;
+  meta?: any;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type OutsideMessageCreationAttributes = Omit<
+  OutsideMessageModelAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
 export interface WalletModelAttributes {
   id: string;
   userId: string;

@@ -31,6 +31,7 @@ import qrObject_model from "./qrObject.model";
 import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
 import galleryItem_model from "./galleryItem.model";
+import outsideMessage_model from "./outsideMessage.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -70,6 +71,7 @@ const Models = (sequelize: Sequelize) => {
   const ActionPurchase = actionPurchase_model(sequelize);
   const QRObject = qrObject_model(sequelize);
   const GalleryItem = galleryItem_model(sequelize);
+  const OutsideMessage = outsideMessage_model(sequelize);
 
   // Audit model
   const AuditLog = auditLog_model(sequelize);
@@ -490,6 +492,7 @@ const Models = (sequelize: Sequelize) => {
     QRObject,
     AuditLog,
     PaymentRequest,
+    OutsideMessage,
     GalleryItem,
   };
 };
