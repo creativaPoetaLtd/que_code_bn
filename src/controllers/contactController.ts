@@ -13,6 +13,11 @@ import {
   manageContactTags,
 } from "../utils/contactService";
 
+const getSingleParam = (param: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(param)) return param[0];
+  return param;
+};
+
 // Get all contacts for current user
 const get_user_contacts = async (
   req: AuthenticatedRequest,
@@ -53,7 +58,12 @@ const get_contact_by_id = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = getSingleParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ message: "Contact ID is required" });
+      return;
+    }
+
     const contact = await getContactById(req.app, id, req.user.id);
 
     if (!contact) {
@@ -74,7 +84,12 @@ const update_contact_status = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = getSingleParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ message: "Contact ID is required" });
+      return;
+    }
+
     const { status } = req.body;
 
     if (!status || !["active", "blocked"].includes(status)) {
@@ -112,7 +127,12 @@ const remove_contact = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = getSingleParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ message: "Contact ID is required" });
+      return;
+    }
+
     const success = await removeContact(req.app, id, req.user.id);
 
     if (!success) {
@@ -293,13 +313,20 @@ const get_sent_invitations = async (
     const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+    const status = req.query.status as "pending" | "accepted" | "declined" | "expired" | undefined;
     const offset = (page - 1) * limit;
+
+    const whereClause: any = {
+      inviterId: userId,
+    };
+
+    if (status) {
+      whereClause.status = status;
+    }
 
     const [invitations, totalCount] = await Promise.all([
       models.ContactInvitation.findAll({
-        where: {
-          inviterId: userId,
-        },
+        where: whereClause,
         include: [
           {
             model: models.User,
@@ -319,9 +346,7 @@ const get_sent_invitations = async (
         offset,
       }),
       models.ContactInvitation.count({
-        where: {
-          inviterId: userId,
-        },
+        where: whereClause,
       }),
     ]);
 
@@ -345,7 +370,12 @@ const toggle_favorite = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = getSingleParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ message: "Contact ID is required" });
+      return;
+    }
+
     const result = await toggleContactFavorite(req.app, id, req.user.id);
 
     if (!result) {
@@ -369,7 +399,12 @@ const manage_tags = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = getSingleParam(req.params.id);
+    if (!id) {
+      res.status(400).json({ message: "Contact ID is required" });
+      return;
+    }
+
     const { tags, action } = req.body;
 
     if (!Array.isArray(tags) || !["add", "remove", "set"].includes(action)) {

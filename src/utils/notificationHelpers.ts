@@ -282,6 +282,84 @@ export const notifyPaymentFailed = async (
   });
 };
 
+export const notifyPaymentRequestReceived = async (
+  app: Application,
+  recipientId: string,
+  requestId: string,
+  amount: number,
+  currency: string,
+  senderName: string,
+  note?: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PAYMENT_REQUEST_RECEIVED,
+    recipientId,
+    data: {
+      userId: requestId, // Using requestId as identifier in data
+      requestId,
+      amount,
+      currency,
+      userName: senderName,
+      title: "Payment Request",
+      message: `${senderName} requested ${amount} ${currency}${note ? `: ${note}` : ""}`,
+      url: `/home/requests`, // Corrected path for money requests
+      actions: [
+        {
+          type: "pay",
+          label: "Pay Now",
+          url: `/home/transfer/amount?requestId=${requestId}`,
+        },
+      ],
+    },
+  });
+};
+
+export const notifyPaymentRequestDeclined = async (
+  app: Application,
+  recipientId: string,
+  requestId: string,
+  amount: number,
+  currency: string,
+  declinedByName: string,
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PAYMENT_REQUEST_DECLINED,
+    recipientId,
+    data: {
+      requestId,
+      amount,
+      currency,
+      userName: declinedByName,
+      title: "Payment Request Declined",
+      message: `${declinedByName} declined your payment request of ${amount} ${currency}`,
+      url: `/home/requests`,
+    },
+  });
+};
+
+export const notifyPaymentRequestAccepted = async (
+  app: Application,
+  recipientId: string,
+  requestId: string,
+  amount: number,
+  currency: string,
+  acceptedByName: string,
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PAYMENT_REQUEST_ACCEPTED,
+    recipientId,
+    data: {
+      requestId,
+      amount,
+      currency,
+      userName: acceptedByName,
+      title: "Payment Request Accepted",
+      message: `${acceptedByName} paid your request of ${amount} ${currency}`,
+      url: `/home/requests`,
+    },
+  });
+};
+
 // System notification helpers
 export const notifyAccountVerified = async (
   app: Application,

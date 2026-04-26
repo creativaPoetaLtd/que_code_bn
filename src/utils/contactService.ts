@@ -49,10 +49,13 @@ export async function getUserContacts(
           {
             model: models.Profile,
             as: "profile",
-            attributes: ["profileImage"],
+            attributes: ["profileImage", "type"],
           },
         ],
       });
+
+      const otherUserPlain = otherUser ? (otherUser.get({ plain: true }) as any) : null;
+      const contactType = otherUserPlain?.profile?.type === "organization" ? "company" : "person";
 
       // Map user-specific fields
       const isFavorite = isUserA ? contactData.userAIsFavorite : contactData.userBIsFavorite;
@@ -62,7 +65,12 @@ export async function getUserContacts(
         ...contactData,
         isFavorite,
         tags,
-        otherUser: otherUser ? otherUser.get({ plain: true }) : null,
+        otherUser: otherUserPlain
+          ? {
+              ...otherUserPlain,
+              contactType,
+            }
+          : null,
       };
     })
   );
@@ -101,10 +109,13 @@ export async function getContactById(
       {
         model: models.Profile,
         as: "profile",
-        attributes: ["profileImage"],
+        attributes: ["profileImage", "type"],
       },
     ],
   });
+
+  const otherUserPlain = otherUser ? (otherUser.get({ plain: true }) as any) : null;
+  const contactType = otherUserPlain?.profile?.type === "organization" ? "company" : "person";
 
   // Map user-specific fields
   const isUserA = contactData.userAId === userId;
@@ -115,7 +126,12 @@ export async function getContactById(
     ...contactData,
     isFavorite,
     tags,
-    otherUser: otherUser ? otherUser.get({ plain: true }) : null,
+    otherUser: otherUserPlain
+      ? {
+          ...otherUserPlain,
+          contactType,
+        }
+      : null,
   };
 }
 

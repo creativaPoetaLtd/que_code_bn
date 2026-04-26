@@ -29,6 +29,7 @@ import subAction_model from "./subAction.model";
 import actionPurchase_model from "./actionPurchase.model";
 import qrObject_model from "./qrObject.model";
 import auditLog_model from "./auditLog.model";
+import paymentRequest_model from "./paymentRequest.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -70,6 +71,9 @@ const Models = (sequelize: Sequelize) => {
 
   // Audit model
   const AuditLog = auditLog_model(sequelize);
+
+  // Payment Request model
+  const PaymentRequest = paymentRequest_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
 
@@ -252,6 +256,15 @@ const Models = (sequelize: Sequelize) => {
   });
   ContactInvitation.belongsTo(User, { foreignKey: "inviterId", as: "inviter" });
   ContactInvitation.belongsTo(User, { foreignKey: "inviteeId", as: "invitee" });
+
+  // Payment Requests
+  User.hasMany(PaymentRequest, { foreignKey: "senderId", as: "sentPaymentRequests" });
+  User.hasMany(PaymentRequest, { foreignKey: "recipientId", as: "receivedPaymentRequests" });
+  PaymentRequest.belongsTo(User, { foreignKey: "senderId", as: "sender" });
+  PaymentRequest.belongsTo(User, { foreignKey: "recipientId", as: "recipient" });
+
+  Transaction.hasOne(PaymentRequest, { foreignKey: "transactionId", as: "paymentRequest" });
+  PaymentRequest.belongsTo(Transaction, { foreignKey: "transactionId", as: "transaction" });
 
   // Groups
   User.hasMany(Group, { foreignKey: "ownerId", as: "ownedGroups" });
@@ -459,6 +472,7 @@ const Models = (sequelize: Sequelize) => {
     ActionPurchase,
     QRObject,
     AuditLog,
+    PaymentRequest,
   };
 };
 
