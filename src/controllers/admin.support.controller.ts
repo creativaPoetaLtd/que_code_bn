@@ -16,8 +16,12 @@ export const getAllSupportChats: RequestHandler = async (req, res, next) => {
     const { page = "1", limit = "20" } = req.query as Record<string, string>;
     const offset = (Number(page) - 1) * Number(limit);
 
-    // Only return one chat per regular user (the earliest created), excluding duplicates
+    // Only return one support chat per regular user (the earliest created), excluding duplicates
     // and excluding chats that have no regular-user participants.
+    // IMPORTANT: the subquery must JOIN to "Chats" and filter type='support' so that
+    // DISTINCT ON only considers support-chat participant rows. Without this, users
+    // who have older DM/group chats would have their DM chatId returned by
+    // DISTINCT ON (oldest createdAt), causing the outer type='support' filter to miss them.
     const { count, rows: chats } = await models.Chat.findAndCountAll({
       where: {
         type: "support",
@@ -25,6 +29,7 @@ export const getAllSupportChats: RequestHandler = async (req, res, next) => {
           [Op.in]: literal(`(
             SELECT DISTINCT ON (cp."userId") cp."chatId"
             FROM "ChatParticipants" cp
+            INNER JOIN "Chats" ch ON ch."id" = cp."chatId" AND ch."type" = 'support'
             WHERE NOT EXISTS (
               SELECT 1 FROM "UserRoles" ur
               INNER JOIN "Roles" r ON r."id" = ur."roleId"
@@ -116,12 +121,21 @@ export const getAllSupportChats: RequestHandler = async (req, res, next) => {
 
     // Build result and sort: unread chats first (by most recent unread), then by updatedAt
     const result = chats
-      .map((chat: any) => ({
-        ...chat.toJSON(),
-        lastMessage: lastMessageMap[chat.id] ?? null,
-        unreadCount: unreadCountMap[chat.id]?.unreadCount ?? 0,
-        lastUnreadAt: unreadCountMap[chat.id]?.lastUnreadAt ?? null,
-      }))
+      .map((chat: any) => {
+        const chatJson = chat.toJSON();
+        // Exclude the admin's own participant entry from the list so the frontend
+        // can reliably identify which participant is the regular user.
+        const participants = (chatJson.participants ?? []).filter(
+          (p: any) => p.userId !== adminId
+        );
+        return {
+          ...chatJson,
+          participants,
+          lastMessage: lastMessageMap[chat.id] ?? null,
+          unreadCount: unreadCountMap[chat.id]?.unreadCount ?? 0,
+          lastUnreadAt: unreadCountMap[chat.id]?.lastUnreadAt ?? null,
+        };
+      })
       .sort((a: any, b: any) => {
         // Chats with unread messages float to top, sorted by most recent unread
         if (a.lastUnreadAt && b.lastUnreadAt) {
@@ -351,6 +365,7 @@ export const getAdminSupportUnreadCount: RequestHandler = async (req, res, next)
          AND cm."chatId" IN (
            SELECT DISTINCT ON (cp."userId") cp."chatId"
            FROM "ChatParticipants" cp
+           INNER JOIN "Chats" ch2 ON ch2."id" = cp."chatId" AND ch2."type" = 'support'
            WHERE NOT EXISTS (
              SELECT 1 FROM "UserRoles" ur
              INNER JOIN "Roles" r ON r."id" = ur."roleId"

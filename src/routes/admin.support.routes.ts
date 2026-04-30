@@ -12,7 +12,7 @@ import {
 const router = Router();
 const guard = [
   authenticate as RequestHandler,
-  requireRole("admin", "super_admin") as RequestHandler,
+  requireRole("super_admin") as RequestHandler,
 ];
 
 // GET  /api/v1/admin/support/chats                      — list all support chats

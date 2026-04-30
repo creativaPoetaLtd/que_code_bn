@@ -146,7 +146,10 @@ export const getUserChats = async (
       let isOnline = false;
       let memberCount = participants.length;
 
-      if (!chat.isGroup) {
+      if (chat.type === 'support') {
+        // Support chats always display as "Support" regardless of participants
+        chatName = 'Support';
+      } else if (!chat.isGroup) {
         const otherParticipant = participants.find((p: any) => p.userId !== userId);
         if (otherParticipant && otherParticipant.user) {
           const firstName = otherParticipant.user.firstName || '';

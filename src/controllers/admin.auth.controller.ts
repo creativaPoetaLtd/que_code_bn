@@ -42,7 +42,7 @@ export const adminLogin = async (
               model: Role,
               as: "role",
               where: {
-                name: ["admin", "super_admin"], // ONLY admin roles allowed
+                name: ["super_admin"], // ONLY super_admin is allowed into the admin panel
               },
               include: [
                 {
@@ -62,11 +62,11 @@ export const adminLogin = async (
       ],
     });
 
-    // Check if user exists AND has admin role
+    // Check if user exists AND has super_admin role
     if (!user || !user.userRoles || user.userRoles.length === 0) {
       res.status(403).json({
         success: false,
-        message: "Not authorized as administrator",
+        message: "Not authorized. Super admin access required.",
       });
       return;
     }

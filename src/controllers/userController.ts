@@ -136,6 +136,22 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
       console.error("❌ Error creating wallet for user:", walletError);
     }
 
+    // Assign the default 'user' role to every new signup
+    try {
+      const userRole = await read_function<any>("Role", "findOne", {
+        where: { name: "user" },
+      });
+      if (userRole) {
+        await insert_function("UserRole", "create", {
+          userId: newUser.id,
+          roleId: (userRole as any).id,
+        });
+      }
+    } catch (roleError) {
+      console.error("❌ Failed to assign user role:", roleError);
+      // Non-fatal — continue registration
+    }
+
     // Generate verification token (2 days)
     const verificationToken = jwt.sign(
       { email: newUser.email, id: newUser.id },
