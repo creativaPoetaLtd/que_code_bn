@@ -90,6 +90,10 @@ class SocketManager {
       socket.on("typing_stop", (data) => this.handleTypingStop(socket, data));
       socket.on("mark_message_read", (data) => this.handleMarkMessageRead(socket, data));
 
+      // Reaction handlers
+      socket.on("add_reaction", (data) => this.handleAddReaction(socket, data));
+      socket.on("remove_reaction", (data) => this.handleRemoveReaction(socket, data));
+
       // User status handlers
       socket.on("get_online_users", () => this.handleGetOnlineUsers(socket));
       socket.on("get_chat_participants_status", (data) => this.handleGetChatParticipantsStatus(socket, data));
@@ -296,6 +300,7 @@ class SocketManager {
         messageType:   data.messageType,
         transactionId: data.transactionId,
         replyToMessageId: data.replyToMessageId || null,
+        reactions:     [],
         replyTo: repliedMessage
           ? {
               id: repliedMessageData.id,
@@ -642,6 +647,132 @@ class SocketManager {
       });
     } catch (error) {
       console.error("Error sending push notification:", error);
+    }
+  }
+
+  /** Aggregate raw MessageReaction rows into the compact payload sent to clients */
+  private aggregateReactions(
+    rows: Array<{ userId: string; emoji: string }>,
+    currentUserId: string
+  ) {
+    const map = new Map<string, { count: number; userIds: string[] }>();
+    for (const row of rows) {
+      const entry = map.get(row.emoji) ?? { count: 0, userIds: [] };
+      entry.count++;
+      entry.userIds.push(row.userId);
+      map.set(row.emoji, entry);
+    }
+    return Array.from(map.entries()).map(([emoji, { count, userIds }]) => ({
+      emoji,
+      count,
+      userIds,
+      hasReacted: userIds.includes(currentUserId),
+    }));
+  }
+
+  private async handleAddReaction(
+    socket: SocketWithAuth,
+    data: { chatId: string; messageId: string; emoji: string }
+  ) {
+    if (!socket.userId) return;
+
+    const models = this.app.get("models") as ReturnType<typeof Models>;
+
+    try {
+      // Verify user is a participant in the chat
+      const participant = await models.ChatParticipant.findOne({
+        where: { chatId: data.chatId, userId: socket.userId },
+      });
+      if (!participant) {
+        socket.emit("error", { message: "You are not a participant in this chat" });
+        return;
+      }
+
+      // Verify the message belongs to this chat
+      const message = await models.ChatMessage.findOne({
+        where: { id: data.messageId, chatId: data.chatId },
+      });
+      if (!message) {
+        socket.emit("error", { message: "Message not found" });
+        return;
+      }
+
+      const emoji = (data.emoji || "").trim().slice(0, 16);
+      if (!emoji) {
+        socket.emit("error", { message: "Invalid emoji" });
+        return;
+      }
+
+      // Upsert: one reaction per user per message (update emoji if they switch)
+      await (models.MessageReaction as any).upsert({
+        messageId: data.messageId,
+        userId: socket.userId,
+        emoji,
+      });
+
+      // Fetch all reactions for this message and broadcast the updated set
+      const allReactions = await models.MessageReaction.findAll({
+        where: { messageId: data.messageId },
+        attributes: ["userId", "emoji"],
+      });
+
+      const reactionRows = allReactions.map((r: any) => ({
+        userId: r.userId as string,
+        emoji: r.emoji as string,
+      }));
+
+      // Broadcast to every participant currently in the chat room
+      this.io.to(`chat_${data.chatId}`).emit("reaction_updated", {
+        chatId: data.chatId,
+        messageId: data.messageId,
+        reactions: reactionRows,
+      });
+    } catch (error) {
+      console.error("Error adding reaction:", error);
+      socket.emit("error", { message: "Failed to add reaction" });
+    }
+  }
+
+  private async handleRemoveReaction(
+    socket: SocketWithAuth,
+    data: { chatId: string; messageId: string }
+  ) {
+    if (!socket.userId) return;
+
+    const models = this.app.get("models") as ReturnType<typeof Models>;
+
+    try {
+      // Verify participant
+      const participant = await models.ChatParticipant.findOne({
+        where: { chatId: data.chatId, userId: socket.userId },
+      });
+      if (!participant) {
+        socket.emit("error", { message: "You are not a participant in this chat" });
+        return;
+      }
+
+      await models.MessageReaction.destroy({
+        where: { messageId: data.messageId, userId: socket.userId },
+      });
+
+      const allReactions = await models.MessageReaction.findAll({
+        where: { messageId: data.messageId },
+        attributes: ["userId", "emoji"],
+      });
+
+      const reactionRows = allReactions.map((r: any) => ({
+        userId: r.userId as string,
+        emoji: r.emoji as string,
+      }));
+
+      this.io.to(`chat_${data.chatId}`).emit("reaction_updated", {
+        chatId: data.chatId,
+        messageId: data.messageId,
+        reactions: reactionRows,
+      });
+    } catch (error) {
+      console.error("Error removing reaction:", error);
+      socket.emit("error", { message: "Failed to remove reaction" });
     }
   }
 

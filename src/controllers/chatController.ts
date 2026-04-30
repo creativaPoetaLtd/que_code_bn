@@ -273,8 +273,27 @@ export const getChatMessages = async (
       replyTargets.map((msg: any) => [msg.id, msg])
     );
 
+    // Fetch all reactions for this page of messages in one query
+    const messageIds = messagesInOrder.map((m: any) => m.id);
+    const allReactionRows = messageIds.length > 0
+      ? await models.MessageReaction.findAll({
+          where: { messageId: { [Op.in]: messageIds } },
+          attributes: ["messageId", "userId", "emoji"],
+        })
+      : [];
+
+    // Group raw reaction rows by messageId
+    const reactionsMap = new Map<string, Array<{ userId: string; emoji: string }>>();
+    for (const row of allReactionRows) {
+      const r = row as any;
+      const existing = reactionsMap.get(r.messageId) ?? [];
+      existing.push({ userId: r.userId, emoji: r.emoji });
+      reactionsMap.set(r.messageId, existing);
+    }
+
     const formattedMessages = messagesInOrder.map((message: any) => ({
       id: message.id,
+      chatId: message.chatId,
       content: message.content, // Already decrypted by service
       messageType: message.messageType,
       replyToMessageId: message.replyToMessageId,
@@ -291,6 +310,7 @@ export const getChatMessages = async (
       mimeType: message.mimeType,
       duration: message.duration,
       mentions: message.mentions,
+      reactions: reactionsMap.get(message.id) ?? [],
       replyTo: message.replyToMessageId
         ? (() => {
             const target = replyTargetMap.get(message.replyToMessageId);
