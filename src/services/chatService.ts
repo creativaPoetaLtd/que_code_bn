@@ -211,7 +211,8 @@ export class ChatService {
         });
 
         if (!repliedMessage) {
-          throw new Error('Reply target message was not found in this chat');
+          console.warn(`replyToMessageId ${replyToMessageId} not found in chat ${chatId} – sending without reply reference`);
+          replyToMessageId = undefined;
         }
       }
 
