@@ -7,7 +7,9 @@ import {
   adminSendSupportMessage,
   markAdminSupportChatAsRead,
   getAdminSupportUnreadCount,
+  adminSendSupportMediaMessage,
 } from "../controllers/admin.support.controller";
+import { upload } from "../controllers/chatController";
 
 const router = Router();
 const guard = [
@@ -26,6 +28,9 @@ router.get("/chats/:chatId/messages", ...guard, getAdminSupportChatMessages);
 
 // POST /api/v1/admin/support/chats/:chatId/messages     — admin sends a message
 router.post("/chats/:chatId/messages", ...guard, adminSendSupportMessage);
+
+// POST /api/v1/admin/support/chats/:chatId/media        — admin sends a media file
+router.post("/chats/:chatId/media", ...guard, upload.single("file"), adminSendSupportMediaMessage);
 
 // GET  /api/v1/admin/support/unread-count               — total unread messages for header badge
 // NOTE: this route must come before /:chatId routes to avoid param collision

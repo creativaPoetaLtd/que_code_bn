@@ -2,6 +2,9 @@ import { Response, NextFunction, RequestHandler } from "express";
 import { Transaction, QueryTypes, Op } from "sequelize";
 import { AuthenticatedRequest } from "../types/requests";
 import Models from "../database/models";
+import ChatService from "../services/chatService";
+import fs from "fs";
+import path from "path";
 
 /**
  * POST /api/v1/support/chat
@@ -259,6 +262,72 @@ export const markSupportChatAsRead: RequestHandler = async (req, res, next) => {
 
     res.json({ success: true, message: "Chat marked as read" });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/v1/support/chat/:chatId/media
+ * Sends a media file (image, document, etc.) in a support chat.
+ * Reuses the same ChatService.sendMediaMessage pipeline as regular chats.
+ */
+export const sendSupportMediaMessage: RequestHandler = async (req, res, next) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user.id;
+    const { chatId } = req.params;
+    const { caption } = req.body as { caption?: string };
+    const file = (req as any).file as Express.Multer.File | undefined;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    if (!file) {
+      res.status(400).json({ success: false, message: "No file uploaded" });
+      return;
+    }
+
+    // Verify user is a participant of this support chat
+    const participant = await models.ChatParticipant.findOne({
+      where: { chatId, userId },
+      include: [{ model: models.Chat, as: "chat", where: { type: "support" }, required: true }],
+    });
+
+    if (!participant) {
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      res.status(403).json({ success: false, message: "Access denied" });
+      return;
+    }
+
+    const io = req.app.get("io");
+    const chatService = ChatService.getInstance();
+
+    const message = await chatService.sendMediaMessage(
+      userId, chatId, file, caption || "", models, io, req.app
+    );
+
+    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: message.id,
+        chatId,
+        content: message.content,
+        messageType: message.messageType,
+        status: message.status,
+        mediaUrl: message.mediaUrl,
+        mediaType: message.mediaType,
+        fileSize: message.fileSize,
+        thumbnailUrl: message.thumbnailUrl,
+        fileName: message.fileName,
+        mimeType: message.mimeType,
+        duration: message.duration,
+        createdAt: message.createdAt,
+        sender: message.get("sender"),
+      },
+    });
+  } catch (error) {
+    if ((req as any).file && fs.existsSync((req as any).file.path)) {
+      fs.unlinkSync((req as any).file.path);
+    }
     next(error);
   }
 };
