@@ -34,6 +34,7 @@ import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
 import groupContribution_model from "./groupContribution.model";
 import groupContributionPayment_model from "./groupContributionPayment.model";
+import messageReaction_model from "./messageReaction.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -84,6 +85,7 @@ const Models = (sequelize: Sequelize) => {
   // Group Contribution models
   const GroupContribution = groupContribution_model(sequelize);
   const GroupContributionPayment = groupContributionPayment_model(sequelize);
+  const MessageReaction = messageReaction_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
 
@@ -339,6 +341,13 @@ const Models = (sequelize: Sequelize) => {
     as: "transaction",
   });
 
+  // Message Reactions
+  ChatMessage.hasMany(MessageReaction, { foreignKey: "messageId", as: "reactions" });
+  MessageReaction.belongsTo(ChatMessage, { foreignKey: "messageId", as: "message" });
+
+  User.hasMany(MessageReaction, { foreignKey: "userId", as: "messageReactions" });
+  MessageReaction.belongsTo(User, { foreignKey: "userId", as: "user" });
+
   // Chat Encryption Keys
   Chat.hasMany(ChatKey, { foreignKey: "chatId", as: "chatKeys" });
   ChatKey.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
@@ -530,6 +539,7 @@ const Models = (sequelize: Sequelize) => {
     GalleryItem,
     GroupContribution,
     GroupContributionPayment,
+    MessageReaction,
   };
 };
 

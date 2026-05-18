@@ -2,6 +2,8 @@ import { RequestHandler } from "express";
 import { QueryTypes, literal, Op } from "sequelize";
 import { AuthenticatedRequest } from "../types/requests";
 import Models from "../database/models";
+import ChatService from "../services/chatService";
+import fs from "fs";
 
 /**
  * GET /api/v1/admin/support/chats
@@ -391,6 +393,65 @@ export const getAdminSupportUnreadCount: RequestHandler = async (req, res, next)
     const totalUnread = Number(rows[0]?.totalUnread ?? 0);
     res.json({ success: true, data: { totalUnread } });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/v1/admin/support/chats/:chatId/media
+ * Admin sends a media file (image, document, etc.) in a support chat.
+ */
+export const adminSendSupportMediaMessage: RequestHandler = async (req, res, next) => {
+  try {
+    const adminId = (req as any as AuthenticatedRequest).user.id;
+    const { chatId } = req.params;
+    const { caption } = req.body as { caption?: string };
+    const file = (req as any).file as Express.Multer.File | undefined;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    if (!file) {
+      res.status(400).json({ success: false, message: "No file uploaded" });
+      return;
+    }
+
+    // Ensure admin has joined (or join now)
+    await models.ChatParticipant.findOrCreate({
+      where: { chatId, userId: adminId },
+      defaults: { chatId, userId: adminId, role: "admin", lastReadAt: new Date() } as any,
+    });
+
+    const io = req.app.get("io");
+    const chatService = ChatService.getInstance();
+
+    const message = await chatService.sendMediaMessage(
+      adminId, chatId, file, caption || "", models, io, req.app
+    );
+
+    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: message.id,
+        chatId,
+        content: message.content,
+        messageType: message.messageType,
+        status: message.status,
+        mediaUrl: message.mediaUrl,
+        mediaType: message.mediaType,
+        fileSize: message.fileSize,
+        thumbnailUrl: message.thumbnailUrl,
+        fileName: message.fileName,
+        mimeType: message.mimeType,
+        duration: message.duration,
+        createdAt: message.createdAt,
+        sender: message.get("sender"),
+      },
+    });
+  } catch (error) {
+    if ((req as any).file && fs.existsSync((req as any).file.path)) {
+      fs.unlinkSync((req as any).file.path);
+    }
     next(error);
   }
 };
