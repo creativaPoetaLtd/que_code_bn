@@ -42,7 +42,12 @@ export const createOrGetSupportChat: RequestHandler = async (req, res, next) => 
         }
 
         const chat = await models.Chat.create(
-          { isGroup: false, type: "support" } as any,
+          {
+            isGroup: false,
+            type: "support",
+            securityMode: "support_plain",
+            protocolVersion: null,
+          } as any,
           { transaction: t }
         );
         await models.ChatParticipant.create(

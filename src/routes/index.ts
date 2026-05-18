@@ -23,6 +23,7 @@ import fcmRouter from "./fcm.routes";
 import pushSubscriptionRouter from "./pushSubscription.routes";
 import supportRouter from "./support.routes";
 import linkPreviewRouter from "./link-preview.routes";
+import e2eeRouter from "./e2ee.routes";
 
 // Admin routes (unified authentication with role/permission middleware)
 import adminAuthRouter from "./admin.auth.routes";
@@ -57,9 +58,10 @@ router.use("/chats", chatRouter);
 router.use("/support", supportRouter);
 router.use("/outside-messages", outsideMessageRouter);
 router.use("/fcm", fcmRouter);
-router.use("/push-subscriptions", pushSubscriptionRouter);
-router.use("/link-preview", linkPreviewRouter);
-router.use("", actionRouter);
+  router.use("/push-subscriptions", pushSubscriptionRouter);
+  router.use("/link-preview", linkPreviewRouter);
+  router.use("/e2ee", e2eeRouter);
+  router.use("", actionRouter);
 
 // Role and Permission management (admin-only with middleware)
 router.use("/roles", roleRouter);

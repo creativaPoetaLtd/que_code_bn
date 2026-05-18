@@ -91,7 +91,9 @@ export class ChatService {
       // Create new chat
       const chat = await models.Chat.create({
         isGroup,
-        createdBy: participantIds[0]
+        createdBy: participantIds[0],
+        securityMode: "legacy",
+        protocolVersion: null,
       });
 
       // Add participants

@@ -7,6 +7,8 @@ class Chat extends Model<ChatAttributes, ChatCreationAttributes> {
   public isGroup!: boolean;
   public groupId?: string;
   public type!: string;
+  public securityMode!: string;
+  public protocolVersion!: string | null;
 }
 
 const Chat_model = (sequelize: Sequelize) => {
@@ -16,6 +18,16 @@ const Chat_model = (sequelize: Sequelize) => {
       isGroup: { type: DataTypes.BOOLEAN, defaultValue: false },
       groupId: DataTypes.UUID,
       type: { type: DataTypes.STRING(20), defaultValue: 'dm' },
+      securityMode: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: "legacy",
+      },
+      protocolVersion: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+        defaultValue: null,
+      },
     },
     { sequelize, tableName: "Chats" }
   );

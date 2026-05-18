@@ -7,6 +7,7 @@ import ChatService from "../services/chatService";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { SECURE_DM_PROTOCOL_VERSION, supportsSecureDmBetweenUsers } from "../services/e2eeMessage.service";
 
 // Get user's chats (both DMs and group chats)
 export const getUserChats = async (
@@ -178,6 +179,8 @@ export const getUserChats = async (
         name: chatName,
         isGroup: chat.isGroup,
         type: chat.type,
+        securityMode: chat.securityMode,
+        protocolVersion: chat.protocolVersion,
         groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {
@@ -422,7 +425,8 @@ export const createOrGetDMChat = async (
     const participantChatIds = participantChats.map(cp => cp.chatId);
     const commonChatIds = userChatIds.filter(id => participantChatIds.includes(id));
 
-    let existingChat = null;
+    let existingSecureChat = null;
+    let existingLegacyChat = null;
     if (commonChatIds.length > 0) {
       // Verify it's exactly a 2-person chat
       for (const chatId of commonChatIds) {
@@ -431,16 +435,27 @@ export const createOrGetDMChat = async (
         });
 
         if (participantCount === 2) {
-          existingChat = await models.Chat.findByPk(chatId);
-          break;
+          const candidateChat = await models.Chat.findByPk(chatId);
+          if (candidateChat?.securityMode === "secure_dm_v1") {
+            existingSecureChat = candidateChat;
+            break;
+          }
+          if (!existingLegacyChat) {
+            existingLegacyChat = candidateChat;
+          }
         }
       }
     }
 
-    if (existingChat) {
+    const resolvedChat = existingSecureChat || existingLegacyChat;
+    if (resolvedChat) {
       res.json({
         success: true,
-        data: { chatId: existingChat.id },
+        data: {
+          chatId: resolvedChat.id,
+          securityMode: resolvedChat.securityMode || "legacy",
+          protocolVersion: resolvedChat.protocolVersion || null,
+        },
         message: "Existing chat found"
       });
       return;
@@ -475,13 +490,20 @@ export const createOrGetDMChat = async (
       return;
     }
 
+    const shouldCreateSecureChat = await supportsSecureDmBetweenUsers(models, [
+      userId,
+      participantId,
+    ]);
+
     // Create new DM chat
     const transaction = await sequelizeConnection.transaction();
 
     try {
       const newChat = await models.Chat.create(
         {
-          isGroup: false
+          isGroup: false,
+          securityMode: shouldCreateSecureChat ? "secure_dm_v1" : "legacy",
+          protocolVersion: shouldCreateSecureChat ? SECURE_DM_PROTOCOL_VERSION : null,
         },
         { transaction }
       );
@@ -504,7 +526,11 @@ export const createOrGetDMChat = async (
 
       res.status(201).json({
         success: true,
-        data: { chatId: newChat.id },
+        data: {
+          chatId: newChat.id,
+          securityMode: newChat.securityMode,
+          protocolVersion: newChat.protocolVersion,
+        },
         message: "Chat created successfully"
       });
 
@@ -971,7 +997,9 @@ export const joinGroupChat = async (
         // Create the chat
         chat = await models.Chat.create({
           isGroup: true,
-          groupId
+          groupId,
+          securityMode: "legacy",
+          protocolVersion: null,
         }, { transaction });
 
         // Get all active group members

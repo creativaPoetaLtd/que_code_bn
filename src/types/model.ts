@@ -210,6 +210,8 @@ export interface ChatAttributes {
   isGroup: boolean;
   groupId?: string;
   type?: string;
+  securityMode?: "legacy" | "secure_dm_v1" | "secure_group_v1" | "support_plain";
+  protocolVersion?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -467,6 +469,85 @@ export type DeviceSessionCreationAttributes = Optional<
   | "revokedAt"
   | "createdAt"
   | "updatedAt"
+>;
+
+export interface UserDeviceAttributes {
+  id: string;
+  userId: string;
+  deviceId: string;
+  deviceName?: string | null;
+  platform?: string | null;
+  appVersion?: string | null;
+  isActive: boolean;
+  lastSeenAt?: Date | null;
+  revokedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type UserDeviceCreationAttributes = Optional<
+  UserDeviceAttributes,
+  | "id"
+  | "deviceName"
+  | "platform"
+  | "appVersion"
+  | "isActive"
+  | "lastSeenAt"
+  | "revokedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface DeviceKeyBundleAttributes {
+  id: string;
+  userDeviceId: string;
+  algorithm: string;
+  identityPublicKey: Record<string, any>;
+  signedPreKeyId: number;
+  signedPreKeyPublic: Record<string, any>;
+  signedPreKeySignature: string;
+  registrationId: number;
+  uploadedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type DeviceKeyBundleCreationAttributes = Optional<
+  DeviceKeyBundleAttributes,
+  "id" | "uploadedAt" | "createdAt" | "updatedAt"
+>;
+
+export interface DeviceOneTimePreKeyAttributes {
+  id: string;
+  userDeviceId: string;
+  preKeyId: number;
+  publicKey: Record<string, any>;
+  usedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type DeviceOneTimePreKeyCreationAttributes = Optional<
+  DeviceOneTimePreKeyAttributes,
+  "id" | "usedAt" | "createdAt" | "updatedAt"
+>;
+
+export interface ChatMessageRecipientPayloadAttributes {
+  id: string;
+  chatMessageId: string;
+  recipientUserId: string;
+  recipientDeviceId: string;
+  senderDeviceId: string;
+  encryptedEnvelope: Record<string, any>;
+  deliveredAt?: Date | null;
+  readAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type ChatMessageRecipientPayloadCreationAttributes = Optional<
+  ChatMessageRecipientPayloadAttributes,
+  "id" | "deliveredAt" | "readAt" | "createdAt" | "updatedAt"
 >;
 
 export interface OrganizationCategoryAttributes {
