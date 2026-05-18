@@ -19,6 +19,13 @@ export enum NotificationType {
   GROUP_MEMBER_REMOVED = "GROUP_MEMBER_REMOVED",
   GROUP_MEMBER_ROLE_CHANGED = "GROUP_MEMBER_ROLE_CHANGED",
   GROUP_UPDATED = "GROUP_UPDATED",
+
+  // Group contribution notifications
+  GROUP_CONTRIBUTION_CREATED = "GROUP_CONTRIBUTION_CREATED",
+  GROUP_CONTRIBUTION_RECEIVED = "GROUP_CONTRIBUTION_RECEIVED",
+  GROUP_CONTRIBUTION_COMPLETED = "GROUP_CONTRIBUTION_COMPLETED",
+  GROUP_CONTRIBUTION_CLOSED = "GROUP_CONTRIBUTION_CLOSED",
+  GROUP_CONTRIBUTION_UPDATED = "GROUP_CONTRIBUTION_UPDATED",
   
   // Contact-related notifications
   CONTACT_INVITATION_SENT = "CONTACT_INVITATION_SENT",
@@ -185,6 +192,10 @@ export interface NotificationPayload {
     previousStatus?: string;
     newStatus?: string;
     
+    // Contribution-related data
+    contributionId?: string;
+    contributionTitle?: string;
+
     // General data
     message?: string;
     title?: string;
@@ -274,6 +285,26 @@ const notificationConfig = {
   },
   [NotificationType.GROUP_UPDATED]: {
     description: "A group you're in was updated",
+    priority: "normal",
+  },
+  [NotificationType.GROUP_CONTRIBUTION_CREATED]: {
+    description: "A new contribution request has been created in your group",
+    priority: "high",
+  },
+  [NotificationType.GROUP_CONTRIBUTION_RECEIVED]: {
+    description: "A member has contributed to the group campaign",
+    priority: "normal",
+  },
+  [NotificationType.GROUP_CONTRIBUTION_COMPLETED]: {
+    description: "The group contribution goal has been reached",
+    priority: "high",
+  },
+  [NotificationType.GROUP_CONTRIBUTION_CLOSED]: {
+    description: "A group contribution request has been closed",
+    priority: "normal",
+  },
+  [NotificationType.GROUP_CONTRIBUTION_UPDATED]: {
+    description: "A group contribution request has been updated",
     priority: "normal",
   },
   

@@ -32,6 +32,8 @@ import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
 import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
+import groupContribution_model from "./groupContribution.model";
+import groupContributionPayment_model from "./groupContributionPayment.model";
 
 const Models = (sequelize: Sequelize) => {
   // Initialize models
@@ -78,6 +80,10 @@ const Models = (sequelize: Sequelize) => {
 
   // Payment Request model
   const PaymentRequest = paymentRequest_model(sequelize);
+
+  // Group Contribution models
+  const GroupContribution = groupContribution_model(sequelize);
+  const GroupContributionPayment = groupContributionPayment_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
 
@@ -459,6 +465,34 @@ const Models = (sequelize: Sequelize) => {
     as: "organization",
   });
 
+  // Group Contribution associations
+  Group.hasMany(GroupContribution, { foreignKey: "groupId", as: "contributions" });
+  GroupContribution.belongsTo(Group, { foreignKey: "groupId", as: "group" });
+
+  User.hasMany(GroupContribution, { foreignKey: "createdBy", as: "createdContributions" });
+  GroupContribution.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+
+  GroupContribution.hasMany(GroupContributionPayment, {
+    foreignKey: "contributionId",
+    as: "payments",
+  });
+  GroupContributionPayment.belongsTo(GroupContribution, {
+    foreignKey: "contributionId",
+    as: "contribution",
+  });
+
+  User.hasMany(GroupContributionPayment, { foreignKey: "payerId", as: "contributionPayments" });
+  GroupContributionPayment.belongsTo(User, { foreignKey: "payerId", as: "payer" });
+
+  Transaction.hasOne(GroupContributionPayment, {
+    foreignKey: "transactionId",
+    as: "contributionPayment",
+  });
+  GroupContributionPayment.belongsTo(Transaction, {
+    foreignKey: "transactionId",
+    as: "transaction",
+  });
+
   return {
     sequelize, // Add sequelize instance
     User,
@@ -494,6 +528,8 @@ const Models = (sequelize: Sequelize) => {
     PaymentRequest,
     OutsideMessage,
     GalleryItem,
+    GroupContribution,
+    GroupContributionPayment,
   };
 };
 
