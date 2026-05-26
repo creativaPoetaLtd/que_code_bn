@@ -688,6 +688,7 @@ export interface ActionModelAttributes {
   policy: any; // JSON
   webhooks: any; // JSON
   customFields: any; // JSON
+  metadata: any; // JSON: type-specific modal metadata (vote/ticket/booking fields)
   status: "draft" | "published" | "archived" | "suspended";
   dedicatedQrCode: string | null;
   dedicatedQrCodeData: string | null;

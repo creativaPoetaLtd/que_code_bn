@@ -436,6 +436,54 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       (actionPurchase as any).qrObjectId = qrObject.id;
     }
 
+    // 13. For vote actions: increment metadata.votes on the sub-action and recompute ranks
+    if (action.type === "vote" && subActionId) {
+      try {
+        const currentSubAction = await read_function<SubActionModelAttributes>(
+          "SubAction",
+          "findOne",
+          { where: { id: subActionId } }
+        );
+        if (currentSubAction) {
+          const currentMeta = (currentSubAction as any).metadata || {};
+          const newVotes = ((currentMeta.votes as number) || 0) + quantity;
+          await insert_function<SubActionModelAttributes>(
+            "SubAction",
+            "update",
+            { metadata: { ...currentMeta, votes: newVotes } },
+            { where: { id: subActionId } }
+          );
+        }
+
+        // Recompute ranks for all candidates in this action
+        const allCandidates = await read_function<SubActionModelAttributes>(
+          "SubAction",
+          "findAll",
+          { where: { actionId: action.id, isActive: true } }
+        ) as unknown as SubActionModelAttributes[];
+
+        const sorted = [...allCandidates].sort((a: any, b: any) => {
+          const aVotes = (a.metadata?.votes as number) || 0;
+          const bVotes = (b.metadata?.votes as number) || 0;
+          return bVotes - aVotes;
+        });
+
+        await Promise.all(
+          sorted.map((candidate: any, index: number) =>
+            insert_function<SubActionModelAttributes>(
+              "SubAction",
+              "update",
+              { metadata: { ...(candidate.metadata || {}), rank: index + 1 } },
+              { where: { id: candidate.id } }
+            )
+          )
+        );
+      } catch (voteUpdateError) {
+        console.error("Error updating vote metadata:", voteUpdateError);
+        // Non-fatal: purchase succeeded, metadata update is best-effort
+      }
+    }
+
     // Commit transaction
     await dbTransaction?.commit();
 
