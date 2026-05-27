@@ -60,12 +60,15 @@ const chatMessageRecipientPayload_model = (sequelize: Sequelize) => {
       tableName: "ChatMessageRecipientPayloads",
       indexes: [
         {
+          name: "chat_message_recipient_payloads_message_idx",
           fields: ["chatMessageId"],
         },
         {
+          name: "chat_message_recipient_payloads_recipient_idx",
           fields: ["recipientUserId", "recipientDeviceId"],
         },
         {
+          name: "chat_message_recipient_payloads_message_device_unique",
           unique: true,
           fields: ["chatMessageId", "recipientDeviceId"],
         },

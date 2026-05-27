@@ -67,6 +67,7 @@ const corsOptions = {
     "Authorization",
     "X-Requested-With",
     "Accept",
+    "x-qc-device-id",
   ],
   exposedHeaders: ["Content-Range", "X-Content-Range"],
   maxAge: 86400, // 24 hours

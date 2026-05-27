@@ -212,8 +212,15 @@ class SocketManager {
       }
 
       const chat = await models.Chat.findByPk(data.chatId, {
-        attributes: ["id", "isGroup"]
+        attributes: ["id", "isGroup", "securityMode"]
       });
+
+      if (chat?.securityMode === "secure_dm_v1") {
+        socket.emit("error", {
+          message: "This conversation requires secure messaging. Use the secure message flow.",
+        });
+        return;
+      }
 
       // Sanitize mentions: deduplicate, remove self-mentions, cap at 20
       const hasAllMentionInPayload = !!data.mentions?.some(

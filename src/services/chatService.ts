@@ -182,6 +182,14 @@ export class ChatService {
     replyToMessageId?: string
   ) {
     try {
+      const chatRecord = await models.Chat.findByPk(chatId, {
+        attributes: ["id", "securityMode"],
+      });
+
+      if (chatRecord?.securityMode === "secure_dm_v1") {
+        throw new Error("Legacy message sending is disabled for secure conversations");
+      }
+
       // Get chat key for encryption
       let chatKeyRecord = await models.ChatKey.findOne({
         where: { chatId, userId: senderId }

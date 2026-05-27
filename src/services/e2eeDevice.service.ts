@@ -2,6 +2,44 @@ import { Op } from "sequelize";
 
 const SUPPORTED_E2EE_ALGORITHMS = new Set(["qc-e2ee-p256-v1"]);
 
+const decodeBase64Url = (value: string) => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Buffer.from(padded, "base64");
+};
+
+const isValidP256Coordinate = (value: unknown) => {
+  if (typeof value !== "string" || value.length < 40) {
+    return false;
+  }
+
+  try {
+    return decodeBase64Url(value).length === 32;
+  } catch {
+    return false;
+  }
+};
+
+const isValidP256PublicJwk = (value: unknown) => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const jwk = value as Record<string, unknown>;
+  return (
+    jwk.kty === "EC" &&
+    jwk.crv === "P-256" &&
+    isValidP256Coordinate(jwk.x) &&
+    isValidP256Coordinate(jwk.y)
+  );
+};
+
+const hasValidSecureBundleShape = (device: any) =>
+  isValidP256PublicJwk(device?.keyBundle?.identityPublicKey) &&
+  isValidP256PublicJwk(device?.keyBundle?.signedPreKeyPublic) &&
+  typeof device?.keyBundle?.signedPreKeySignature === "string" &&
+  device.keyBundle.signedPreKeySignature.length > 20;
+
 type RegisterDeviceInput = {
   deviceId: string;
   deviceName?: string | null;
@@ -34,6 +72,15 @@ const assertValidBundle = (input: RegisterDeviceInput) => {
 
   if (!input.bundle?.identityPublicKey || !input.bundle?.signedPreKey?.publicKey) {
     throw Object.assign(new Error("A valid device key bundle is required"), { statusCode: 400 });
+  }
+
+  if (
+    !isValidP256PublicJwk(input.bundle.identityPublicKey) ||
+    !isValidP256PublicJwk(input.bundle.signedPreKey.publicKey)
+  ) {
+    throw Object.assign(new Error("Device bundle contains an invalid P-256 public key"), {
+      statusCode: 400,
+    });
   }
 
   if (
@@ -193,7 +240,7 @@ export const getUserDeviceBundles = async (
     );
   }
 
-  return models.UserDevice.findAll({
+  const devices = await models.UserDevice.findAll({
     where: {
       userId: targetUserId,
       isActive: true,
@@ -214,4 +261,6 @@ export const getUserDeviceBundles = async (
     ],
     order: [["createdAt", "ASC"]],
   });
+
+  return devices.filter((device: any) => hasValidSecureBundleShape(device));
 };

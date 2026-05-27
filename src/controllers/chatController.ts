@@ -25,7 +25,7 @@ export const getUserChats = async (
         {
           model: models.Chat,
           as: "chat",
-          attributes: ['id', 'isGroup', 'groupId', 'type', 'createdAt', 'updatedAt'], // Explicitly include groupId + chat type
+          attributes: ['id', 'isGroup', 'groupId', 'type', 'securityMode', 'protocolVersion', 'createdAt', 'updatedAt'], // Explicitly include groupId + chat type
           include: [
             {
               model: models.ChatParticipant,
@@ -201,9 +201,61 @@ export const getUserChats = async (
       };
     });
 
+    const preferredDirectChats = new Map<string, (typeof formattedChats)[number]>();
+
+    for (const chat of formattedChats) {
+      if (chat.isGroup || chat.type === "support") {
+        continue;
+      }
+
+      const otherParticipant = chat.participants.find((participant: any) => participant.userId !== userId);
+      if (!otherParticipant) {
+        continue;
+      }
+
+      const mapKey = `dm:${otherParticipant.userId}`;
+      const existing = preferredDirectChats.get(mapKey);
+
+      if (!existing) {
+        preferredDirectChats.set(mapKey, chat);
+        continue;
+      }
+
+      const existingIsSecure = existing.securityMode === "secure_dm_v1";
+      const currentIsSecure = chat.securityMode === "secure_dm_v1";
+
+      if (currentIsSecure && !existingIsSecure) {
+        preferredDirectChats.set(mapKey, chat);
+        continue;
+      }
+
+      if (currentIsSecure === existingIsSecure) {
+        const existingTimestamp = new Date(existing.lastMessage?.createdAt || 0).getTime();
+        const currentTimestamp = new Date(chat.lastMessage?.createdAt || 0).getTime();
+
+        if (currentTimestamp > existingTimestamp) {
+          preferredDirectChats.set(mapKey, chat);
+        }
+      }
+    }
+
+    const dedupedFormattedChats = formattedChats.filter((chat) => {
+      if (chat.isGroup || chat.type === "support") {
+        return true;
+      }
+
+      const otherParticipant = chat.participants.find((participant: any) => participant.userId !== userId);
+      if (!otherParticipant) {
+        return true;
+      }
+
+      const preferredChat = preferredDirectChats.get(`dm:${otherParticipant.userId}`);
+      return preferredChat?.id === chat.id;
+    });
+
     res.json({
       success: true,
-      data: formattedChats
+      data: dedupedFormattedChats
     });
 
   } catch (error) {
