@@ -300,6 +300,31 @@ const run = async () => {
   assert.equal(sendSuccess.createdPayloadRows.length, 3);
   assert.equal(sendSuccess.consumedPreKeys.length, 3);
 
+  const sendMediaSuccess = buildSendModels();
+  await sendSecureDMMessage(sendMediaSuccess.models, {
+    chatId: "chat-1",
+    userId: "user-a",
+    senderDeviceId: "device-a-1",
+    messageType: "image",
+    recipientPayloads: [buildRecipientPayload("user-b", "device-b-1", 301)],
+  });
+
+  assert.equal(sendMediaSuccess.createdPayloadRows.length, 1);
+  assert.equal(sendMediaSuccess.consumedPreKeys.length, 1);
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels().models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "money" as any,
+        recipientPayloads: [buildRecipientPayload("user-b", "device-b-1", 301)],
+      }),
+    400,
+    "Unsupported secure message type",
+  );
+
   await expectStatus(
     () =>
       sendSecureDMMessage(buildSendModels().models, {
