@@ -14,6 +14,8 @@ import {
   sendSecureDMMessage,
 } from "../services/e2eeMessage.service";
 import { notifyChatMessageReceived } from "../utils/notificationHelpers";
+import { uploadEncryptedChatMedia } from "../services/mediaUploadService";
+import fs from "fs";
 
 const ensureAuthenticatedUser = async (
   req: AuthenticatedRequest,
@@ -407,6 +409,73 @@ export const sendSecureChatMessage = async (
       },
     });
   } catch (error: any) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return next(error);
+  }
+};
+
+export const uploadSecureChatMedia = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = await ensureAuthenticatedUser(req, models);
+    const { chatId } = req.params;
+    const deviceId = resolveSecureDeviceId(req);
+    const file = req.file;
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "chatId is required" });
+    }
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "x-qc-device-id is required for secure media upload",
+      });
+    }
+
+    if (!file) {
+      return res.status(400).json({ success: false, message: "Encrypted file is required" });
+    }
+
+    await getSecureDMMessagePage(models, {
+      chatId,
+      userId,
+      deviceId,
+      page: 1,
+      limit: 1,
+    });
+
+    const uploadResult = await uploadEncryptedChatMedia(file);
+
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    if (!uploadResult.success || !uploadResult.data) {
+      return res.status(400).json({
+        success: false,
+        message: uploadResult.error || "Failed to upload encrypted media",
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: uploadResult.data,
+    });
+  } catch (error: any) {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
     if (error?.statusCode) {
       return res.status(error.statusCode).json({
         success: false,

@@ -10,6 +10,8 @@ type SecureRecipientPayloadInput = {
   encryptedEnvelope: Record<string, any>;
 };
 
+type SecureMessageType = "text" | "image" | "file" | "audio" | "video" | "document";
+
 const assertSecureUserDevice = async (
   models: any,
   userId: string,
@@ -302,14 +304,14 @@ export const sendSecureDMMessage = async (
     chatId: string;
     userId: string;
     senderDeviceId: string;
-    messageType: "text";
+    messageType: SecureMessageType;
     replyToMessageId?: string | null;
     recipientPayloads: SecureRecipientPayloadInput[];
   },
 ) => {
-  if (messageType !== "text") {
+  if (!["text", "image", "file", "audio", "video", "document"].includes(messageType)) {
     throw Object.assign(
-      new Error("secure_dm_v1 currently supports text messages only"),
+      new Error("Unsupported secure message type"),
       { statusCode: 400 },
     );
   }

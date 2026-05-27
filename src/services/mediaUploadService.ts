@@ -248,6 +248,61 @@ export const uploadChatMedia = async (
     }
 };
 
+export const uploadEncryptedChatMedia = async (
+    file: Express.Multer.File,
+    retries: number = 2
+): Promise<{
+    success: boolean;
+    data?: {
+        url: string;
+        fileSize: number;
+        fileName: string;
+        mimeType: string;
+    };
+    error?: string;
+}> => {
+    try {
+        if (file.size > 110 * 1024 * 1024) {
+            return { success: false, error: 'Encrypted file size exceeds maximum allowed size of 110MB' };
+        }
+
+        const uploadFolder = `${folder || 'qiew'}/chat/secure`;
+        const uploadOptions = {
+            folder: uploadFolder,
+            resource_type: 'raw' as const,
+            timeout: 120000,
+            chunk_size: 6000000,
+        };
+
+        let result;
+        try {
+            result = await cloudinary.uploader.upload(file.path, uploadOptions);
+        } catch (uploadError: any) {
+            if (retries > 0 && (uploadError.http_code === 499 || uploadError.name === 'TimeoutError')) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return uploadEncryptedChatMedia(file, retries - 1);
+            }
+
+            throw uploadError;
+        }
+
+        return {
+            success: true,
+            data: {
+                url: result.secure_url,
+                fileSize: file.size,
+                fileName: file.originalname,
+                mimeType: file.mimetype,
+            }
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to upload encrypted file'
+        };
+    }
+};
+
 // Delete media from Cloudinary
 export const deleteChatMedia = async (url: string): Promise<boolean> => {
     try {
