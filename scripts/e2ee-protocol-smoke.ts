@@ -75,6 +75,126 @@ const buildBundle = () => ({
   },
 });
 
+const buildEnvelope = (
+  recipientUserId: string,
+  recipientDeviceId: string,
+  recipientOneTimePreKeyId?: number,
+) => ({
+  version: 1,
+  protocolVersion: "secure-dm-v1",
+  algorithm: "qc-e2ee-p256-v1",
+  senderUserId: "user-a",
+  senderDeviceId: "device-a-1",
+  recipientUserId,
+  recipientDeviceId,
+  recipientOneTimePreKeyId,
+  ephemeralPublicKey: p256PublicKey("e"),
+  wrappedMessageKey: "wrapped",
+  wrappedMessageKeyIv: "wrapped-iv",
+  ciphertext: "ciphertext",
+  ciphertextIv: "ciphertext-iv",
+  createdAt: new Date().toISOString(),
+  signature: "signature",
+});
+
+const buildRecipientPayload = (
+  recipientUserId: string,
+  recipientDeviceId: string,
+  recipientOneTimePreKeyId?: number,
+) => ({
+  recipientUserId,
+  recipientDeviceId,
+  encryptedEnvelope: buildEnvelope(recipientUserId, recipientDeviceId, recipientOneTimePreKeyId),
+});
+
+const buildSendModels = ({
+  consumeCount = 1,
+}: {
+  consumeCount?: number;
+} = {}) => {
+  const createdPayloadRows: unknown[] = [];
+  const consumedPreKeys: unknown[] = [];
+  const createdMessage = {
+    id: "message-1",
+    chatId: "chat-1",
+    senderId: "user-a",
+    messageType: "text",
+    replyToMessageId: null,
+    status: "sent",
+    createdAt: new Date(),
+  };
+
+  return {
+    createdPayloadRows,
+    consumedPreKeys,
+    models: {
+      ChatParticipant: {
+        findOne: async () => ({ chatId: "chat-1", userId: "user-a" }),
+        findAll: async () => [{ userId: "user-a" }, { userId: "user-b" }],
+      },
+      Chat: {
+        findByPk: async () => ({
+          id: "chat-1",
+          isGroup: false,
+          type: "dm",
+          securityMode: "secure_dm_v1",
+        }),
+      },
+      UserDevice: {
+        findOne: async ({ where }: any) =>
+          where.userId === "user-a" && where.deviceId === "device-a-1"
+            ? {
+                id: "device-row-a1",
+                userId: "user-a",
+                deviceId: "device-a-1",
+                keyBundle: {},
+              }
+            : null,
+        findAll: async () => [
+          {
+            id: "device-row-a1",
+            userId: "user-a",
+            deviceId: "device-a-1",
+            keyBundle: {},
+            oneTimePreKeys: [{ preKeyId: 201 }],
+          },
+          {
+            id: "device-row-b1",
+            userId: "user-b",
+            deviceId: "device-b-1",
+            keyBundle: {},
+            oneTimePreKeys: [{ preKeyId: 301 }],
+          },
+          {
+            id: "device-row-b2",
+            userId: "user-b",
+            deviceId: "device-b-2",
+            keyBundle: {},
+            oneTimePreKeys: [{ preKeyId: 302 }],
+          },
+        ],
+        update: async () => [1],
+      },
+      ChatMessage: {
+        create: async () => createdMessage,
+        findOne: async () => null,
+        findByPk: async () => createdMessage,
+      },
+      ChatMessageRecipientPayload: {
+        bulkCreate: async (rows: unknown[]) => {
+          createdPayloadRows.push(...rows);
+        },
+      },
+      DeviceOneTimePreKey: {
+        update: async (_values: unknown, options: unknown) => {
+          consumedPreKeys.push(options);
+          return [consumeCount];
+        },
+      },
+    },
+  };
+};
+
 const run = async () => {
   await expectStatus(
     () =>
@@ -155,6 +275,56 @@ const run = async () => {
     userDeviceId: "user-device-row-id",
     usedAt: null,
   });
+
+  process.env.DB_DEV_URL ||= "postgres://user:pass@localhost:5432/qc_smoke";
+  const { sequelizeConnection } = await import("../src/database/config/db.config");
+  const { sendSecureDMMessage } = await import("../src/services/e2eeMessage.service");
+
+  (sequelizeConnection as any).transaction = async (callback: (transaction: unknown) => unknown) =>
+    callback({ smoke: true });
+
+  const sendSuccess = buildSendModels();
+  const sentMessage = await sendSecureDMMessage(sendSuccess.models, {
+    chatId: "chat-1",
+    userId: "user-a",
+    senderDeviceId: "device-a-1",
+    messageType: "text",
+    recipientPayloads: [
+      buildRecipientPayload("user-a", "device-a-1", 201),
+      buildRecipientPayload("user-b", "device-b-1", 301),
+      buildRecipientPayload("user-b", "device-b-2", 302),
+    ],
+  });
+
+  assert.equal((sentMessage as any).id, "message-1");
+  assert.equal(sendSuccess.createdPayloadRows.length, 3);
+  assert.equal(sendSuccess.consumedPreKeys.length, 3);
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels().models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "text",
+        recipientPayloads: [buildRecipientPayload("user-c", "device-c-1", 401)],
+      }),
+    400,
+    "outside this secure chat",
+  );
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels({ consumeCount: 0 }).models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "text",
+        recipientPayloads: [buildRecipientPayload("user-b", "device-b-1", 301)],
+      }),
+    409,
+    "already consumed",
+  );
 
   console.log("E2EE protocol smoke checks passed");
 };
