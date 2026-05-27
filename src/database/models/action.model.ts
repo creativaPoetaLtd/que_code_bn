@@ -36,6 +36,7 @@ class Action extends Model<ActionModelAttributes, ActionCreationAttributes> {
   public policy!: any; // JSON: { refund?: string, tosUrl?: string, cancellation?: string }
   public webhooks!: any; // JSON: { onCheckout?: string, onScanValid?: string, onRefund?: string }
   public customFields!: any; // JSON: type-specific fields
+  public metadata!: any; // JSON: type-specific modal metadata (vote/ticket/booking fields)
   public status!: "draft" | "published" | "archived" | "suspended";
   public dedicatedQrCode!: string | null;
   public dedicatedQrCodeData!: string | null; // Base64 QR code data URL
@@ -124,6 +125,11 @@ const Action_model = (sequelize: Sequelize) => {
         defaultValue: {},
       },
       customFields: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: {},
+      },
+      metadata: {
         type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {},
