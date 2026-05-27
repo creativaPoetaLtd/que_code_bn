@@ -11,6 +11,7 @@ type SecureRecipientPayloadInput = {
 };
 
 type SecureMessageType = "text" | "image" | "file" | "audio" | "video" | "document";
+type SecureEnvelopeInput = Record<string, any>;
 
 const assertSecureUserDevice = async (
   models: any,
@@ -291,6 +292,79 @@ const listSecureDevicesForChat = async (models: any, chatId: string) => {
   };
 };
 
+const assertValidSecureEnvelope = ({
+  envelope,
+  senderUserId,
+  senderDeviceId,
+  recipientUserId,
+  recipientDeviceId,
+}: {
+  envelope: SecureEnvelopeInput;
+  senderUserId: string;
+  senderDeviceId: string;
+  recipientUserId: string;
+  recipientDeviceId: string;
+}) => {
+  const requiredStringFields = [
+    "protocolVersion",
+    "algorithm",
+    "senderUserId",
+    "senderDeviceId",
+    "recipientUserId",
+    "recipientDeviceId",
+    "wrappedMessageKey",
+    "wrappedMessageKeyIv",
+    "ciphertext",
+    "ciphertextIv",
+    "createdAt",
+    "signature",
+  ];
+
+  if (envelope.version !== 1) {
+    throw Object.assign(new Error("Unsupported secure envelope version"), { statusCode: 400 });
+  }
+
+  for (const field of requiredStringFields) {
+    if (typeof envelope[field] !== "string" || envelope[field].length === 0) {
+      throw Object.assign(new Error("Malformed secure envelope submitted"), { statusCode: 400 });
+    }
+  }
+
+  if (
+    envelope.protocolVersion !== SECURE_DM_PROTOCOL_VERSION ||
+    envelope.algorithm !== "qc-e2ee-p256-v1"
+  ) {
+    throw Object.assign(new Error("Unsupported secure envelope protocol"), { statusCode: 400 });
+  }
+
+  if (envelope.senderUserId !== senderUserId || envelope.senderDeviceId !== senderDeviceId) {
+    throw Object.assign(new Error("Secure envelope sender identity does not match request"), {
+      statusCode: 400,
+    });
+  }
+
+  if (
+    envelope.recipientUserId !== recipientUserId ||
+    envelope.recipientDeviceId !== recipientDeviceId
+  ) {
+    throw Object.assign(new Error("Secure envelope recipient identity does not match payload"), {
+      statusCode: 400,
+    });
+  }
+
+  if (!envelope.ephemeralPublicKey || typeof envelope.ephemeralPublicKey !== "object") {
+    throw Object.assign(new Error("Malformed secure envelope submitted"), { statusCode: 400 });
+  }
+
+  if (
+    envelope.recipientOneTimePreKeyId !== undefined &&
+    envelope.recipientOneTimePreKeyId !== null &&
+    !Number.isInteger(envelope.recipientOneTimePreKeyId)
+  ) {
+    throw Object.assign(new Error("Invalid one-time pre-key metadata"), { statusCode: 400 });
+  }
+};
+
 export const sendSecureDMMessage = async (
   models: any,
   {
@@ -347,6 +421,14 @@ export const sendSecureDMMessage = async (
         statusCode: 400,
       });
     }
+
+    assertValidSecureEnvelope({
+      envelope: payload.encryptedEnvelope,
+      senderUserId: userId,
+      senderDeviceId,
+      recipientUserId: payload.recipientUserId,
+      recipientDeviceId: payload.recipientDeviceId,
+    });
 
     const pairKey = `${payload.recipientUserId}:${payload.recipientDeviceId}`;
     const targetDevice = allowedDevicePairs.get(pairKey);

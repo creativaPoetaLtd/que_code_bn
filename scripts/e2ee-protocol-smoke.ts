@@ -109,6 +109,19 @@ const buildRecipientPayload = (
   encryptedEnvelope: buildEnvelope(recipientUserId, recipientDeviceId, recipientOneTimePreKeyId),
 });
 
+const buildRecipientPayloadWithEnvelopeOverrides = (
+  recipientUserId: string,
+  recipientDeviceId: string,
+  envelopeOverrides: Record<string, unknown>,
+) => ({
+  recipientUserId,
+  recipientDeviceId,
+  encryptedEnvelope: {
+    ...buildEnvelope(recipientUserId, recipientDeviceId),
+    ...envelopeOverrides,
+  },
+});
+
 const buildSendModels = ({
   consumeCount = 1,
   includeRecipientDeviceB2 = true,
@@ -404,6 +417,40 @@ const run = async () => {
       }),
     400,
     "Unsupported secure message type",
+  );
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels().models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "text",
+        recipientPayloads: [
+          buildRecipientPayloadWithEnvelopeOverrides("user-b", "device-b-1", {
+            senderUserId: "user-b",
+          }),
+        ],
+      }),
+    400,
+    "sender identity",
+  );
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels().models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "text",
+        recipientPayloads: [
+          buildRecipientPayloadWithEnvelopeOverrides("user-b", "device-b-1", {
+            recipientDeviceId: "device-b-2",
+          }),
+        ],
+      }),
+    400,
+    "recipient identity",
   );
 
   await expectStatus(
