@@ -28,6 +28,12 @@ const assertSecureUserDevice = async (
         as: "keyBundle",
         required: true,
       },
+      {
+        model: models.DeviceOneTimePreKey,
+        as: "oneTimePreKeys",
+        required: false,
+        where: { usedAt: null },
+      },
     ],
   });
 
@@ -325,6 +331,7 @@ export const sendSecureDMMessage = async (
   }
 
   const uniquePairs = new Set<string>();
+  const oneTimePreKeyUsages: Array<{ userDeviceId: string; preKeyId: number }> = [];
   let containsOtherParticipantPayload = false;
 
   for (const payload of recipientPayloads) {
@@ -340,7 +347,8 @@ export const sendSecureDMMessage = async (
     }
 
     const pairKey = `${payload.recipientUserId}:${payload.recipientDeviceId}`;
-    if (!allowedDevicePairs.has(pairKey)) {
+    const targetDevice = allowedDevicePairs.get(pairKey);
+    if (!targetDevice) {
       throw Object.assign(
         new Error("Encrypted payload targets a device outside this secure chat"),
         { statusCode: 400 },
@@ -355,6 +363,34 @@ export const sendSecureDMMessage = async (
     }
 
     uniquePairs.add(pairKey);
+
+    const recipientOneTimePreKeyId = payload.encryptedEnvelope.recipientOneTimePreKeyId;
+    if (recipientOneTimePreKeyId !== undefined && recipientOneTimePreKeyId !== null) {
+      if (!Number.isInteger(recipientOneTimePreKeyId)) {
+        throw Object.assign(new Error("Invalid one-time pre-key metadata"), {
+          statusCode: 400,
+        });
+      }
+
+      const availableOneTimePreKeys = Array.isArray(targetDevice.oneTimePreKeys)
+        ? targetDevice.oneTimePreKeys
+        : [];
+      const matchingPreKey = availableOneTimePreKeys.find(
+        (preKey: any) => preKey.preKeyId === recipientOneTimePreKeyId,
+      );
+
+      if (!matchingPreKey) {
+        throw Object.assign(
+          new Error("Encrypted payload references an unavailable one-time pre-key"),
+          { statusCode: 400 },
+        );
+      }
+
+      oneTimePreKeyUsages.push({
+        userDeviceId: targetDevice.id,
+        preKeyId: recipientOneTimePreKeyId,
+      });
+    }
 
     if (payload.recipientUserId !== userId) {
       containsOtherParticipantPayload = true;
@@ -411,6 +447,37 @@ export const sendSecureDMMessage = async (
       })),
       { transaction },
     );
+
+    if (oneTimePreKeyUsages.length > 0) {
+      const usedAt = new Date();
+      const usageResults = await Promise.all(
+        oneTimePreKeyUsages.map((usage) =>
+          models.DeviceOneTimePreKey.update(
+            { usedAt },
+            {
+              where: {
+                userDeviceId: usage.userDeviceId,
+                preKeyId: usage.preKeyId,
+                usedAt: null,
+              },
+              transaction,
+            },
+          ),
+        ),
+      );
+
+      const consumedCount = usageResults.reduce((total: number, result: any) => {
+        const count = Array.isArray(result) ? Number(result[0]) : Number(result);
+        return total + (Number.isFinite(count) ? count : 0);
+      }, 0);
+
+      if (consumedCount !== oneTimePreKeyUsages.length) {
+        throw Object.assign(
+          new Error("One-time pre-key was already consumed. Refresh recipient devices and retry."),
+          { statusCode: 409 },
+        );
+      }
+    }
 
     await models.UserDevice.update(
       { lastSeenAt: new Date() },
