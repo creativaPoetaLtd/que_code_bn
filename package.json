@@ -25,6 +25,7 @@
     "prepare": "husky install",
     "precommit": "prettier . --write && eslint --fix .",
     "run-tests": "cross-env NODE_ENV=test jest --detectOpenHandles --coverage --verbose --testTimeout=10000",
+    "test:e2ee": "ts-node --transpile-only scripts/e2ee-protocol-smoke.ts",
     "pretest": "cross-env NODE_ENV=test pnpm run migrate:reset",
     "run-after-tests": "cross-env NODE_ENV=test sequelize db:migrate:undo:all ",
     "test": "npm-run-all run-tests run-after-tests --continue-on-error"
