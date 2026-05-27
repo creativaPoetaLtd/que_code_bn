@@ -2,9 +2,11 @@ import { NextFunction, Response } from "express";
 import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
 import {
+  appendUserDeviceOneTimePreKeys,
   getUserDeviceBundles,
   listUserDevices,
   revokeUserDevice,
+  rotateUserDeviceSignedPreKey,
   upsertUserDeviceBundle,
 } from "../services/e2eeDevice.service";
 import {
@@ -129,6 +131,68 @@ export const revokeMySecureDevice = async (
     return res.status(200).json({
       success: true,
       message: "Secure device revoked",
+      data: result,
+    });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return next(error);
+  }
+};
+
+export const rotateMySecureDeviceSignedPreKey = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = await ensureAuthenticatedUser(req, models);
+    const result = await rotateUserDeviceSignedPreKey(
+      models,
+      userId,
+      req.params.deviceId,
+      req.body?.signedPreKey,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Secure signed pre-key rotated",
+      data: result,
+    });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return next(error);
+  }
+};
+
+export const addMySecureDeviceOneTimePreKeys = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = await ensureAuthenticatedUser(req, models);
+    const result = await appendUserDeviceOneTimePreKeys(
+      models,
+      userId,
+      req.params.deviceId,
+      req.body?.oneTimePreKeys,
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Secure one-time pre-keys added",
       data: result,
     });
   } catch (error: any) {

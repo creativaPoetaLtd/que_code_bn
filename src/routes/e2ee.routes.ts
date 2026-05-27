@@ -2,12 +2,14 @@ import { RequestHandler, Router } from "express";
 import { authenticate } from "../middleware/auth.middleware";
 import multer from "multer";
 import {
+  addMySecureDeviceOneTimePreKeys,
   createOrGetSecureDM,
   getMySecureDevices,
   getPublicDeviceBundlesForUser,
   getSecureChatMessages,
   markSecureChatAsRead,
   registerSecureDevice,
+  rotateMySecureDeviceSignedPreKey,
   revokeMySecureDevice,
   sendSecureChatMessage,
   uploadSecureChatMedia,
@@ -26,6 +28,14 @@ router.use(authenticate as RequestHandler);
 
 router.get("/devices", getMySecureDevices as RequestHandler);
 router.post("/devices/register", registerSecureDevice as RequestHandler);
+router.patch(
+  "/devices/:deviceId/signed-prekey",
+  rotateMySecureDeviceSignedPreKey as RequestHandler,
+);
+router.post(
+  "/devices/:deviceId/one-time-prekeys",
+  addMySecureDeviceOneTimePreKeys as RequestHandler,
+);
 router.delete("/devices/:deviceId", revokeMySecureDevice as RequestHandler);
 router.post("/dms", createOrGetSecureDM as RequestHandler);
 router.get("/users/:userId/device-bundles", getPublicDeviceBundlesForUser as RequestHandler);

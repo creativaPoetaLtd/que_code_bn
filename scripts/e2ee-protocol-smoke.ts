@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  appendUserDeviceOneTimePreKeys,
   getUserDeviceBundles,
   revokeUserDevice,
+  rotateUserDeviceSignedPreKey,
   upsertUserDeviceBundle,
 } from "../src/services/e2eeDevice.service";
 
@@ -209,6 +211,22 @@ const run = async () => {
     "Unsupported E2EE algorithm",
   );
 
+  await expectStatus(
+    () =>
+      upsertUserDeviceBundle({} as any, "user-a", {
+        ...validBundle,
+        bundle: {
+          ...validBundle.bundle,
+          oneTimePreKeys: [
+            { keyId: 101, publicKey: p256PublicKey("a") },
+            { keyId: 101, publicKey: p256PublicKey("b") },
+          ],
+        },
+      }),
+    400,
+    "Duplicate one-time pre-key id",
+  );
+
   let destroyedPreKeysWhere: unknown = null;
   let insertedPreKeys: unknown[] = [];
   const upsertDevice = buildDevice();
@@ -275,6 +293,58 @@ const run = async () => {
     userDeviceId: "user-device-row-id",
     usedAt: null,
   });
+
+  const activeDevice = buildDevice({
+    keyBundle: {
+      uploadedAt: null,
+      async update(values: Record<string, unknown>) {
+        Object.assign(this, values);
+        return this;
+      },
+    },
+  });
+  const rotateModels = {
+    UserDevice: {
+      findOne: async () => activeDevice,
+    },
+    DeviceKeyBundle: {},
+  };
+  const rotated = await rotateUserDeviceSignedPreKey(
+    rotateModels,
+    "user-a",
+    validBundle.deviceId,
+    {
+      keyId: 777,
+      publicKey: p256PublicKey("r"),
+      signature: Buffer.alloc(64, "rotation").toString("base64url"),
+    },
+  );
+
+  assert.equal(rotated.signedPreKeyId, 777);
+  assert.equal((activeDevice.keyBundle as any).signedPreKeyId, 777);
+
+  const appendedRows: unknown[] = [];
+  const appendModels = {
+    UserDevice: {
+      findOne: async () => activeDevice,
+    },
+    DeviceKeyBundle: {},
+    DeviceOneTimePreKey: {
+      findAll: async () => [],
+      bulkCreate: async (rows: unknown[]) => {
+        appendedRows.push(...rows);
+      },
+    },
+  };
+  const appended = await appendUserDeviceOneTimePreKeys(
+    appendModels,
+    "user-a",
+    validBundle.deviceId,
+    [{ keyId: 901, publicKey: p256PublicKey("n") }],
+  );
+
+  assert.equal(appended.addedOneTimePreKeys, 1);
+  assert.equal(appendedRows.length, 1);
 
   process.env.DB_DEV_URL ||= "postgres://user:pass@localhost:5432/qc_smoke";
   const { sequelizeConnection } = await import("../src/database/config/db.config");

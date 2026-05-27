@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 
 const SUPPORTED_E2EE_ALGORITHMS = new Set(["qc-e2ee-p256-v1"]);
+const MAX_DB_SAFE_PREKEY_ID = 2_147_483_646;
 
 const decodeBase64Url = (value: string) => {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -85,6 +86,8 @@ const assertValidBundle = (input: RegisterDeviceInput) => {
 
   if (
     !Number.isInteger(input.bundle.signedPreKey.keyId) ||
+    input.bundle.signedPreKey.keyId <= 0 ||
+    input.bundle.signedPreKey.keyId > MAX_DB_SAFE_PREKEY_ID ||
     !Number.isInteger(input.bundle.registrationId)
   ) {
     throw Object.assign(new Error("Invalid signed pre-key metadata"), { statusCode: 400 });
@@ -96,6 +99,60 @@ const assertValidBundle = (input: RegisterDeviceInput) => {
 
   if (input.bundle.oneTimePreKeys.length > 100) {
     throw Object.assign(new Error("Too many one-time pre-keys submitted"), { statusCode: 400 });
+  }
+
+  assertValidOneTimePreKeys(input.bundle.oneTimePreKeys);
+};
+
+const assertValidOneTimePreKeys = (
+  oneTimePreKeys: Array<{ keyId: number; publicKey: Record<string, any> }>,
+) => {
+  const seenIds = new Set<number>();
+
+  for (const preKey of oneTimePreKeys) {
+    if (
+      !Number.isInteger(preKey?.keyId) ||
+      preKey.keyId <= 0 ||
+      preKey.keyId > MAX_DB_SAFE_PREKEY_ID
+    ) {
+      throw Object.assign(new Error("Invalid one-time pre-key metadata"), { statusCode: 400 });
+    }
+
+    if (seenIds.has(preKey.keyId)) {
+      throw Object.assign(new Error("Duplicate one-time pre-key id"), { statusCode: 400 });
+    }
+
+    if (!isValidP256PublicJwk(preKey.publicKey)) {
+      throw Object.assign(new Error("One-time pre-key contains an invalid P-256 public key"), {
+        statusCode: 400,
+      });
+    }
+
+    seenIds.add(preKey.keyId);
+  }
+};
+
+const assertValidSignedPreKey = (signedPreKey: {
+  keyId: number;
+  publicKey: Record<string, any>;
+  signature: string;
+}) => {
+  if (
+    !Number.isInteger(signedPreKey?.keyId) ||
+    signedPreKey.keyId <= 0 ||
+    signedPreKey.keyId > MAX_DB_SAFE_PREKEY_ID
+  ) {
+    throw Object.assign(new Error("Invalid signed pre-key metadata"), { statusCode: 400 });
+  }
+
+  if (!isValidP256PublicJwk(signedPreKey.publicKey)) {
+    throw Object.assign(new Error("Signed pre-key contains an invalid P-256 public key"), {
+      statusCode: 400,
+    });
+  }
+
+  if (typeof signedPreKey.signature !== "string" || signedPreKey.signature.length <= 20) {
+    throw Object.assign(new Error("Invalid signed pre-key signature"), { statusCode: 400 });
   }
 };
 
@@ -249,6 +306,114 @@ export const revokeUserDevice = async (
   return {
     deviceId: device.deviceId,
     revokedAt,
+  };
+};
+
+const getOwnedActiveDevice = async (models: any, userId: string, deviceId: string) => {
+  if (!deviceId) {
+    throw Object.assign(new Error("deviceId is required"), { statusCode: 400 });
+  }
+
+  const device = await models.UserDevice.findOne({
+    where: {
+      userId,
+      deviceId,
+      isActive: true,
+      revokedAt: null,
+    },
+    include: [
+      {
+        model: models.DeviceKeyBundle,
+        as: "keyBundle",
+        required: true,
+      },
+    ],
+  });
+
+  if (!device) {
+    throw Object.assign(new Error("Active secure device not found"), { statusCode: 404 });
+  }
+
+  return device;
+};
+
+export const rotateUserDeviceSignedPreKey = async (
+  models: any,
+  userId: string,
+  deviceId: string,
+  signedPreKey: {
+    keyId: number;
+    publicKey: Record<string, any>;
+    signature: string;
+  },
+) => {
+  assertValidSignedPreKey(signedPreKey);
+  const device = await getOwnedActiveDevice(models, userId, deviceId);
+
+  await device.keyBundle.update({
+    signedPreKeyId: signedPreKey.keyId,
+    signedPreKeyPublic: signedPreKey.publicKey,
+    signedPreKeySignature: signedPreKey.signature,
+    uploadedAt: new Date(),
+  });
+
+  await device.update({
+    lastSeenAt: new Date(),
+  });
+
+  return {
+    deviceId: device.deviceId,
+    signedPreKeyId: signedPreKey.keyId,
+    uploadedAt: device.keyBundle.uploadedAt,
+  };
+};
+
+export const appendUserDeviceOneTimePreKeys = async (
+  models: any,
+  userId: string,
+  deviceId: string,
+  oneTimePreKeys: Array<{ keyId: number; publicKey: Record<string, any> }>,
+) => {
+  if (!Array.isArray(oneTimePreKeys) || oneTimePreKeys.length === 0) {
+    throw Object.assign(new Error("At least one one-time pre-key is required"), { statusCode: 400 });
+  }
+
+  if (oneTimePreKeys.length > 100) {
+    throw Object.assign(new Error("Too many one-time pre-keys submitted"), { statusCode: 400 });
+  }
+
+  assertValidOneTimePreKeys(oneTimePreKeys);
+  const device = await getOwnedActiveDevice(models, userId, deviceId);
+  const preKeyIds = oneTimePreKeys.map((preKey) => preKey.keyId);
+  const existing = await models.DeviceOneTimePreKey.findAll({
+    where: {
+      userDeviceId: device.id,
+      preKeyId: { [Op.in]: preKeyIds },
+    },
+  });
+
+  if (existing.length > 0) {
+    throw Object.assign(new Error("One-time pre-key id already exists for this device"), {
+      statusCode: 409,
+    });
+  }
+
+  await models.DeviceOneTimePreKey.bulkCreate(
+    oneTimePreKeys.map((preKey) => ({
+      userDeviceId: device.id,
+      preKeyId: preKey.keyId,
+      publicKey: preKey.publicKey,
+      usedAt: null,
+    })),
+  );
+
+  await device.update({
+    lastSeenAt: new Date(),
+  });
+
+  return {
+    deviceId: device.deviceId,
+    addedOneTimePreKeys: oneTimePreKeys.length,
   };
 };
 
