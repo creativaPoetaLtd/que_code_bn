@@ -39,6 +39,7 @@ const allowedOrigins = [
   "http://localhost:3003",
   process.env.ADMIN_FRONTEND_URL,
   process.env.FRONTEND_URL,
+  "https://qiew-code-dev2.netlify.app",
   "https://qc-dev2.netlify.app",
 ].filter(Boolean);
 const netlifyPreviewOriginPattern =
