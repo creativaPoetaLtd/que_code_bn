@@ -42,8 +42,10 @@ const allowedOrigins = [
   "https://qiew-code-dev2.netlify.app",
   "https://qc-dev2.netlify.app",
 ].filter(Boolean);
-const netlifyPreviewOriginPattern =
-  /^https:\/\/deploy-preview-\d+--qiew-code-dev2\.netlify\.app$/;
+const netlifyPreviewOriginPatterns = [
+  /^https:\/\/deploy-preview-\d+--qiew-code-dev2\.netlify\.app$/,
+  /^https:\/\/deploy-preview-\d+--qc-dev2\.netlify\.app$/,
+];
 
 // CORS configuration - allow credentials with specific origin
 const corsOptions = {
@@ -54,7 +56,7 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     if (
       allowedOrigins.includes(origin) ||
-      netlifyPreviewOriginPattern.test(origin)
+      netlifyPreviewOriginPatterns.some((pattern) => pattern.test(origin))
     ) {
       return callback(null, true);
     } else {

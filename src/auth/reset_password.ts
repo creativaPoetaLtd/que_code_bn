@@ -12,7 +12,7 @@ import bcrypt from "bcrypt";
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const NON_ADMIN_FRONTEND_URL =
-  process.env.NON_ADMIN_FRONTEND_URL || "https://qiew-code-dev2.netlify.app";
+  process.env.NON_ADMIN_FRONTEND_URL || "https://qc-dev2.netlify.app";
 
 type PasswordResetAccountType = "user" | "organization";
 type AuthTokenPurpose = "password_reset" | "account_setup";
