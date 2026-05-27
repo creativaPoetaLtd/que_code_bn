@@ -704,6 +704,12 @@ class SocketManager {
         return;
       }
 
+      const chat = await models.Chat.findByPk(data.chatId);
+      if (chat?.securityMode === "secure_dm_v1") {
+        socket.emit("error", { message: "Plaintext reactions are disabled for secure chats" });
+        return;
+      }
+
       const emoji = (data.emoji || "").trim().slice(0, 16);
       if (!emoji) {
         socket.emit("error", { message: "Invalid emoji" });
@@ -755,6 +761,12 @@ class SocketManager {
       });
       if (!participant) {
         socket.emit("error", { message: "You are not a participant in this chat" });
+        return;
+      }
+
+      const chat = await models.Chat.findByPk(data.chatId);
+      if (chat?.securityMode === "secure_dm_v1") {
+        socket.emit("error", { message: "Plaintext reactions are disabled for secure chats" });
         return;
       }
 
