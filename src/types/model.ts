@@ -769,6 +769,7 @@ export interface ActionModelAttributes {
   policy: any; // JSON
   webhooks: any; // JSON
   customFields: any; // JSON
+  metadata: any; // JSON: type-specific modal metadata (vote/ticket/booking fields)
   status: "draft" | "published" | "archived" | "suspended";
   dedicatedQrCode: string | null;
   dedicatedQrCodeData: string | null;
@@ -909,4 +910,56 @@ export interface PaymentRequestAttributes {
 export type PaymentRequestCreationAttributes = Optional<
   PaymentRequestAttributes,
   "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "createdAt" | "updatedAt"
+>;
+
+export interface GroupContributionAttributes {
+  id: string;
+  groupId: string;
+  createdBy: string;
+  title: string;
+  note?: string | null;
+  goalAmount: number;
+  type: "fixed" | "flexible";
+  amountPerMember?: number | null;
+  minimumAmount?: number | null;
+  deadline?: Date | null;
+  status: "active" | "completed" | "closed" | "expired";
+  visibilityMode: "all" | "admin_only";
+  currency: string;
+  collectedAmount: number;
+  contributorCount: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type GroupContributionCreationAttributes = Optional<
+  GroupContributionAttributes,
+  | "id"
+  | "note"
+  | "amountPerMember"
+  | "minimumAmount"
+  | "deadline"
+  | "status"
+  | "visibilityMode"
+  | "currency"
+  | "collectedAmount"
+  | "contributorCount"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface GroupContributionPaymentAttributes {
+  id: string;
+  contributionId: string;
+  payerId: string;
+  amount: number;
+  transactionId?: string | null;
+  currency: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type GroupContributionPaymentCreationAttributes = Optional<
+  GroupContributionPaymentAttributes,
+  "id" | "transactionId" | "currency" | "createdAt" | "updatedAt"
 >;

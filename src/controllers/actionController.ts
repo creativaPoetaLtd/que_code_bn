@@ -37,6 +37,7 @@ const createActionStepA = async (
       shortDescription,
       description,
       dedicatedQrCode,
+      metadata,
     } = req.body;
 
     if (!type || !name) {
@@ -163,6 +164,7 @@ const createActionStepA = async (
       policy: {},
       webhooks: {},
       customFields: {},
+      metadata: metadata || {},
       status: "draft",
       dedicatedQrCode: dedicatedQrCode || null,
       dedicatedQrCodeData: null,
@@ -849,7 +851,7 @@ const getActionBySlug = async (req: Request, res: Response): Promise<void> => {
 const updateAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { actionId } = req.params;
-    const { coverImage, ...otherFields } = req.body;
+    const { coverImage, metadata, ...otherFields } = req.body;
 
     const action = await read_function<ActionModelAttributes>(
       "Action",
@@ -863,6 +865,10 @@ const updateAction = async (req: Request, res: Response): Promise<void> => {
     }
 
     const updateData: any = { ...otherFields };
+
+    if (metadata !== undefined) {
+      updateData.metadata = { ...((action as any).metadata || {}), ...metadata };
+    }
 
     // Handle cover image upload to Cloudinary if file is provided
     // Check for file in req.file (when using .single()) or req.files (when using .fields())
@@ -1080,11 +1086,27 @@ const getSubActionById = async (req: Request, res: Response): Promise<void> => {
 const updateSubAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { subActionId } = req.params;
+    const { metadata, ...otherFields } = req.body;
+
+    const updateData: any = { ...otherFields };
+
+    if (metadata !== undefined) {
+      const existing = await read_function<SubActionModelAttributes>(
+        "SubAction",
+        "findOne",
+        { where: { id: subActionId } }
+      );
+      if (!existing) {
+        res.status(404).json({ message: "Sub-action not found" });
+        return;
+      }
+      updateData.metadata = { ...((existing as any).metadata || {}), ...metadata };
+    }
 
     const updatedSubAction = await insert_function<SubActionModelAttributes>(
       "SubAction",
       "update",
-      req.body,
+      updateData,
       { where: { id: subActionId } }
     );
 
