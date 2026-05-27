@@ -80,10 +80,18 @@ class WebPushService {
   }
 
   private buildTitle(payload: NotificationPayload) {
+    if (payload.data.messageType === "secure") {
+      return "New secure message";
+    }
+
     return payload.data.title || this.humanizeType(payload.type);
   }
 
   private buildBody(payload: NotificationPayload) {
+    if (payload.data.messageType === "secure") {
+      return "Open QueCode to view this encrypted message.";
+    }
+
     return (
       payload.data.message ||
       payload.data.description ||
@@ -149,7 +157,14 @@ class WebPushService {
       data: {
         notificationId,
         type: payload.type,
-        ...payload.data,
+        ...(payload.data.messageType === "secure"
+          ? {
+              chatId: payload.data.chatId,
+              messageId: payload.data.messageId,
+              messageType: "secure",
+              url: payload.data.url,
+            }
+          : payload.data),
       },
     };
   }
