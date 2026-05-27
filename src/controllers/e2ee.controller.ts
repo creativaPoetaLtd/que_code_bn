@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../types/requests";
 import {
   getUserDeviceBundles,
   listUserDevices,
+  revokeUserDevice,
   upsertUserDeviceBundle,
 } from "../services/e2eeDevice.service";
 import {
@@ -101,6 +102,32 @@ export const getMySecureDevices = async (
           ? device.oneTimePreKeys.length
           : 0,
       })),
+    });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return next(error);
+  }
+};
+
+export const revokeMySecureDevice = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = await ensureAuthenticatedUser(req, models);
+    const result = await revokeUserDevice(models, userId, req.params.deviceId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Secure device revoked",
+      data: result,
     });
   } catch (error: any) {
     if (error?.statusCode) {

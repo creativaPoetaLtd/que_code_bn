@@ -7,6 +7,7 @@ import {
   getSecureChatMessages,
   markSecureChatAsRead,
   registerSecureDevice,
+  revokeMySecureDevice,
   sendSecureChatMessage,
 } from "../controllers/e2ee.controller";
 
@@ -16,6 +17,7 @@ router.use(authenticate as RequestHandler);
 
 router.get("/devices", getMySecureDevices as RequestHandler);
 router.post("/devices/register", registerSecureDevice as RequestHandler);
+router.delete("/devices/:deviceId", revokeMySecureDevice as RequestHandler);
 router.post("/dms", createOrGetSecureDM as RequestHandler);
 router.get("/users/:userId/device-bundles", getPublicDeviceBundlesForUser as RequestHandler);
 router.get("/chats/:chatId/messages", getSecureChatMessages as RequestHandler);

@@ -210,6 +210,48 @@ export const listUserDevices = async (models: any, userId: string) => {
   });
 };
 
+export const revokeUserDevice = async (
+  models: any,
+  userId: string,
+  deviceId: string,
+) => {
+  if (!deviceId) {
+    throw Object.assign(new Error("deviceId is required"), { statusCode: 400 });
+  }
+
+  const device = await models.UserDevice.findOne({
+    where: {
+      userId,
+      deviceId,
+      isActive: true,
+      revokedAt: null,
+    },
+  });
+
+  if (!device) {
+    throw Object.assign(new Error("Active secure device not found"), { statusCode: 404 });
+  }
+
+  const revokedAt = new Date();
+  await device.update({
+    isActive: false,
+    revokedAt,
+    lastSeenAt: revokedAt,
+  });
+
+  await models.DeviceOneTimePreKey.destroy({
+    where: {
+      userDeviceId: device.id,
+      usedAt: null,
+    },
+  });
+
+  return {
+    deviceId: device.deviceId,
+    revokedAt,
+  };
+};
+
 const hasActiveContactBetween = async (models: any, requesterId: string, targetUserId: string) => {
   const contact = await models.Contact.findOne({
     where: {
