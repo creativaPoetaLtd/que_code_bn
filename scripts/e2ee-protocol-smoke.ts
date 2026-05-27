@@ -111,8 +111,10 @@ const buildRecipientPayload = (
 
 const buildSendModels = ({
   consumeCount = 1,
+  includeRecipientDeviceB2 = true,
 }: {
   consumeCount?: number;
+  includeRecipientDeviceB2?: boolean;
 } = {}) => {
   const createdPayloadRows: unknown[] = [];
   const consumedPreKeys: unknown[] = [];
@@ -152,29 +154,36 @@ const buildSendModels = ({
                 keyBundle: {},
               }
             : null,
-        findAll: async () => [
-          {
-            id: "device-row-a1",
-            userId: "user-a",
-            deviceId: "device-a-1",
-            keyBundle: {},
-            oneTimePreKeys: [{ preKeyId: 201 }],
-          },
-          {
-            id: "device-row-b1",
-            userId: "user-b",
-            deviceId: "device-b-1",
-            keyBundle: {},
-            oneTimePreKeys: [{ preKeyId: 301 }],
-          },
-          {
-            id: "device-row-b2",
-            userId: "user-b",
-            deviceId: "device-b-2",
-            keyBundle: {},
-            oneTimePreKeys: [{ preKeyId: 302 }],
-          },
-        ],
+        findAll: async () => {
+          const rows = [
+            {
+              id: "device-row-a1",
+              userId: "user-a",
+              deviceId: "device-a-1",
+              keyBundle: {},
+              oneTimePreKeys: [{ preKeyId: 201 }],
+            },
+            {
+              id: "device-row-b1",
+              userId: "user-b",
+              deviceId: "device-b-1",
+              keyBundle: {},
+              oneTimePreKeys: [{ preKeyId: 301 }],
+            },
+          ];
+
+          if (includeRecipientDeviceB2) {
+            rows.push({
+              id: "device-row-b2",
+              userId: "user-b",
+              deviceId: "device-b-2",
+              keyBundle: {},
+              oneTimePreKeys: [{ preKeyId: 302 }],
+            });
+          }
+
+          return rows;
+        },
         update: async () => [1],
       },
       ChatMessage: {
@@ -348,7 +357,9 @@ const run = async () => {
 
   process.env.DB_DEV_URL ||= "postgres://user:pass@localhost:5432/qc_smoke";
   const { sequelizeConnection } = await import("../src/database/config/db.config");
-  const { sendSecureDMMessage } = await import("../src/services/e2eeMessage.service");
+  const { getSecureDMMessagePage, sendSecureDMMessage } = await import(
+    "../src/services/e2eeMessage.service"
+  );
 
   (sequelizeConnection as any).transaction = async (callback: (transaction: unknown) => unknown) =>
     callback({ smoke: true });
@@ -406,6 +417,35 @@ const run = async () => {
       }),
     400,
     "outside this secure chat",
+  );
+
+  await expectStatus(
+    () =>
+      sendSecureDMMessage(buildSendModels({ includeRecipientDeviceB2: false }).models, {
+        chatId: "chat-1",
+        userId: "user-a",
+        senderDeviceId: "device-a-1",
+        messageType: "text",
+        recipientPayloads: [
+          buildRecipientPayload("user-b", "device-b-1", 301),
+          buildRecipientPayload("user-b", "device-b-2", 302),
+        ],
+      }),
+    400,
+    "outside this secure chat",
+  );
+
+  await expectStatus(
+    () =>
+      getSecureDMMessagePage(buildSendModels().models, {
+        chatId: "chat-1",
+        userId: "user-b",
+        deviceId: "device-b-2",
+        page: 1,
+        limit: 10,
+      }),
+    400,
+    "registered secure device",
   );
 
   await expectStatus(
