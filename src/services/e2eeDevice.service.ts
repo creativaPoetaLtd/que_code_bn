@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { webcrypto } from "crypto";
 
 const SUPPORTED_E2EE_ALGORITHMS = new Set(["qc-e2ee-p256-v1"]);
 const MAX_DB_SAFE_PREKEY_ID = 2_147_483_646;
@@ -7,6 +8,24 @@ const decodeBase64Url = (value: string) => {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   return Buffer.from(padded, "base64");
+};
+
+const stableStringify = (value: unknown): string => {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  return `{${entries
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+    .join(",")}}`;
 };
 
 const isValidP256Coordinate = (value: unknown) => {
@@ -62,7 +81,42 @@ type RegisterDeviceInput = {
   };
 };
 
-const assertValidBundle = (input: RegisterDeviceInput) => {
+const verifySignedPreKeySignature = async ({
+  identityPublicKey,
+  signedPreKeyPublic,
+  signature,
+}: {
+  identityPublicKey: Record<string, any>;
+  signedPreKeyPublic: Record<string, any>;
+  signature: string;
+}) => {
+  try {
+    const key = await webcrypto.subtle.importKey(
+      "jwk",
+      identityPublicKey as JsonWebKey,
+      {
+        name: "ECDSA",
+        namedCurve: "P-256",
+      },
+      false,
+      ["verify"],
+    );
+
+    return webcrypto.subtle.verify(
+      {
+        name: "ECDSA",
+        hash: "SHA-256",
+      },
+      key,
+      decodeBase64Url(signature),
+      new TextEncoder().encode(stableStringify(signedPreKeyPublic)),
+    );
+  } catch {
+    return false;
+  }
+};
+
+const assertValidBundle = async (input: RegisterDeviceInput) => {
   if (!input.deviceId || input.deviceId.length < 12 || input.deviceId.length > 128) {
     throw Object.assign(new Error("A valid deviceId is required"), { statusCode: 400 });
   }
@@ -102,6 +156,16 @@ const assertValidBundle = (input: RegisterDeviceInput) => {
   }
 
   assertValidOneTimePreKeys(input.bundle.oneTimePreKeys);
+
+  const validSignature = await verifySignedPreKeySignature({
+    identityPublicKey: input.bundle.identityPublicKey,
+    signedPreKeyPublic: input.bundle.signedPreKey.publicKey,
+    signature: input.bundle.signedPreKey.signature,
+  });
+
+  if (!validSignature) {
+    throw Object.assign(new Error("Invalid signed pre-key signature"), { statusCode: 400 });
+  }
 };
 
 const assertValidOneTimePreKeys = (
@@ -161,7 +225,7 @@ export const upsertUserDeviceBundle = async (
   userId: string,
   input: RegisterDeviceInput,
 ) => {
-  assertValidBundle(input);
+  await assertValidBundle(input);
 
   const existingForDeviceId = await models.UserDevice.findOne({
     where: { deviceId: input.deviceId },
@@ -349,6 +413,15 @@ export const rotateUserDeviceSignedPreKey = async (
 ) => {
   assertValidSignedPreKey(signedPreKey);
   const device = await getOwnedActiveDevice(models, userId, deviceId);
+  const validSignature = await verifySignedPreKeySignature({
+    identityPublicKey: device.keyBundle.identityPublicKey,
+    signedPreKeyPublic: signedPreKey.publicKey,
+    signature: signedPreKey.signature,
+  });
+
+  if (!validSignature) {
+    throw Object.assign(new Error("Invalid signed pre-key signature"), { statusCode: 400 });
+  }
 
   await device.keyBundle.update({
     signedPreKeyId: signedPreKey.keyId,

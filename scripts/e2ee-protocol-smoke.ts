@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { webcrypto } from "node:crypto";
 import {
   appendUserDeviceOneTimePreKeys,
   getUserDeviceBundles,
@@ -7,6 +8,24 @@ import {
   upsertUserDeviceBundle,
 } from "../src/services/e2eeDevice.service";
 
+const stableStringify = (value: unknown): string => {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  return `{${entries
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+    .join(",")}}`;
+};
+
 const p256PublicKey = (seed: string) => ({
   kty: "EC",
   crv: "P-256",
@@ -14,7 +33,7 @@ const p256PublicKey = (seed: string) => ({
   y: Buffer.alloc(32, `${seed}y`).toString("base64url"),
 });
 
-const validBundle = {
+let validBundle = {
   deviceId: "device-secure-smoke-1",
   deviceName: "Smoke Browser",
   platform: "test",
@@ -33,6 +52,95 @@ const validBundle = {
       { keyId: 102, publicKey: p256PublicKey("b") },
     ],
   },
+};
+
+const generateSigningKeyPair = () =>
+  webcrypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+const generateExchangeKeyPair = () =>
+  webcrypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    true,
+    ["deriveBits"],
+  );
+
+const signSignedPreKey = async (identityPrivateKey: CryptoKey, signedPreKeyPublic: JsonWebKey) => {
+  const signature = await webcrypto.subtle.sign(
+    {
+      name: "ECDSA",
+      hash: "SHA-256",
+    },
+    identityPrivateKey,
+    new TextEncoder().encode(stableStringify(signedPreKeyPublic)),
+  );
+
+  return Buffer.from(signature).toString("base64url");
+};
+
+const createValidBundle = async () => {
+  const identityKeys = await generateSigningKeyPair();
+  const signedPreKey = await generateExchangeKeyPair();
+  const identityPublicKey = (await webcrypto.subtle.exportKey(
+    "jwk",
+    identityKeys.publicKey,
+  )) as Record<string, any>;
+  const signedPreKeyPublic = (await webcrypto.subtle.exportKey(
+    "jwk",
+    signedPreKey.publicKey,
+  )) as Record<string, any>;
+
+  return {
+    deviceId: "device-secure-smoke-1",
+    deviceName: "Smoke Browser",
+    platform: "test",
+    appVersion: "test",
+    bundle: {
+      algorithm: "qc-e2ee-p256-v1",
+      identityPublicKey,
+      signedPreKey: {
+        keyId: 11,
+        publicKey: signedPreKeyPublic,
+        signature: await signSignedPreKey(identityKeys.privateKey, signedPreKeyPublic),
+      },
+      registrationId: 42,
+      oneTimePreKeys: [
+        { keyId: 101, publicKey: p256PublicKey("a") },
+        { keyId: 102, publicKey: p256PublicKey("b") },
+      ],
+    },
+  };
+};
+
+const createSignedPreKeyForIdentity = async () => {
+  const identityKeys = await generateSigningKeyPair();
+  const signedPreKey = await generateExchangeKeyPair();
+  const identityPublicKey = (await webcrypto.subtle.exportKey(
+    "jwk",
+    identityKeys.publicKey,
+  )) as Record<string, any>;
+  const signedPreKeyPublic = (await webcrypto.subtle.exportKey(
+    "jwk",
+    signedPreKey.publicKey,
+  )) as Record<string, any>;
+
+  return {
+    identityPublicKey,
+    signedPreKey: {
+      keyId: 777,
+      publicKey: signedPreKeyPublic,
+      signature: await signSignedPreKey(identityKeys.privateKey, signedPreKeyPublic),
+    },
+  };
 };
 
 const expectStatus = async (
@@ -220,6 +328,8 @@ const buildSendModels = ({
 };
 
 const run = async () => {
+  validBundle = await createValidBundle();
+
   await expectStatus(
     () =>
       upsertUserDeviceBundle({} as any, "user-a", {
@@ -231,6 +341,22 @@ const run = async () => {
       }),
     400,
     "Unsupported E2EE algorithm",
+  );
+
+  await expectStatus(
+    () =>
+      upsertUserDeviceBundle({} as any, "user-a", {
+        ...validBundle,
+        bundle: {
+          ...validBundle.bundle,
+          signedPreKey: {
+            ...validBundle.bundle.signedPreKey,
+            signature: Buffer.alloc(64, "bad-signature").toString("base64url"),
+          },
+        },
+      }),
+    400,
+    "Invalid signed pre-key signature",
   );
 
   await expectStatus(
@@ -316,8 +442,10 @@ const run = async () => {
     usedAt: null,
   });
 
+  const rotationKeys = await createSignedPreKeyForIdentity();
   const activeDevice = buildDevice({
     keyBundle: {
+      identityPublicKey: rotationKeys.identityPublicKey,
       uploadedAt: null,
       async update(values: Record<string, unknown>) {
         Object.assign(this, values);
@@ -335,15 +463,22 @@ const run = async () => {
     rotateModels,
     "user-a",
     validBundle.deviceId,
-    {
-      keyId: 777,
-      publicKey: p256PublicKey("r"),
-      signature: Buffer.alloc(64, "rotation").toString("base64url"),
-    },
+    rotationKeys.signedPreKey,
   );
 
   assert.equal(rotated.signedPreKeyId, 777);
   assert.equal((activeDevice.keyBundle as any).signedPreKeyId, 777);
+
+  await expectStatus(
+    () =>
+      rotateUserDeviceSignedPreKey(rotateModels, "user-a", validBundle.deviceId, {
+        ...rotationKeys.signedPreKey,
+        keyId: 778,
+        signature: Buffer.alloc(64, "bad-rotation").toString("base64url"),
+      }),
+    400,
+    "Invalid signed pre-key signature",
+  );
 
   const appendedRows: unknown[] = [];
   const appendModels = {
