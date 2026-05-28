@@ -283,6 +283,12 @@ const listSecureDevicesForChat = async (models: any, chatId: string) => {
         as: "keyBundle",
         required: true,
       },
+      {
+        model: models.DeviceOneTimePreKey,
+        as: "oneTimePreKeys",
+        required: false,
+        where: { usedAt: null },
+      },
     ],
   });
 
