@@ -1,5 +1,10 @@
 import cloudinary from "../helpers/cloudinary";
-import { CLOUDINARY_FOLDER_NAME } from "../utils/keys";
+import {
+    CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET,
+    CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_FOLDER_NAME,
+} from "../utils/keys";
 
 const folder = CLOUDINARY_FOLDER_NAME;
 
@@ -264,6 +269,10 @@ export const uploadEncryptedChatMedia = async (
     try {
         if (file.size > 110 * 1024 * 1024) {
             return { success: false, error: 'Encrypted file size exceeds maximum allowed size of 110MB' };
+        }
+
+        if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+            return { success: false, error: 'Secure media storage is not configured' };
         }
 
         const uploadFolder = `${folder || 'qiew'}/chat/secure`;
