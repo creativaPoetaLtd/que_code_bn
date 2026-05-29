@@ -572,7 +572,7 @@ export interface TransactionAttributes {
 
 export type TransactionCreationAttributes = Omit<
   TransactionAttributes,
-  "id" | "createdAt" | "updatedAt" | "totalAmount" | "fee"
+  "id" | "createdAt" | "updatedAt" | "fee"
 >;
 
 export interface CategoryAttributes {

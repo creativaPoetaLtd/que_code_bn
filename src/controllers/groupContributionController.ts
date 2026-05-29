@@ -460,7 +460,6 @@ export const contribute = async (
           senderWalletId: memberWallet.id,
           receiverWalletId: groupWallet.id,
           amount: contributionAmount,
-          fee: 0,
           totalAmount: contributionAmount,
           currency: "RWF",
           status: "completed",
