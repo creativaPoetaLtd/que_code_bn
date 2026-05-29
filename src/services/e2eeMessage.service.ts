@@ -684,21 +684,51 @@ export const getSecureDMMessagePage = async (
     );
   }
 
+  const messageIds = result.rows.map((message: any) => message.id);
+  const receiptPayloads = messageIds.length > 0
+    ? await models.ChatMessageRecipientPayload.findAll({
+        where: {
+          chatMessageId: { [Op.in]: messageIds },
+        },
+      })
+    : [];
+  const receiptsByMessageId = new Map<string, any[]>();
+  for (const receipt of receiptPayloads) {
+    const existing = receiptsByMessageId.get(receipt.chatMessageId) || [];
+    existing.push(receipt);
+    receiptsByMessageId.set(receipt.chatMessageId, existing);
+  }
+
   return {
     count: typeof result.count === "number" ? result.count : result.count.length,
     rows: result.rows.map((message: any) => {
       const payload = Array.isArray(message.recipientPayloads)
         ? message.recipientPayloads[0]
         : null;
+      const messageReceipts = receiptsByMessageId.get(message.id) || [];
+      const otherUserReceipts = messageReceipts.filter(
+        (receipt) => receipt.recipientUserId !== message.senderId,
+      );
+      const deliveredAt =
+        otherUserReceipts.find((receipt) => receipt.deliveredAt)?.deliveredAt ||
+        null;
+      const readReceipts = otherUserReceipts
+        .filter((receipt) => receipt.readAt)
+        .map((receipt) => ({
+          userId: receipt.recipientUserId,
+          readAt: receipt.readAt,
+        }));
+      const readAt = readReceipts[0]?.readAt || null;
 
       return {
         id: message.id,
         chatId: message.chatId,
         messageType: message.messageType,
         replyToMessageId: message.replyToMessageId,
-        status: payload?.readAt ? "read" : payload?.deliveredAt ? "delivered" : message.status,
-        deliveredAt: payload?.deliveredAt || message.deliveredAt || null,
-        readAt: payload?.readAt || message.readAt || null,
+        status: readAt ? "read" : deliveredAt ? "delivered" : message.status,
+        deliveredAt,
+        readAt,
+        readBy: readReceipts,
         createdAt: message.createdAt,
         senderId: message.senderId,
         sender: message.sender,
