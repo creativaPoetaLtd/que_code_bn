@@ -334,6 +334,14 @@ export const getSecureChatMessages = async (
       page,
       limit,
     });
+    const io = req.app.get("io");
+    for (const event of result.deliveredEvents || []) {
+      io.to(`user_${event.senderId}`).emit("message_delivered", {
+        chatId: event.chatId,
+        messageId: event.messageId,
+        deliveredAt: event.deliveredAt,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -348,6 +356,7 @@ export const getSecureChatMessages = async (
           status: message.status,
           deliveredAt: message.deliveredAt,
           readAt: message.readAt,
+          readBy: message.readBy || [],
           createdAt: message.createdAt,
           sender: {
             id: message.senderId,

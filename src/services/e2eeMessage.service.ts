@@ -659,8 +659,17 @@ export const getSecureDMMessagePage = async (
     })
     .map((message: any) => message.id);
 
+  const now = new Date();
+  const deliveredEvents = result.rows
+    .filter((message: any) => justDeliveredIds.includes(message.id))
+    .map((message: any) => ({
+      chatId: message.chatId,
+      messageId: message.id,
+      senderId: message.senderId,
+      deliveredAt: now,
+    }));
+
   if (justDeliveredIds.length > 0) {
-    const now = new Date();
     await models.ChatMessageRecipientPayload.update(
       { deliveredAt: now },
       {
@@ -701,6 +710,7 @@ export const getSecureDMMessagePage = async (
 
   return {
     count: typeof result.count === "number" ? result.count : result.count.length,
+    deliveredEvents,
     rows: result.rows.map((message: any) => {
       const payload = Array.isArray(message.recipientPayloads)
         ? message.recipientPayloads[0]
