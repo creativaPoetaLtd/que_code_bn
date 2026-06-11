@@ -210,7 +210,7 @@ export const createContribution = async (
             groupId,
             contributionId: contribution.id,
             contributionTitle: contribution.title,
-            amount: contribution.goalAmount,
+            amount: contribution.goalAmount ?? undefined,
             message: `A new contribution request "${contribution.title}" has been created`,
           },
         })
@@ -669,7 +669,7 @@ export const contribute = async (
                 groupId,
                 contributionId,
                 contributionTitle: contribution.title,
-                amount: Number(contribution.goalAmount),
+                amount: contribution.goalAmount != null ? Number(contribution.goalAmount) : undefined,
                 message: `The contribution goal for "${contribution.title}" has been reached!`,
               },
             })
