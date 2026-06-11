@@ -1777,4 +1777,96 @@ export {
     getJoinRequests,
     respondToJoinRequest,
     searchGroupMembers,
+    getGroupWallet,
 };
+
+// ─── getGroupWallet ──────────────────────────────────────────────────────────
+
+async function getGroupWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+        const models = req.app.get("models") as ReturnType<typeof Models>;
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        // Must be an active admin/owner
+        const membership = await models.GroupMember.findOne({
+            where: {
+                groupId,
+                userId,
+                status: GroupMemberStatus.ACTIVE,
+                role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] },
+            },
+        });
+        if (!membership) {
+            res.status(403).json({ success: false, message: "Admin access required" });
+            return;
+        }
+
+        const group = await models.Group.findByPk(groupId);
+        if (!group) {
+            res.status(404).json({ success: false, message: "Group not found" });
+            return;
+        }
+
+        if (!group.walletId) {
+            res.status(200).json({
+                success: true,
+                data: { balance: 0, currency: "RWF", transactions: [] },
+            });
+            return;
+        }
+
+        const wallet = await models.Wallet.findByPk(group.walletId);
+        if (!wallet) {
+            res.status(200).json({
+                success: true,
+                data: { balance: 0, currency: "RWF", transactions: [] },
+            });
+            return;
+        }
+
+        const transactions = await models.Transaction.findAll({
+            where: {
+                [Op.or]: [
+                    { senderWalletId: wallet.id },
+                    { receiverWalletId: wallet.id },
+                ],
+            },
+            order: [["createdAt", "DESC"]],
+            limit: 50,
+            include: [
+                {
+                    model: models.Wallet,
+                    as: "senderWallet",
+                    attributes: ["id", "userId", "groupId"],
+                    include: [{ model: models.User, as: "user", attributes: ["id", "firstName", "lastName"], required: false }],
+                },
+                {
+                    model: models.Wallet,
+                    as: "receiverWallet",
+                    attributes: ["id", "userId", "groupId"],
+                    include: [{ model: models.User, as: "user", attributes: ["id", "firstName", "lastName"], required: false }],
+                },
+            ],
+        });
+
+        const balance = parseFloat(wallet.balance.toString());
+
+        res.status(200).json({
+            success: true,
+            data: {
+                walletId: wallet.id,
+                balance,
+                currency: wallet.currency || "RWF",
+                transactions: transactions.map((t) => {
+                    const plain = t.toJSON() as any;
+                    plain.direction = t.receiverWalletId === wallet.id ? "in" : "out";
+                    return plain;
+                }),
+            },
+        });
+    } catch (error) {
+        console.error("getGroupWallet error:", error);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+}

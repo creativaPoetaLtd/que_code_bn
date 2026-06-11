@@ -13,11 +13,13 @@ class GroupContribution extends Model<
   public createdBy!: string;
   public title!: string;
   public note!: string | null;
-  public goalAmount!: number;
+  public goalAmount!: number | null;
   public type!: "fixed" | "flexible";
   public amountPerMember!: number | null;
   public minimumAmount!: number | null;
   public deadline!: Date | null;
+  public disbursementPolicy!: "hold" | "auto";
+  public disbursementRecipientId!: string | null;
   public status!: "active" | "completed" | "closed" | "expired";
   public visibilityMode!: "all" | "admin_only";
   public currency!: string;
@@ -35,7 +37,7 @@ const groupContribution_model = (sequelize: Sequelize) => {
       createdBy: { type: DataTypes.UUID, allowNull: false },
       title: { type: DataTypes.STRING, allowNull: false },
       note: { type: DataTypes.TEXT, allowNull: true },
-      goalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      goalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
       type: {
         type: DataTypes.ENUM("fixed", "flexible"),
         allowNull: false,
@@ -43,6 +45,12 @@ const groupContribution_model = (sequelize: Sequelize) => {
       amountPerMember: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
       minimumAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
       deadline: { type: DataTypes.DATE, allowNull: true },
+      disbursementPolicy: {
+        type: DataTypes.ENUM("hold", "auto"),
+        allowNull: false,
+        defaultValue: "hold",
+      },
+      disbursementRecipientId: { type: DataTypes.UUID, allowNull: true },
       status: {
         type: DataTypes.ENUM("active", "completed", "closed", "expired"),
         defaultValue: "active",

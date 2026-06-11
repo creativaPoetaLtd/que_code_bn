@@ -18,6 +18,7 @@ router.post("/",
 );
 router.get("/", groupController.getUserGroups as RequestHandler);
 router.get("/:groupId", groupController.getGroupDetails as RequestHandler);
+router.get("/:groupId/wallet", groupController.getGroupWallet as RequestHandler);
 router.put("/:groupId", 
     uploadGroupProfilePicture,
     groupController.updateGroup as RequestHandler

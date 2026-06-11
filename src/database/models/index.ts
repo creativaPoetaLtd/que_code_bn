@@ -480,6 +480,7 @@ const Models = (sequelize: Sequelize) => {
 
   User.hasMany(GroupContribution, { foreignKey: "createdBy", as: "createdContributions" });
   GroupContribution.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+  GroupContribution.belongsTo(User, { foreignKey: "disbursementRecipientId", as: "disbursementRecipient" });
 
   GroupContribution.hasMany(GroupContributionPayment, {
     foreignKey: "contributionId",
