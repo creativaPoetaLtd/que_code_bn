@@ -65,12 +65,14 @@ export const createContribution = async (
       minimumAmount,
       deadline,
       visibilityMode,
+      disbursementPolicy,
+      disbursementRecipientId,
     } = req.body;
 
-    if (!title || !goalAmount || !type) {
+    if (!title || !type) {
       res.status(400).json({
         success: false,
-        message: "title, goalAmount, and type are required",
+        message: "title and type are required",
       });
       return;
     }
@@ -82,7 +84,7 @@ export const createContribution = async (
       return;
     }
 
-    if (Number(goalAmount) <= 0) {
+    if (goalAmount != null && Number(goalAmount) <= 0) {
       res
         .status(400)
         .json({ success: false, message: "goalAmount must be greater than 0" });
@@ -115,6 +117,33 @@ export const createContribution = async (
       return;
     }
 
+    const resolvedPolicy = disbursementPolicy === "auto" ? "auto" : "hold";
+
+    if (resolvedPolicy === "auto") {
+      if (!disbursementRecipientId) {
+        res.status(400).json({
+          success: false,
+          message: "disbursementRecipientId is required when policy is auto",
+        });
+        return;
+      }
+      const recipientMembership = await models.GroupMember.findOne({
+        where: {
+          groupId,
+          userId: disbursementRecipientId,
+          status: GroupMemberStatus.ACTIVE,
+          role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] },
+        },
+      });
+      if (!recipientMembership) {
+        res.status(400).json({
+          success: false,
+          message: "Disbursement recipient must be an active admin or owner of this group",
+        });
+        return;
+      }
+    }
+
     // Ensure the group has a wallet — create one on-demand if missing
     const group = await models.Group.findByPk(groupId);
     if (!group) {
@@ -135,13 +164,15 @@ export const createContribution = async (
       createdBy: userId,
       title: String(title).trim(),
       note: note ? String(note).trim() : null,
-      goalAmount: Number(goalAmount),
+      goalAmount: goalAmount != null ? Number(goalAmount) : null,
       type,
       amountPerMember: type === "fixed" ? Number(amountPerMember) : null,
       minimumAmount:
         type === "flexible" && minimumAmount ? Number(minimumAmount) : null,
       deadline: deadline ? new Date(deadline) : null,
       visibilityMode: visibilityMode === "admin_only" ? "admin_only" : "all",
+      disbursementPolicy: resolvedPolicy,
+      disbursementRecipientId: resolvedPolicy === "auto" ? disbursementRecipientId : null,
     });
 
     const allMembers = await models.GroupMember.findAll({
@@ -194,6 +225,68 @@ export const createContribution = async (
   } catch (error) {
     console.error("createContribution error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── disburseFunds (internal) ────────────────────────────────────────────────
+
+const disburseFunds = async (
+  models: ReturnType<typeof Models>,
+  contribution: InstanceType<ReturnType<typeof Models>["GroupContribution"]>,
+  io?: any
+) => {
+  if (contribution.disbursementPolicy !== "auto" || !contribution.disbursementRecipientId) return;
+
+  const collectedAmount = parseFloat(contribution.collectedAmount.toString());
+  if (collectedAmount <= 0) return;
+
+  const groupWallet = await models.Wallet.findOne({ where: { groupId: contribution.groupId } });
+  const recipientWallet = await models.Wallet.findOne({ where: { userId: contribution.disbursementRecipientId } });
+
+  if (!groupWallet || !recipientWallet || !recipientWallet.isActive) {
+    console.warn(`disburseFunds: wallet missing or inactive for contribution ${contribution.id}`);
+    return;
+  }
+
+  const groupBalance = parseFloat(groupWallet.balance.toString());
+  if (groupBalance < collectedAmount) {
+    console.warn(`disburseFunds: group wallet balance (${groupBalance}) < collectedAmount (${collectedAmount}) for contribution ${contribution.id}`);
+    return;
+  }
+
+  const dbTx = await models.sequelize.transaction();
+  try {
+    await groupWallet.update({ balance: groupBalance - collectedAmount }, { transaction: dbTx });
+    const recipientBalance = parseFloat(recipientWallet.balance.toString());
+    await recipientWallet.update({ balance: recipientBalance + collectedAmount }, { transaction: dbTx });
+
+    await models.Transaction.create(
+      {
+        referenceId: uuidv4(),
+        senderWalletId: groupWallet.id,
+        receiverWalletId: recipientWallet.id,
+        amount: collectedAmount,
+        totalAmount: collectedAmount,
+        currency: "RWF",
+        status: "completed",
+        type: "transfer",
+        description: `Contribution disbursement: ${contribution.title}`,
+      },
+      { transaction: dbTx }
+    );
+
+    await dbTx.commit();
+
+    if (io) {
+      io.to(`user_${contribution.disbursementRecipientId}`).emit("group_contribution_disbursed", {
+        groupId: contribution.groupId,
+        contributionId: contribution.id,
+        amount: collectedAmount,
+      });
+    }
+  } catch (err) {
+    await dbTx.rollback();
+    throw err;
   }
 };
 
@@ -274,16 +367,6 @@ export const contribute = async (
         res.status(400).json({
           success: false,
           message: `Fixed contributions must be exactly ${contribution.amountPerMember} RWF`,
-        });
-        return;
-      }
-      const existing = await models.GroupContributionPayment.findOne({
-        where: { contributionId, payerId: userId },
-      });
-      if (existing) {
-        res.status(400).json({
-          success: false,
-          message: "You have already contributed to this request",
         });
         return;
       }
@@ -481,8 +564,17 @@ export const contribute = async (
 
       const newCollected =
         parseFloat(contribution.collectedAmount.toString()) + contributionAmount;
-      const newCount = (contribution.contributorCount || 0) + 1;
+      const priorPayments = await models.GroupContributionPayment.count({
+        where: { contributionId, payerId: userId },
+        transaction: dbTransaction,
+      });
+      // Only increment unique contributor count on first payment from this user.
+      // priorPayments already includes the payment just created above.
+      const newCount = priorPayments === 1
+        ? (contribution.contributorCount || 0) + 1
+        : (contribution.contributorCount || 0);
       const isGoalReached =
+        contribution.goalAmount != null &&
         newCollected >= parseFloat(contribution.goalAmount.toString());
 
       await contribution.update(
@@ -506,6 +598,12 @@ export const contribute = async (
       });
 
       const io = req.app.get("io");
+
+      if (isGoalReached && contribution.disbursementPolicy === "auto") {
+        disburseFunds(models, contribution, io).catch((err) =>
+          console.error("disburseFunds error on goal reached:", err)
+        );
+      }
       const progressPayload = {
         groupId,
         contributionId,
@@ -656,6 +754,13 @@ export const closeContribution = async (
     });
 
     const io = req.app.get("io");
+
+    if (contribution.disbursementPolicy === "auto") {
+      disburseFunds(models, contribution, io).catch((err) =>
+        console.error("disburseFunds error on close:", err)
+      );
+    }
+
     if (io) {
       allMembers.forEach((m) => {
         io.to(`user_${m.userId}`).emit("group_contribution_closed", {
@@ -837,11 +942,8 @@ export const listContributions = async (
     const contributions = await models.GroupContribution.findAll({
       where: { groupId },
       include: [
-        {
-          model: models.User,
-          as: "creator",
-          attributes: ["id", "firstName", "lastName"],
-        },
+        { model: models.User, as: "creator", attributes: ["id", "firstName", "lastName"] },
+        { model: models.User, as: "disbursementRecipient", attributes: ["id", "firstName", "lastName"], required: false },
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -922,21 +1024,12 @@ export const getContribution = async (
     const contribution = await models.GroupContribution.findOne({
       where: { id: contributionId, groupId },
       include: [
-        {
-          model: models.User,
-          as: "creator",
-          attributes: ["id", "firstName", "lastName"],
-        },
+        { model: models.User, as: "creator", attributes: ["id", "firstName", "lastName"] },
+        { model: models.User, as: "disbursementRecipient", attributes: ["id", "firstName", "lastName"], required: false },
         {
           model: models.GroupContributionPayment,
           as: "payments",
-          include: [
-            {
-              model: models.User,
-              as: "payer",
-              attributes: ["id", "firstName", "lastName"],
-            },
-          ],
+          include: [{ model: models.User, as: "payer", attributes: ["id", "firstName", "lastName"] }],
         },
       ],
     });

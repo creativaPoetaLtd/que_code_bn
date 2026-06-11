@@ -5,6 +5,8 @@
  */
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    const tableDesc = await queryInterface.describeTable("ChatMessages");
+    if (tableDesc.replyToMessageId) return;
     await queryInterface.addColumn("ChatMessages", "replyToMessageId", {
       type: Sequelize.UUID,
       allowNull: true,

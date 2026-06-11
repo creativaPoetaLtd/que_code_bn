@@ -2,16 +2,16 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.addColumn("Wallets", "subActionId", {
-      type: Sequelize.UUID,
-      allowNull: true,
-      references: {
-        model: "SubActions",
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
-    });
+    const tableDesc = await queryInterface.describeTable("Wallets");
+    if (!tableDesc.subActionId) {
+      await queryInterface.addColumn("Wallets", "subActionId", {
+        type: Sequelize.UUID,
+        allowNull: true,
+        references: { model: "SubActions", key: "id" },
+        onUpdate: "CASCADE",
+        onDelete: "CASCADE",
+      });
+    }
   },
 
   down: async (queryInterface) => {

@@ -7,11 +7,14 @@
  */
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.addColumn("ChatMessages", "mentions", {
-      type:         Sequelize.JSONB,
-      allowNull:    true,
-      defaultValue: null,
-    });
+    const tableDesc = await queryInterface.describeTable("ChatMessages");
+    if (!tableDesc.mentions) {
+      await queryInterface.addColumn("ChatMessages", "mentions", {
+        type:         Sequelize.JSONB,
+        allowNull:    true,
+        defaultValue: null,
+      });
+    }
   },
 
   down: async (queryInterface) => {

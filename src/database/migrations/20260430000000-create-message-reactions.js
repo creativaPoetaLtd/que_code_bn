@@ -3,6 +3,8 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    const tables = await queryInterface.showAllTables();
+    if (tables.includes("MessageReactions")) return;
     await queryInterface.createTable("MessageReactions", {
       id: {
         type: Sequelize.UUID,

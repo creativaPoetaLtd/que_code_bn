@@ -837,11 +837,13 @@ export interface GroupContributionAttributes {
   createdBy: string;
   title: string;
   note?: string | null;
-  goalAmount: number;
+  goalAmount?: number | null;
   type: "fixed" | "flexible";
   amountPerMember?: number | null;
   minimumAmount?: number | null;
   deadline?: Date | null;
+  disbursementPolicy: "hold" | "auto";
+  disbursementRecipientId?: string | null;
   status: "active" | "completed" | "closed" | "expired";
   visibilityMode: "all" | "admin_only";
   currency: string;
@@ -855,11 +857,14 @@ export type GroupContributionCreationAttributes = Optional<
   GroupContributionAttributes,
   | "id"
   | "note"
+  | "goalAmount"
   | "amountPerMember"
   | "minimumAmount"
   | "deadline"
   | "status"
   | "visibilityMode"
+  | "disbursementPolicy"
+  | "disbursementRecipientId"
   | "currency"
   | "collectedAmount"
   | "contributorCount"
