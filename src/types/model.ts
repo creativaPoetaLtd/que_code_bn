@@ -629,6 +629,7 @@ export interface WalletAttributes {
   organizationId?: string;
   groupId?: string;
   subActionId?: string;
+  publicContributionId?: string;
   balance: number;
   currency: string;
   isActive: boolean;
@@ -829,6 +830,62 @@ export interface PaymentRequestAttributes {
 export type PaymentRequestCreationAttributes = Optional<
   PaymentRequestAttributes,
   "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "createdAt" | "updatedAt"
+>;
+
+export interface PublicContributionAttributes {
+  id: string;
+  createdBy: string;
+  walletId?: string | null;
+  title: string;
+  note?: string | null;
+  goalAmount?: number | null;
+  type: "fixed" | "flexible";
+  amountPerMember?: number | null;
+  minimumAmount?: number | null;
+  deadline?: Date | null;
+  disbursementPolicy: "hold" | "auto";
+  status: "active" | "completed" | "closed" | "expired";
+  visibilityMode: "all" | "creator_only";
+  currency: string;
+  collectedAmount: number;
+  contributorCount: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PublicContributionCreationAttributes = Optional<
+  PublicContributionAttributes,
+  | "id"
+  | "walletId"
+  | "note"
+  | "goalAmount"
+  | "amountPerMember"
+  | "minimumAmount"
+  | "deadline"
+  | "status"
+  | "visibilityMode"
+  | "disbursementPolicy"
+  | "currency"
+  | "collectedAmount"
+  | "contributorCount"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface PublicContributionPaymentAttributes {
+  id: string;
+  contributionId: string;
+  payerId: string;
+  amount: number;
+  transactionId?: string | null;
+  currency: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PublicContributionPaymentCreationAttributes = Optional<
+  PublicContributionPaymentAttributes,
+  "id" | "transactionId" | "currency" | "createdAt" | "updatedAt"
 >;
 
 export interface GroupContributionAttributes {
