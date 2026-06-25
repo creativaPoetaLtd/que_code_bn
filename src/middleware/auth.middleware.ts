@@ -56,3 +56,44 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
         }
     })();
 };
+
+export const optionalAuthenticate = (req: Request, res: Response, next: NextFunction) => {
+    (async () => {
+        try {
+            let token = req.header('Authorization')?.replace('Bearer ', '');
+
+            if (!token && req.cookies?.token) {
+                try {
+                    const cookieData = typeof req.cookies.token === 'string'
+                        ? JSON.parse(req.cookies.token)
+                        : req.cookies.token;
+                    token = cookieData.value || cookieData;
+                } catch {
+                    token = req.cookies.token;
+                }
+            }
+
+            if (!token) {
+                req.user = null as any;
+                return next();
+            }
+
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string; accountType?: string };
+                let entity = null;
+                if (decoded.accountType === 'organization') {
+                    entity = await Organization.findByPk(decoded.id);
+                } else {
+                    entity = await User.findByPk(decoded.id, { attributes: { exclude: ['password'] } });
+                }
+                req.user = entity ? (entity.get({ plain: true }) as any) : null as any;
+            } catch {
+                req.user = null as any;
+            }
+
+            next();
+        } catch (error) {
+            next(error);
+        }
+    })();
+};

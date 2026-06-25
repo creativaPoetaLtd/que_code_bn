@@ -26,6 +26,11 @@ export enum NotificationType {
   GROUP_CONTRIBUTION_COMPLETED = "GROUP_CONTRIBUTION_COMPLETED",
   GROUP_CONTRIBUTION_CLOSED = "GROUP_CONTRIBUTION_CLOSED",
   GROUP_CONTRIBUTION_UPDATED = "GROUP_CONTRIBUTION_UPDATED",
+
+  // Public (standalone) contribution notifications
+  PUBLIC_CONTRIBUTION_RECEIVED = "PUBLIC_CONTRIBUTION_RECEIVED",
+  PUBLIC_CONTRIBUTION_COMPLETED = "PUBLIC_CONTRIBUTION_COMPLETED",
+  PUBLIC_CONTRIBUTION_CLOSED = "PUBLIC_CONTRIBUTION_CLOSED",
   
   // Contact-related notifications
   CONTACT_INVITATION_SENT = "CONTACT_INVITATION_SENT",
@@ -307,7 +312,21 @@ const notificationConfig = {
     description: "A group contribution request has been updated",
     priority: "normal",
   },
-  
+
+  // Public contribution notifications
+  [NotificationType.PUBLIC_CONTRIBUTION_RECEIVED]: {
+    description: "Someone contributed to your campaign",
+    priority: "high",
+  },
+  [NotificationType.PUBLIC_CONTRIBUTION_COMPLETED]: {
+    description: "Your contribution campaign has reached its goal",
+    priority: "high",
+  },
+  [NotificationType.PUBLIC_CONTRIBUTION_CLOSED]: {
+    description: "A contribution campaign has been closed",
+    priority: "normal",
+  },
+
   // Contact notifications
   [NotificationType.CONTACT_INVITATION_SENT]: {
     description: "You have sent a contact invitation",
