@@ -1070,6 +1070,303 @@ export const getContribution = async (
   }
 };
 
+// ─── updateContribution ──────────────────────────────────────────────────────
+
+export const updateContribution = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const groupId = req.params.groupId as string;
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const adminMembership = await isGroupAdmin(models, groupId, userId);
+    if (!adminMembership) {
+      res.status(403).json({ success: false, message: "Only group admins can edit contributions" });
+      return;
+    }
+
+    const contribution = await models.GroupContribution.findOne({
+      where: { id: contributionId, groupId },
+    });
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (contribution.status === "closed" || contribution.status === "completed") {
+      res.status(400).json({
+        success: false,
+        message: `Cannot edit a contribution that is ${contribution.status}`,
+      });
+      return;
+    }
+
+    const { title, note, goalAmount, visibilityMode, disbursementPolicy, disbursementRecipientId } = req.body;
+    const updates: Record<string, any> = {};
+
+    if (title !== undefined) {
+      if (!String(title).trim()) {
+        res.status(400).json({ success: false, message: "title cannot be empty" });
+        return;
+      }
+      updates.title = String(title).trim();
+    }
+
+    if (note !== undefined) updates.note = note ? String(note).trim() : null;
+
+    if (goalAmount !== undefined) {
+      if (goalAmount !== null && Number(goalAmount) <= 0) {
+        res.status(400).json({ success: false, message: "goalAmount must be greater than 0" });
+        return;
+      }
+      updates.goalAmount = goalAmount !== null ? Number(goalAmount) : null;
+    }
+
+    if (visibilityMode !== undefined) {
+      updates.visibilityMode = visibilityMode === "admin_only" ? "admin_only" : "all";
+    }
+
+    if (disbursementPolicy !== undefined || disbursementRecipientId !== undefined) {
+      const resolvedPolicy = disbursementPolicy !== undefined
+        ? (disbursementPolicy === "auto" ? "auto" : "hold")
+        : contribution.disbursementPolicy;
+
+      if (resolvedPolicy === "auto") {
+        const recipientId = disbursementRecipientId ?? contribution.disbursementRecipientId;
+        if (!recipientId) {
+          res.status(400).json({
+            success: false,
+            message: "disbursementRecipientId is required when policy is auto",
+          });
+          return;
+        }
+        const recipientMembership = await models.GroupMember.findOne({
+          where: {
+            groupId,
+            userId: recipientId,
+            status: GroupMemberStatus.ACTIVE,
+            role: { [Op.in]: [GroupMemberRole.OWNER, GroupMemberRole.ADMIN] },
+          },
+        });
+        if (!recipientMembership) {
+          res.status(400).json({
+            success: false,
+            message: "Disbursement recipient must be an active admin or owner",
+          });
+          return;
+        }
+        updates.disbursementPolicy = "auto";
+        updates.disbursementRecipientId = recipientId;
+      } else {
+        updates.disbursementPolicy = "hold";
+        if (disbursementPolicy === "hold") updates.disbursementRecipientId = null;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ success: false, message: "No valid fields to update" });
+      return;
+    }
+
+    await contribution.update(updates);
+
+    const allMembers = await models.GroupMember.findAll({
+      where: { groupId, status: GroupMemberStatus.ACTIVE, userId: { [Op.ne]: userId } },
+      attributes: ["userId"],
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      allMembers.forEach((member) => {
+        io.to(`user_${member.userId}`).emit("group_contribution_updated", {
+          groupId,
+          contributionId: contribution.id,
+          ...updates,
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Contribution updated successfully",
+      data: contribution,
+    });
+  } catch (error) {
+    console.error("updateContribution error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── listContributors ────────────────────────────────────────────────────────
+
+export const listContributors = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const groupId = req.params.groupId as string;
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const membership = await isActiveMember(models, groupId, userId);
+    if (!membership) {
+      res.status(403).json({ success: false, message: "You are not an active member of this group" });
+      return;
+    }
+
+    const contribution = await models.GroupContribution.findOne({
+      where: { id: contributionId, groupId },
+    });
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    const memberIsAdmin = [GroupMemberRole.OWNER, GroupMemberRole.ADMIN].includes(
+      membership.role as GroupMemberRole
+    );
+
+    if (!memberIsAdmin && contribution.visibilityMode === "admin_only") {
+      const myPayment = await models.GroupContributionPayment.findOne({
+        where: { contributionId, payerId: userId },
+        include: [{ model: models.User, as: "payer", attributes: ["id", "firstName", "lastName"] }],
+      });
+      res.status(200).json({ success: true, data: myPayment ? [myPayment] : [] });
+      return;
+    }
+
+    const payments = await models.GroupContributionPayment.findAll({
+      where: { contributionId },
+      include: [{ model: models.User, as: "payer", attributes: ["id", "firstName", "lastName"] }],
+      order: [["createdAt", "DESC"]],
+    });
+
+    res.status(200).json({ success: true, data: payments });
+  } catch (error) {
+    console.error("listContributors error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── withdrawFunds ───────────────────────────────────────────────────────────
+
+export const withdrawFunds = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const groupId = req.params.groupId as string;
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const adminMembership = await isGroupAdmin(models, groupId, userId);
+    if (!adminMembership) {
+      res.status(403).json({ success: false, message: "Only group admins can withdraw funds" });
+      return;
+    }
+
+    const contribution = await models.GroupContribution.findOne({
+      where: { id: contributionId, groupId },
+    });
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (contribution.disbursementPolicy === "auto") {
+      res.status(400).json({
+        success: false,
+        message: "This contribution uses auto-disbursement. Funds are transferred automatically.",
+      });
+      return;
+    }
+
+    const collectedAmount = parseFloat(contribution.collectedAmount.toString());
+    if (collectedAmount <= 0) {
+      res.status(400).json({ success: false, message: "No funds have been collected yet" });
+      return;
+    }
+
+    const group = await models.Group.findByPk(groupId);
+    if (!group || !group.walletId) {
+      res.status(400).json({ success: false, message: "Group wallet not found" });
+      return;
+    }
+
+    const groupWallet = await models.Wallet.findByPk(group.walletId);
+    if (!groupWallet) {
+      res.status(404).json({ success: false, message: "Group wallet not found" });
+      return;
+    }
+
+    const groupBalance = parseFloat(groupWallet.balance.toString());
+    const toWithdraw = Math.min(collectedAmount, groupBalance);
+    if (toWithdraw <= 0) {
+      res.status(400).json({ success: false, message: "No funds available to withdraw" });
+      return;
+    }
+
+    const recipientWallet = await models.Wallet.findOne({ where: { userId } });
+    if (!recipientWallet || !recipientWallet.isActive) {
+      res.status(400).json({ success: false, message: "Your wallet is not available" });
+      return;
+    }
+
+    const dbTransaction = await models.sequelize.transaction();
+    try {
+      await groupWallet.update({ balance: groupBalance - toWithdraw }, { transaction: dbTransaction });
+      const recipientBalance = parseFloat(recipientWallet.balance.toString());
+      await recipientWallet.update(
+        { balance: recipientBalance + toWithdraw },
+        { transaction: dbTransaction }
+      );
+
+      await models.Transaction.create(
+        {
+          referenceId: uuidv4(),
+          senderWalletId: groupWallet.id,
+          receiverWalletId: recipientWallet.id,
+          amount: toWithdraw,
+          totalAmount: toWithdraw,
+          currency: "RWF",
+          status: "completed",
+          type: "transfer",
+          description: `Contribution withdrawal: ${contribution.title}`,
+        },
+        { transaction: dbTransaction }
+      );
+
+      await dbTransaction.commit();
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user_${userId}`).emit("group_contribution_withdrawn", {
+          groupId,
+          contributionId,
+          amount: toWithdraw,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `${toWithdraw} RWF withdrawn to your wallet`,
+        data: { withdrawn: toWithdraw },
+      });
+    } catch (innerError) {
+      await dbTransaction.rollback();
+      throw innerError;
+    }
+  } catch (error) {
+    console.error("withdrawFunds error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 // ─── listMyContributions ─────────────────────────────────────────────────────
 
 export const listMyContributions = async (

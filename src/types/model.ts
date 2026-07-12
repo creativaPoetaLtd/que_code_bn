@@ -849,6 +849,8 @@ export interface PublicContributionAttributes {
   currency: string;
   collectedAmount: number;
   contributorCount: number;
+  linkedGroupId?: string | null;
+  allowContributorJoin?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -868,6 +870,8 @@ export type PublicContributionCreationAttributes = Optional<
   | "currency"
   | "collectedAmount"
   | "contributorCount"
+  | "linkedGroupId"
+  | "allowContributorJoin"
   | "createdAt"
   | "updatedAt"
 >;

@@ -5,6 +5,7 @@ import Models from "../database/models";
 import { AuthenticatedRequest } from "../types/requests";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
+import { GroupMemberRole, GroupMemberStatus, GroupPrivacyType, GroupExpirationType } from "../types/group";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -486,12 +487,16 @@ export const contribute = async (
 
       await Promise.all(notifPromises);
 
+      const canJoinGroup = !!(contribution.linkedGroupId && contribution.allowContributorJoin);
+
       res.status(200).json({
         success: true,
         message: "Contribution successful",
         data: {
           amount: contributionAmount,
           newBalance: parseFloat(payerWallet.balance.toString()),
+          canJoinGroup,
+          linkedGroupId: canJoinGroup ? contribution.linkedGroupId : null,
           contribution: {
             id: contribution.id,
             collectedAmount: contribution.collectedAmount,
@@ -751,6 +756,138 @@ export const listMyContributions = async (
   }
 };
 
+// ─── updateContribution ──────────────────────────────────────────────────────
+
+export const updateContribution = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const contribution = await models.PublicContribution.findByPk(contributionId);
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (contribution.createdBy !== userId) {
+      res.status(403).json({ success: false, message: "Only the campaign creator can edit it" });
+      return;
+    }
+
+    if (contribution.status === "closed" || contribution.status === "completed") {
+      res.status(400).json({
+        success: false,
+        message: `Cannot edit a campaign that is ${contribution.status}`,
+      });
+      return;
+    }
+
+    const { title, note, goalAmount, visibilityMode, disbursementPolicy, allowContributorJoin } = req.body;
+    const updates: Record<string, any> = {};
+
+    if (title !== undefined) {
+      if (!String(title).trim()) {
+        res.status(400).json({ success: false, message: "title cannot be empty" });
+        return;
+      }
+      updates.title = String(title).trim();
+    }
+
+    if (note !== undefined) updates.note = note ? String(note).trim() : null;
+
+    if (goalAmount !== undefined) {
+      if (goalAmount !== null && Number(goalAmount) <= 0) {
+        res.status(400).json({ success: false, message: "goalAmount must be greater than 0" });
+        return;
+      }
+      updates.goalAmount = goalAmount !== null ? Number(goalAmount) : null;
+    }
+
+    if (visibilityMode !== undefined) {
+      updates.visibilityMode = visibilityMode === "creator_only" ? "creator_only" : "all";
+    }
+
+    if (disbursementPolicy !== undefined) {
+      updates.disbursementPolicy = disbursementPolicy === "auto" ? "auto" : "hold";
+    }
+
+    if (allowContributorJoin !== undefined) {
+      updates.allowContributorJoin = Boolean(allowContributorJoin);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ success: false, message: "No valid fields to update" });
+      return;
+    }
+
+    await contribution.update(updates);
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user_${userId}`).emit("public_contribution_updated", {
+        contributionId: contribution.id,
+        ...updates,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Campaign updated successfully",
+      data: contribution,
+    });
+  } catch (error) {
+    console.error("updateContribution error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── listContributors ────────────────────────────────────────────────────────
+
+export const listContributors = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user?.id;
+
+    const contribution = await models.PublicContribution.findByPk(contributionId);
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    const isCreator = userId === contribution.createdBy;
+
+    if (!isCreator && contribution.visibilityMode === "creator_only") {
+      const myPayment = userId
+        ? await models.PublicContributionPayment.findOne({
+            where: { contributionId, payerId: userId },
+            include: [{ model: models.User, as: "payer", attributes: ["id", "firstName", "lastName"] }],
+          })
+        : null;
+      res.status(200).json({ success: true, data: myPayment ? [myPayment] : [] });
+      return;
+    }
+
+    const payments = await models.PublicContributionPayment.findAll({
+      where: { contributionId },
+      include: [{ model: models.User, as: "payer", attributes: ["id", "firstName", "lastName"] }],
+      order: [["createdAt", "DESC"]],
+    });
+
+    res.status(200).json({ success: true, data: payments });
+  } catch (error) {
+    console.error("listContributors error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 // ─── withdrawFunds (creator withdraws from campaign wallet to personal wallet)
 
 export const withdrawFunds = async (
@@ -841,6 +978,259 @@ export const withdrawFunds = async (
     }
   } catch (error) {
     console.error("withdrawFunds error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── getContributionByGroup ──────────────────────────────────────────────────
+
+export const getContributionByGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const groupId = req.params.groupId as string;
+
+    const contribution = await models.PublicContribution.findOne({
+      where: { linkedGroupId: groupId },
+      attributes: ["id", "title", "status", "collectedAmount", "goalAmount", "createdBy"],
+    });
+
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "No campaign linked to this group" });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: contribution });
+  } catch (error) {
+    console.error("getContributionByGroup error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── createLinkedGroup ───────────────────────────────────────────────────────
+
+export const createLinkedGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const contribution = await models.PublicContribution.findByPk(contributionId);
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (contribution.createdBy !== userId) {
+      res.status(403).json({ success: false, message: "Only the campaign creator can create a linked group" });
+      return;
+    }
+
+    if (contribution.linkedGroupId) {
+      res.status(400).json({ success: false, message: "This campaign already has a linked group" });
+      return;
+    }
+
+    const { name, description, isOpen } = req.body;
+    if (!name || !String(name).trim()) {
+      res.status(400).json({ success: false, message: "Group name is required" });
+      return;
+    }
+
+    const privacyType = isOpen ? GroupPrivacyType.PUBLIC : GroupPrivacyType.REQUIRE_APPROVAL;
+
+    const group = await models.Group.create({
+      name: String(name).trim(),
+      description: description ? String(description).trim() : undefined,
+      ownerId: userId,
+      adminId: userId,
+      isPrivate: !isOpen,
+      privacyType,
+      expirationType: GroupExpirationType.NEVER,
+      hasFundraising: false,
+    });
+
+    await models.GroupMember.create({
+      groupId: group.id,
+      userId,
+      role: GroupMemberRole.OWNER,
+      status: GroupMemberStatus.ACTIVE,
+      invitedBy: userId,
+      joinedAt: new Date(),
+      invitedAt: new Date(),
+      autoApproved: true,
+    });
+
+    await models.Group.increment("memberCount", { where: { id: group.id } });
+    await contribution.update({ linkedGroupId: group.id });
+
+    res.status(201).json({
+      success: true,
+      message: "Community group created and linked to campaign",
+      data: {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        memberCount: 1,
+        privacyType: group.privacyType,
+        isOpen: privacyType === GroupPrivacyType.PUBLIC,
+      },
+    });
+  } catch (error) {
+    console.error("createLinkedGroup error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── getLinkedGroup ──────────────────────────────────────────────────────────
+
+export const getLinkedGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user?.id;
+
+    const contribution = await models.PublicContribution.findByPk(contributionId, {
+      attributes: ["id", "linkedGroupId", "allowContributorJoin"],
+    });
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (!contribution.linkedGroupId) {
+      res.status(404).json({ success: false, message: "This campaign has no linked group" });
+      return;
+    }
+
+    const group = await models.Group.findByPk(contribution.linkedGroupId, {
+      attributes: ["id", "name", "description", "memberCount", "privacyType", "profilePictureUrl"],
+    });
+    if (!group) {
+      res.status(404).json({ success: false, message: "Linked group not found" });
+      return;
+    }
+
+    let isUserMember = false;
+    let memberStatus: string | null = null;
+    if (userId) {
+      const membership = await models.GroupMember.findOne({
+        where: { groupId: group.id, userId },
+        attributes: ["status", "role"],
+      });
+      if (membership) {
+        isUserMember = membership.status === GroupMemberStatus.ACTIVE;
+        memberStatus = membership.status;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        memberCount: group.memberCount ?? 0,
+        privacyType: group.privacyType,
+        isOpen: group.privacyType === GroupPrivacyType.PUBLIC,
+        profilePictureUrl: group.profilePictureUrl,
+        allowContributorJoin: contribution.allowContributorJoin,
+        isUserMember,
+        memberStatus,
+      },
+    });
+  } catch (error) {
+    console.error("getLinkedGroup error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ─── joinLinkedGroup ─────────────────────────────────────────────────────────
+
+export const joinLinkedGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const models = getModels(req);
+    const contributionId = req.params.contributionId as string;
+    const userId = req.user.id;
+
+    const contribution = await models.PublicContribution.findByPk(contributionId, {
+      attributes: ["id", "linkedGroupId", "allowContributorJoin"],
+    });
+    if (!contribution) {
+      res.status(404).json({ success: false, message: "Contribution not found" });
+      return;
+    }
+
+    if (!contribution.linkedGroupId) {
+      res.status(404).json({ success: false, message: "This campaign has no linked group" });
+      return;
+    }
+
+    const group = await models.Group.findByPk(contribution.linkedGroupId);
+    if (!group) {
+      res.status(404).json({ success: false, message: "Linked group not found" });
+      return;
+    }
+
+    const existing = await models.GroupMember.findOne({
+      where: { groupId: group.id, userId },
+    });
+    if (existing) {
+      res.status(400).json({
+        success: false,
+        message:
+          existing.status === GroupMemberStatus.ACTIVE
+            ? "You are already a member of this group"
+            : "Your join request is pending approval",
+      });
+      return;
+    }
+
+    const isAutoApproved = group.privacyType === GroupPrivacyType.PUBLIC;
+
+    await models.GroupMember.create({
+      groupId: group.id,
+      userId,
+      role: GroupMemberRole.MEMBER,
+      status: isAutoApproved ? GroupMemberStatus.ACTIVE : GroupMemberStatus.PENDING,
+      invitedBy: userId,
+      invitedAt: new Date(),
+      joinedAt: isAutoApproved ? new Date() : undefined,
+      autoApproved: isAutoApproved,
+    });
+
+    if (isAutoApproved) {
+      await models.Group.increment("memberCount", { where: { id: group.id } });
+    }
+
+    const io = req.app.get("io");
+    if (io && isAutoApproved) {
+      io.to(`user_${group.ownerId}`).emit("group_member_joined", {
+        groupId: group.id,
+        userId,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: isAutoApproved
+        ? "You have joined the group"
+        : "Your join request has been submitted and is pending approval",
+      data: { status: isAutoApproved ? GroupMemberStatus.ACTIVE : GroupMemberStatus.PENDING },
+    });
+  } catch (error) {
+    console.error("joinLinkedGroup error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

@@ -24,6 +24,8 @@ class PublicContribution extends Model<
   public currency!: string;
   public collectedAmount!: number;
   public contributorCount!: number;
+  public linkedGroupId!: string | null;
+  public allowContributorJoin!: boolean;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
@@ -60,6 +62,8 @@ const publicContribution_model = (sequelize: Sequelize) => {
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
       collectedAmount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
       contributorCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+      linkedGroupId: { type: DataTypes.UUID, allowNull: true },
+      allowContributorJoin: { type: DataTypes.BOOLEAN, defaultValue: false },
     },
     { sequelize, tableName: "PublicContributions" }
   );
