@@ -1053,6 +1053,7 @@ export const createLinkedGroup = async (
       privacyType,
       expirationType: GroupExpirationType.NEVER,
       hasFundraising: false,
+      hasAdditionalInfo: false,
     });
 
     await models.GroupMember.create({
