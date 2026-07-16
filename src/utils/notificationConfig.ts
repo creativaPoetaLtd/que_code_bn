@@ -34,6 +34,7 @@ export enum NotificationType {
   
   // Contact-related notifications
   CONTACT_INVITATION_SENT = "CONTACT_INVITATION_SENT",
+  ACTION_PURCHASE_TRANSFERRED = "ACTION_PURCHASE_TRANSFERRED",
   CONTACT_REQUEST_RECEIVED = "CONTACT_REQUEST_RECEIVED",
   CONTACT_REQUEST_ACCEPTED = "CONTACT_REQUEST_ACCEPTED",
   CONTACT_REQUEST_REJECTED = "CONTACT_REQUEST_REJECTED",
@@ -331,6 +332,10 @@ const notificationConfig = {
   [NotificationType.CONTACT_INVITATION_SENT]: {
     description: "You have sent a contact invitation",
     priority: "low",
+  },
+  [NotificationType.ACTION_PURCHASE_TRANSFERRED]: {
+    description: "A ticket was transferred to you",
+    priority: "high",
   },
   [NotificationType.CONTACT_REQUEST_RECEIVED]: {
     description: "You have received a contact request",

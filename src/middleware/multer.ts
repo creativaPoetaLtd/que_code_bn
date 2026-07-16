@@ -70,6 +70,34 @@ const actionCoverImageUpload = multer({
 	},
 });
 
+// Max gallery images a single sub-action may carry
+const SUB_ACTION_MAX_GALLERY_IMAGES = 6;
+
+// Configure multer for sub-action media: one cover image + a gallery carousel
+const subActionMediaUpload = multer({
+	storage: multer.diskStorage({}),
+	limits: {
+		fileSize: 10 * 1024 * 1024, // 10MB per file
+		files: SUB_ACTION_MAX_GALLERY_IMAGES + 1, // gallery + cover
+	},
+	fileFilter: (_req, file, callback) => {
+		const ext = path.extname(file.originalname).toLowerCase();
+
+		const allowedImageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.jfif', '.tif'];
+
+		if (!allowedImageExts.includes(ext)) {
+			return callback(new Error(`File type ${ext} is not allowed. Allowed types: ${allowedImageExts.join(', ')}`));
+		}
+
+		callback(null, true);
+	},
+});
+
+const subActionMediaFields = subActionMediaUpload.fields([
+	{ name: 'coverImage', maxCount: 1 },
+	{ name: 'images', maxCount: SUB_ACTION_MAX_GALLERY_IMAGES },
+]);
+
 const galleryImageUpload = multer({
 	storage: multer.diskStorage({}),
 	limits: {
@@ -88,5 +116,11 @@ const galleryImageUpload = multer({
 	},
 });
 
-export { organizationFileUpload, actionCoverImageUpload, galleryImageUpload };
+export {
+	organizationFileUpload,
+	actionCoverImageUpload,
+	galleryImageUpload,
+	subActionMediaFields,
+	SUB_ACTION_MAX_GALLERY_IMAGES,
+};
 export default fileUpload;

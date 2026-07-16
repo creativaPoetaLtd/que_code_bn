@@ -1,5 +1,7 @@
-import { Request, Response } from "express";
+import { Application, Request, Response } from "express";
+import { Op } from "sequelize";
 import { insert_function, read_function } from "../utils/db_methods";
+import { normalizeMetadata } from "../utils/metadata";
 import database_models from "../database/config/db.config";
 import {
   ActionPurchaseCreationAttributes,
@@ -9,6 +11,8 @@ import {
   ActionModelAttributes,
   SubActionModelAttributes,
 } from "../types/model";
+import { createAndSendNotification } from "../utils/notificationService";
+import { NotificationType } from "../utils/notificationConfig";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
 
@@ -445,7 +449,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           { where: { id: subActionId } }
         );
         if (currentSubAction) {
-          const currentMeta = (currentSubAction as any).metadata || {};
+          const currentMeta = normalizeMetadata((currentSubAction as any).metadata);
           const newVotes = ((currentMeta.votes as number) || 0) + quantity;
           await insert_function<SubActionModelAttributes>(
             "SubAction",
@@ -462,18 +466,19 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
           { where: { actionId: action.id, isActive: true } }
         ) as unknown as SubActionModelAttributes[];
 
-        const sorted = [...allCandidates].sort((a: any, b: any) => {
-          const aVotes = (a.metadata?.votes as number) || 0;
-          const bVotes = (b.metadata?.votes as number) || 0;
-          return bVotes - aVotes;
-        });
+        const sorted = [...allCandidates]
+          .map((candidate: any) => ({
+            id: candidate.id,
+            metadata: normalizeMetadata(candidate.metadata),
+          }))
+          .sort((a, b) => ((b.metadata.votes as number) || 0) - ((a.metadata.votes as number) || 0));
 
         await Promise.all(
-          sorted.map((candidate: any, index: number) =>
+          sorted.map((candidate, index) =>
             insert_function<SubActionModelAttributes>(
               "SubAction",
               "update",
-              { metadata: { ...(candidate.metadata || {}), rank: index + 1 } },
+              { metadata: { ...candidate.metadata, rank: index + 1 } },
               { where: { id: candidate.id } }
             )
           )
@@ -804,11 +809,195 @@ const useQRObject = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Transfer ownership of a purchased action (ticket/pass) to a contact
+const transferActionPurchase = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { purchaseId } = req.params;
+    const { recipientId } = req.body;
+    const senderId = (req as any).user?.id || req.body.senderId;
+
+    if (!senderId) {
+      res.status(401).json({ success: false, message: "Authentication required" });
+      return;
+    }
+    if (!recipientId) {
+      res.status(400).json({ success: false, message: "recipientId is required" });
+      return;
+    }
+    if (recipientId === senderId) {
+      res.status(400).json({ success: false, message: "You cannot transfer to yourself" });
+      return;
+    }
+
+    // 1. Load the purchase and confirm the caller owns it
+    const purchase = await read_function<ActionPurchaseModelAttributes>(
+      "ActionPurchase",
+      "findOne",
+      { where: { id: purchaseId } }
+    );
+    if (!purchase) {
+      res.status(404).json({ success: false, message: "Purchase not found" });
+      return;
+    }
+    if ((purchase as any).buyerId !== senderId) {
+      res.status(403).json({ success: false, message: "You do not own this purchase" });
+      return;
+    }
+    if ((purchase as any).status !== "completed") {
+      res.status(400).json({
+        success: false,
+        message: `Only completed purchases can be transferred (this one is ${(purchase as any).status})`,
+      });
+      return;
+    }
+
+    // 2. The purchase must have issued a QR asset, and it must still be valid
+    const qrObjectId = (purchase as any).qrObjectId;
+    if (!qrObjectId) {
+      res.status(400).json({
+        success: false,
+        message: "This purchase has no transferable ticket",
+      });
+      return;
+    }
+    const qrObject = await read_function<QRObjectModelAttributes>(
+      "QRObject",
+      "findOne",
+      { where: { id: qrObjectId } }
+    );
+    if (!qrObject) {
+      res.status(404).json({ success: false, message: "Ticket not found" });
+      return;
+    }
+    if ((qrObject as any).status !== "valid") {
+      res.status(400).json({
+        success: false,
+        message: `A ${(qrObject as any).status} ticket cannot be transferred`,
+      });
+      return;
+    }
+
+    // 3. The recipient must be an active contact of the sender
+    const contact = await read_function<any>("Contact", "findOne", {
+      where: {
+        status: "active",
+        [Op.or]: [
+          { userAId: senderId, userBId: recipientId },
+          { userAId: recipientId, userBId: senderId },
+        ],
+      },
+    });
+    if (!contact) {
+      res.status(403).json({
+        success: false,
+        message: "You can only transfer tickets to your contacts",
+      });
+      return;
+    }
+
+    // 4. Load both users for names and the trail
+    const [sender, recipient] = await Promise.all([
+      read_function<any>("User", "findOne", { where: { id: senderId } }),
+      read_function<any>("User", "findOne", { where: { id: recipientId } }),
+    ]);
+    if (!recipient) {
+      res.status(404).json({ success: false, message: "Recipient not found" });
+      return;
+    }
+
+    const nameOf = (u: any) =>
+      `${u?.firstName || ""} ${u?.lastName || ""}`.trim() || u?.email || "Unknown";
+    const senderName = nameOf(sender);
+    const recipientName = nameOf(recipient);
+
+    // 5. Reassign ownership and append to the transfer trail, atomically
+    const dbTransaction = await database_models.sequelize.transaction();
+    try {
+      const existingMeta = normalizeMetadata((qrObject as any).metadata);
+      const transferHistory = Array.isArray(existingMeta.transferHistory)
+        ? existingMeta.transferHistory
+        : [];
+      transferHistory.push({
+        fromId: senderId,
+        fromName: senderName,
+        toId: recipientId,
+        toName: recipientName,
+        at: new Date().toISOString(),
+      });
+
+      await insert_function<ActionPurchaseModelAttributes>(
+        "ActionPurchase",
+        "update",
+        { buyerId: recipientId },
+        { where: { id: purchaseId }, transaction: dbTransaction } as any
+      );
+
+      await insert_function<QRObjectModelAttributes>(
+        "QRObject",
+        "update",
+        { buyerId: recipientId, metadata: { ...existingMeta, transferHistory } },
+        { where: { id: qrObjectId }, transaction: dbTransaction } as any
+      );
+
+      await dbTransaction.commit();
+    } catch (txError) {
+      await dbTransaction.rollback();
+      throw txError;
+    }
+
+    // 6. Notify the recipient (best-effort — never fail the transfer over this)
+    try {
+      const action = await read_function<ActionModelAttributes>("Action", "findOne", {
+        where: { id: (purchase as any).actionId },
+      });
+      await createAndSendNotification(req.app as Application, {
+        type: NotificationType.ACTION_PURCHASE_TRANSFERRED,
+        recipientId,
+        data: {
+          userId: senderId,
+          userName: senderName,
+          actionId: (purchase as any).actionId,
+          actionName: (action as any)?.name,
+          purchaseId,
+          title: "Ticket received",
+          message: `${senderName} transferred "${(action as any)?.name || "a ticket"}" to you`,
+          url: `/action/${recipientId}`,
+        },
+      });
+    } catch (notifyError) {
+      console.error("Failed to notify transfer recipient:", notifyError);
+    }
+
+    const updatedPurchase = await read_function<ActionPurchaseModelAttributes>(
+      "ActionPurchase",
+      "findOne",
+      { where: { id: purchaseId } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Ticket transferred to ${recipientName}`,
+      data: updatedPurchase,
+    });
+  } catch (error: any) {
+    console.error("Error in transferActionPurchase:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while transferring the ticket",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   purchaseAction,
   getUserQRObjects,
   getUserPurchases,
   validateQRObject,
   useQRObject,
+  transferActionPurchase,
 };
 

@@ -715,6 +715,7 @@ export interface SubActionModelAttributes {
   isActive: boolean;
   sortOrder: number;
   coverImage: string | null;
+  images: string[];
   dedicatedQrCodeData: string | null;
   createdAt?: Date;
   updatedAt?: Date;
