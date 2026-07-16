@@ -1,5 +1,4 @@
 import { Application, Request, Response } from "express";
-import { Op } from "sequelize";
 import { insert_function, read_function } from "../utils/db_methods";
 import { normalizeMetadata } from "../utils/metadata";
 import database_models from "../database/config/db.config";
@@ -817,7 +816,8 @@ const transferActionPurchase = async (
   try {
     const { purchaseId } = req.params;
     const { recipientId } = req.body;
-    const senderId = (req as any).user?.id || req.body.senderId;
+    // Sender is the authenticated caller — never trust a client-supplied id here
+    const senderId = (req as any).user?.id;
 
     if (!senderId) {
       res.status(401).json({ success: false, message: "Authentication required" });
@@ -880,31 +880,17 @@ const transferActionPurchase = async (
       return;
     }
 
-    // 3. The recipient must be an active contact of the sender
-    const contact = await read_function<any>("Contact", "findOne", {
-      where: {
-        status: "active",
-        [Op.or]: [
-          { userAId: senderId, userBId: recipientId },
-          { userAId: recipientId, userBId: senderId },
-        ],
-      },
-    });
-    if (!contact) {
-      res.status(403).json({
-        success: false,
-        message: "You can only transfer tickets to your contacts",
-      });
-      return;
-    }
-
-    // 4. Load both users for names and the trail
+    // 3. Load both users. The recipient can be any valid account — identified via a
+    //    contact, a shared profile link (/welcome/:userId), or a scanned profile QR.
     const [sender, recipient] = await Promise.all([
       read_function<any>("User", "findOne", { where: { id: senderId } }),
       read_function<any>("User", "findOne", { where: { id: recipientId } }),
     ]);
     if (!recipient) {
-      res.status(404).json({ success: false, message: "Recipient not found" });
+      res.status(404).json({
+        success: false,
+        message: "Recipient account not found — check the profile link or QR code",
+      });
       return;
     }
 

@@ -2,11 +2,13 @@ import express from "express";
 import actionController from "../controllers/actionController";
 import actionPurchaseController from "../controllers/actionPurchaseController";
 import actionDisplayController from "../controllers/actionDisplayController";
+import { RequestHandler } from "express";
 import {
   actionCoverImageUpload,
   subActionMediaFields,
   SUB_ACTION_MAX_GALLERY_IMAGES,
 } from "../middleware/multer";
+import { authenticate } from "../middleware/auth.unified.middleware";
 
 const actionRouter = express.Router();
 
@@ -136,9 +138,11 @@ actionRouter.get(
   actionPurchaseController.getUserPurchases
 );
 
-// Transfer ownership of a purchased ticket/pass to a contact
+// Transfer ownership of a purchased ticket/pass. Authenticated: the sender is the
+// token holder, and the recipient may be any user (contact, profile link, or QR).
 actionRouter.post(
   "/action-purchases/:purchaseId/transfer",
+  authenticate as RequestHandler,
   actionPurchaseController.transferActionPurchase
 );
 
