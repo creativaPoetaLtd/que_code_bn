@@ -14,6 +14,7 @@ class GroupContributionPayment extends Model<
   public amount!: number;
   public transactionId!: string | null;
   public currency!: string;
+  public isAnonymous!: boolean;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
@@ -27,6 +28,7 @@ const groupContributionPayment_model = (sequelize: Sequelize) => {
       amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
       transactionId: { type: DataTypes.UUID, allowNull: true },
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
+      isAnonymous: { type: DataTypes.BOOLEAN, defaultValue: false },
     },
     { sequelize, tableName: "GroupContributionPayments" }
   );

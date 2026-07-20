@@ -884,13 +884,14 @@ export interface PublicContributionPaymentAttributes {
   amount: number;
   transactionId?: string | null;
   currency: string;
+  isAnonymous: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type PublicContributionPaymentCreationAttributes = Optional<
   PublicContributionPaymentAttributes,
-  "id" | "transactionId" | "currency" | "createdAt" | "updatedAt"
+  "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
 >;
 
 export interface GroupContributionAttributes {
@@ -941,11 +942,12 @@ export interface GroupContributionPaymentAttributes {
   amount: number;
   transactionId?: string | null;
   currency: string;
+  isAnonymous: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type GroupContributionPaymentCreationAttributes = Optional<
   GroupContributionPaymentAttributes,
-  "id" | "transactionId" | "currency" | "createdAt" | "updatedAt"
+  "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
 >;

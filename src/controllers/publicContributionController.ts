@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Op } from "sequelize";
 import * as bcrypt from "bcrypt";
 import { v4 as uuidv4 } from "uuid";
 import Models from "../database/models";
@@ -6,6 +7,7 @@ import { AuthenticatedRequest } from "../types/requests";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
 import { GroupMemberRole, GroupMemberStatus, GroupPrivacyType, GroupExpirationType } from "../types/group";
+import { redactAnonymousPayments } from "../utils/paymentPrivacy";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -184,7 +186,7 @@ export const contribute = async (
     const models = getModels(req);
     const contributionId = req.params.contributionId as string;
     const userId = req.user.id;
-    const { amount, pin } = req.body;
+    const { amount, pin, isAnonymous } = req.body;
 
     if (!pin || !/^\d{4}$/.test(String(pin))) {
       res.status(400).json({ success: false, message: "A valid 4-digit PIN is required" });
@@ -385,6 +387,7 @@ export const contribute = async (
           payerId: userId,
           amount: contributionAmount,
           transactionId: txRecord.id,
+          isAnonymous: !!isAnonymous,
         },
         { transaction: dbTransaction }
       );
@@ -697,6 +700,8 @@ export const getContribution = async (
       plain.payments = myPayment ? [myPayment] : [];
     }
 
+    plain.payments = redactAnonymousPayments(plain.payments as any[] ?? [], userId, isCreator);
+
     if (userId) {
       const myPayment = await models.PublicContributionPayment.findOne({
         where: { contributionId, payerId: userId },
@@ -723,8 +728,19 @@ export const listMyContributions = async (
     const models = getModels(req);
     const userId = req.user.id;
 
+    const myPayments = await models.PublicContributionPayment.findAll({
+      where: { payerId: userId },
+      attributes: ["contributionId"],
+    });
+    const contributedIds = [...new Set(myPayments.map((p) => p.contributionId))];
+
     const contributions = await models.PublicContribution.findAll({
-      where: { createdBy: userId },
+      where: {
+        [Op.or]: [
+          { createdBy: userId },
+          ...(contributedIds.length ? [{ id: { [Op.in]: contributedIds } }] : []),
+        ],
+      },
       include: [
         { model: models.User, as: "creator", attributes: ["id", "firstName", "lastName"] },
         {
@@ -745,7 +761,18 @@ export const listMyContributions = async (
 
     const data = contributions.map((c) => {
       const plain = c.get({ plain: true }) as any;
-      plain.isCreator = true;
+      const isCreator = c.createdBy === userId;
+      const isContributor = contributedIds.includes(c.id);
+
+      let payments = (plain.payments as any[]) ?? [];
+      if (!isCreator && c.visibilityMode === "creator_only") {
+        payments = payments.filter((p) => p.payerId === userId);
+      }
+
+      plain.isCreator = isCreator;
+      plain.isContributor = isContributor;
+      plain.myPayment = payments.find((p) => p.payerId === userId) ?? null;
+      plain.payments = redactAnonymousPayments(payments, userId, isCreator);
       return plain;
     });
 
@@ -881,7 +908,7 @@ export const listContributors = async (
       order: [["createdAt", "DESC"]],
     });
 
-    res.status(200).json({ success: true, data: payments });
+    res.status(200).json({ success: true, data: redactAnonymousPayments(payments, userId, isCreator) });
   } catch (error) {
     console.error("listContributors error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
@@ -1200,7 +1227,7 @@ export const joinLinkedGroup = async (
 
     const isAutoApproved = group.privacyType === GroupPrivacyType.PUBLIC;
 
-    await models.GroupMember.create({
+    const membership = await models.GroupMember.create({
       groupId: group.id,
       userId,
       role: GroupMemberRole.MEMBER,
@@ -1221,6 +1248,37 @@ export const joinLinkedGroup = async (
         groupId: group.id,
         userId,
       });
+    }
+
+    if (!isAutoApproved) {
+      const user = await models.User.findByPk(userId);
+      if (user) {
+        await createAndSendNotification(req.app, {
+          type: NotificationType.GROUP_JOIN_REQUEST,
+          recipientId: group.ownerId,
+          data: {
+            groupId: group.id,
+            groupName: group.name,
+            requestId: membership.id,
+            userId: user.id,
+            userName: `${user.firstName} ${user.lastName}`,
+            message: `${user.firstName} ${user.lastName} wants to join your group "${group.name}"`,
+            title: "Group Join Request",
+            actions: [
+              {
+                type: "approve",
+                label: "Approve",
+                url: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=approve`,
+              },
+              {
+                type: "decline",
+                label: "Decline",
+                url: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=decline`,
+              },
+            ],
+          },
+        });
+      }
     }
 
     res.status(200).json({
