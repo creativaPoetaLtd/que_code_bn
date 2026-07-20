@@ -166,6 +166,7 @@ export interface UpdateGroupRequest {
     description?: string;
     picture?: string;
     isPrivate?: boolean;
+    privacyType?: GroupPrivacyType;
     maxMembers?: number;
 }
 

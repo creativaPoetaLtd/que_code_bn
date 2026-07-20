@@ -26,6 +26,8 @@ const {
   PaymentRequest,
   Action,
   SubAction,
+  Group,
+  PublicContribution,
 } = database_models;
 
 // Helper function to calculate fee
@@ -960,6 +962,18 @@ const getTransactionHistory = async (
                 attributes: ["id", "name", "email"],
                 required: false,
               },
+              {
+                model: Group,
+                as: "group",
+                attributes: ["id", "name", "profilePictureUrl"],
+                required: false,
+              },
+              {
+                model: PublicContribution,
+                as: "publicContribution",
+                attributes: ["id", "title"],
+                required: false,
+              },
             ],
           },
           {
@@ -984,6 +998,18 @@ const getTransactionHistory = async (
                 model: Organization,
                 as: "organization",
                 attributes: ["id", "name", "email"],
+                required: false,
+              },
+              {
+                model: Group,
+                as: "group",
+                attributes: ["id", "name", "profilePictureUrl"],
+                required: false,
+              },
+              {
+                model: PublicContribution,
+                as: "publicContribution",
+                attributes: ["id", "title"],
                 required: false,
               },
             ],

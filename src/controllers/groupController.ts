@@ -1031,8 +1031,13 @@ const getGroupMembers = async (req: AuthenticatedRequest, res: Response, next: N
 const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { groupId } = req.params;
-        const { name, description, picture, isPrivate, maxMembers }: UpdateGroupRequest = req.body;
+        const { name, description, picture, isPrivate, privacyType, maxMembers }: UpdateGroupRequest = req.body;
         const userId = req.user.id;
+
+        if (privacyType !== undefined && !Object.values(GroupPrivacyType).includes(privacyType)) {
+            res.status(400).json({ message: "Invalid privacyType" });
+            return;
+        }
 
         const models = req.app.get('models') as ReturnType<typeof Models>;
 
@@ -1063,6 +1068,7 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         if (description !== undefined) updateData.description = description?.trim();
         if (picture !== undefined) updateData.picture = picture;
         if (isPrivate !== undefined) updateData.isPrivate = isPrivate;
+        if (privacyType !== undefined) updateData.privacyType = privacyType;
         if (maxMembers !== undefined && maxMembers >= (group.memberCount || 0)) updateData.maxMembers = maxMembers;
 
         // Update the group
@@ -1077,7 +1083,7 @@ const updateGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         if (updateData.name) changes.push('name');
         if (updateData.description !== undefined) changes.push('description');
         if (updateData.picture) changes.push('picture');
-        if (updateData.isPrivate !== undefined) changes.push('privacy settings');
+        if (updateData.isPrivate !== undefined || updateData.privacyType !== undefined) changes.push('privacy settings');
         if (updateData.maxMembers) changes.push('member limit');
 
         const updateDescription = changes.length > 0

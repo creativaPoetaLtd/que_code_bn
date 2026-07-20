@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from "../types/requests";
 import { GroupMemberRole, GroupMemberStatus } from "../types/group";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
+import { redactAnonymousPayments } from "../utils/paymentPrivacy";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -301,7 +302,7 @@ export const contribute = async (
     const groupId = req.params.groupId as string;
     const contributionId = req.params.contributionId as string;
     const userId = req.user.id;
-    const { amount, pin } = req.body;
+    const { amount, pin, isAnonymous } = req.body;
 
     if (!pin || !/^\d{4}$/.test(String(pin))) {
       res.status(400).json({
@@ -558,6 +559,7 @@ export const contribute = async (
           payerId: userId,
           amount: contributionAmount,
           transactionId: txRecord.id,
+          isAnonymous: !!isAnonymous,
         },
         { transaction: dbTransaction }
       );
@@ -604,21 +606,32 @@ export const contribute = async (
           console.error("disburseFunds error on goal reached:", err)
         );
       }
-      const progressPayload = {
-        groupId,
-        contributionId,
-        collectedAmount: contribution.collectedAmount,
-        goalAmount: contribution.goalAmount,
-        contributorCount: contribution.contributorCount,
-        status: contribution.status,
-        payerId: userId,
-        payerName: `${payer.firstName} ${payer.lastName}`,
-        amount: contributionAmount,
+      const buildProgressPayload = (recipientId: string) => {
+        const recipientIsPrivileged =
+          recipientId === userId ||
+          allMembers.some(
+            (m) =>
+              m.userId === recipientId &&
+              [GroupMemberRole.OWNER, GroupMemberRole.ADMIN].includes(m.role as GroupMemberRole)
+          );
+        const revealIdentity = !isAnonymous || recipientIsPrivileged;
+
+        return {
+          groupId,
+          contributionId,
+          collectedAmount: contribution.collectedAmount,
+          goalAmount: contribution.goalAmount,
+          contributorCount: contribution.contributorCount,
+          status: contribution.status,
+          payerId: revealIdentity ? userId : null,
+          payerName: revealIdentity ? `${payer.firstName} ${payer.lastName}` : "Anonymous",
+          amount: contributionAmount,
+        };
       };
 
       if (io) {
         allMembers.forEach((m) => {
-          io.to(`user_${m.userId}`).emit("group_contribution_updated", progressPayload);
+          io.to(`user_${m.userId}`).emit("group_contribution_updated", buildProgressPayload(m.userId));
         });
 
         if (isGoalReached) {
@@ -982,7 +995,7 @@ export const listContributions = async (
       const plain = c.toJSON() as unknown as Record<string, unknown>;
       const payments = paymentsByContribution.get(c.id) ?? [];
       if (memberIsAdmin || c.visibilityMode === "all") {
-        plain.payments = payments;
+        plain.payments = redactAnonymousPayments(payments, userId, memberIsAdmin);
       }
       plain.myPayment = payments.find((p: any) => p.payerId === userId) ?? null;
       return plain;
@@ -1061,6 +1074,7 @@ export const getContribution = async (
       plain.payments = myPayment ? [myPayment] : [];
     }
 
+    plain.payments = redactAnonymousPayments(plain.payments as any[] ?? [], userId, memberIsAdmin);
     plain.myPayment = myPayment;
 
     res.status(200).json({ success: true, data: plain });
@@ -1245,7 +1259,7 @@ export const listContributors = async (
       order: [["createdAt", "DESC"]],
     });
 
-    res.status(200).json({ success: true, data: payments });
+    res.status(200).json({ success: true, data: redactAnonymousPayments(payments, userId, memberIsAdmin) });
   } catch (error) {
     console.error("listContributors error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
@@ -1435,7 +1449,7 @@ export const listMyContributions = async (
       plain.groupName = groupMap.get(c.groupId) ?? "Unknown Group";
       plain.isAdmin = isAdmin;
       if (isAdmin || c.visibilityMode === "all") {
-        plain.payments = payments;
+        plain.payments = redactAnonymousPayments(payments, userId, isAdmin);
       }
       plain.myPayment = payments.find((p: any) => p.payerId === userId) ?? null;
       return plain;
