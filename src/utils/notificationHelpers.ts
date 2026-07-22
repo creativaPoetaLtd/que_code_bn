@@ -432,6 +432,34 @@ export const notifyChatMessageReceived = async (
   mediaUrl?: string,
   thumbnailUrl?: string
 ) => {
+  const isSecureChat = messageType === "secure";
+  const secureTitle = "New secure message";
+  const secureMessage = "Open QueCode to view this encrypted message.";
+
+  if (isSecureChat) {
+    return createAndSendNotification(app, {
+      type: NotificationType.CHAT_MESSAGE_RECEIVED,
+      recipientId,
+      data: {
+        chatId,
+        messageId,
+        senderId,
+        messageType: "secure",
+        isGroupChat: false,
+        title: secureTitle,
+        message: secureMessage,
+        url: `/chat?chatId=${chatId}`,
+        actions: [
+          {
+            type: "view",
+            label: "Open chat",
+            url: `/chat?chatId=${chatId}`,
+          },
+        ],
+      },
+    });
+  }
+
   // Determine notification type based on message type
   const notificationTypeMap: Record<string, NotificationType> = {
     text: NotificationType.CHAT_MESSAGE_TEXT,

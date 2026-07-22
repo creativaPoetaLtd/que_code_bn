@@ -94,13 +94,19 @@ export const connectionToDatabase = async () => {
 			$$;
 		`);
 
-		// Sync models with force: true in development to recreate tables
-		const syncOptions = APP_MODE === 'development' 
-			? { force: false, alter: false } 
-			: { alter: false };
-			
-		await sequelizeConnection.sync(syncOptions);
-		console.log("Database sync completed successfully.");
+		const shouldSkipSync = process.env.SKIP_DB_SYNC === "true";
+
+		if (shouldSkipSync) {
+			console.log("Skipping Sequelize sync because SKIP_DB_SYNC=true");
+		} else {
+			// Sync models with force: true in development to recreate tables
+			const syncOptions = APP_MODE === 'development' 
+				? { force: false, alter: false } 
+				: { alter: false };
+				
+			await sequelizeConnection.sync(syncOptions);
+			console.log("Database sync completed successfully.");
+		}
 		console.log(`Connected to: ${db_uri.split('@')[1]?.split('?')[0]}`);
 	} catch (error) {
 		console.error("Unable to connect to the database:");

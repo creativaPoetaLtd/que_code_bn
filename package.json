@@ -7,7 +7,7 @@
     "dev:nodemon": "nodemon",
     "dev:clean": "pkill -f 'ts-node-dev' || true && pnpm run dev",
     "dev:verbose": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --require dotenv/config --poll --rs --clear src/index.ts",
-    "build": "tsc && mkdir -p dist/database/seeders && cp -f src/database/seeders/*.js dist/database/seeders/",
+    "build": "tsc && node -e \"const fs=require('fs'), path=require('path'); const src='src/database/seeders', dst='dist/database/seeders'; fs.mkdirSync(dst,{recursive:true}); for (const file of fs.readdirSync(src).filter((name)=>name.endsWith('.js'))) fs.copyFileSync(path.join(src,file), path.join(dst,file));\"",
     "start": "node --require dotenv/config dist/index.js",
     "heroku-postbuild": "pnpm run build",
     "drop-all-tables": "psql -U your_username -d your_database_name -c \"SELECT 'DROP TABLE IF EXISTS \"' || tablename || '\" CASCADE;' FROM pg_tables WHERE schemaname = 'public'\" | psql -U your_username -d your_database_name",
@@ -25,6 +25,7 @@
     "prepare": "husky install",
     "precommit": "prettier . --write && eslint --fix .",
     "run-tests": "cross-env NODE_ENV=test jest --detectOpenHandles --coverage --verbose --testTimeout=10000",
+    "test:e2ee": "ts-node --transpile-only scripts/e2ee-protocol-smoke.ts",
     "pretest": "cross-env NODE_ENV=test pnpm run migrate:reset",
     "run-after-tests": "cross-env NODE_ENV=test sequelize db:migrate:undo:all ",
     "test": "npm-run-all run-tests run-after-tests --continue-on-error"

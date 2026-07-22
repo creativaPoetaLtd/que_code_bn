@@ -20,6 +20,10 @@ import ContactInvitation_model from "./contactInvitations.model";
 import notification_model from "./notification.model";
 import pushSubscription_model from "./pushSubscription.model";
 import deviceSession_model from "./deviceSession.model";
+import userDevice_model from "./userDevice.model";
+import deviceKeyBundle_model from "./deviceKeyBundle.model";
+import deviceOneTimePreKey_model from "./deviceOneTimePreKey.model";
+import chatMessageRecipientPayload_model from "./chatMessageRecipientPayload.model";
 import role_model from "./role.model";
 import permission_model from "./permission.model";
 import rolePermission_model from "./rolePermission.model";
@@ -64,6 +68,10 @@ const Models = (sequelize: Sequelize) => {
   const Notification = notification_model(sequelize);
   const PushSubscription = pushSubscription_model(sequelize);
   const DeviceSession = deviceSession_model(sequelize);
+  const UserDevice = userDevice_model(sequelize);
+  const DeviceKeyBundle = deviceKeyBundle_model(sequelize);
+  const DeviceOneTimePreKey = deviceOneTimePreKey_model(sequelize);
+  const ChatMessageRecipientPayload = chatMessageRecipientPayload_model(sequelize);
 
   const Role = role_model(sequelize);
   const Permission = permission_model(sequelize);
@@ -354,6 +362,22 @@ const Models = (sequelize: Sequelize) => {
   // Message Reactions
   ChatMessage.hasMany(MessageReaction, { foreignKey: "messageId", as: "reactions" });
   MessageReaction.belongsTo(ChatMessage, { foreignKey: "messageId", as: "message" });
+  ChatMessage.hasMany(ChatMessageRecipientPayload, {
+    foreignKey: "chatMessageId",
+    as: "recipientPayloads",
+  });
+  ChatMessageRecipientPayload.belongsTo(ChatMessage, {
+    foreignKey: "chatMessageId",
+    as: "message",
+  });
+  User.hasMany(ChatMessageRecipientPayload, {
+    foreignKey: "recipientUserId",
+    as: "secureMessagePayloads",
+  });
+  ChatMessageRecipientPayload.belongsTo(User, {
+    foreignKey: "recipientUserId",
+    as: "recipientUser",
+  });
 
   User.hasMany(MessageReaction, { foreignKey: "userId", as: "messageReactions" });
   MessageReaction.belongsTo(User, { foreignKey: "userId", as: "user" });
@@ -377,6 +401,11 @@ const Models = (sequelize: Sequelize) => {
     as: "pushSubscriptions",
   });
   PushSubscription.belongsTo(User, { foreignKey: "userId", as: "user" });
+  User.hasMany(UserDevice, {
+    foreignKey: "userId",
+    as: "secureDevices",
+  });
+  UserDevice.belongsTo(User, { foreignKey: "userId", as: "user" });
   User.hasMany(DeviceSession, {
     foreignKey: "userId",
     as: "deviceSessions",
@@ -389,6 +418,22 @@ const Models = (sequelize: Sequelize) => {
   DeviceSession.belongsTo(Organization, {
     foreignKey: "organizationId",
     as: "organization",
+  });
+  UserDevice.hasOne(DeviceKeyBundle, {
+    foreignKey: "userDeviceId",
+    as: "keyBundle",
+  });
+  DeviceKeyBundle.belongsTo(UserDevice, {
+    foreignKey: "userDeviceId",
+    as: "device",
+  });
+  UserDevice.hasMany(DeviceOneTimePreKey, {
+    foreignKey: "userDeviceId",
+    as: "oneTimePreKeys",
+  });
+  DeviceOneTimePreKey.belongsTo(UserDevice, {
+    foreignKey: "userDeviceId",
+    as: "device",
   });
 
   // External Accounts
@@ -561,6 +606,10 @@ const Models = (sequelize: Sequelize) => {
     Notification,
     PushSubscription,
     DeviceSession,
+    UserDevice,
+    DeviceKeyBundle,
+    DeviceOneTimePreKey,
+    ChatMessageRecipientPayload,
     Role,
     Permission,
     RolePermission,

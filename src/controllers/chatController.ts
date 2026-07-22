@@ -7,6 +7,7 @@ import ChatService from "../services/chatService";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { SECURE_DM_PROTOCOL_VERSION, supportsSecureDmBetweenUsers } from "../services/e2eeMessage.service";
 
 // Get user's chats (both DMs and group chats)
 export const getUserChats = async (
@@ -18,54 +19,74 @@ export const getUserChats = async (
     const userId = req.user.id;
     const models = req.app.get("models") as ReturnType<typeof Models>;
 
-    const chats = await models.ChatParticipant.findAll({
+    const chatIncludes = (chatAttributes: string[]) => [
+      {
+        model: models.Chat,
+        as: "chat",
+        attributes: chatAttributes,
+        include: [
+          {
+            model: models.ChatParticipant,
+            as: "participants",
+            include: [
+              {
+                model: models.User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email", "isOnline", "lastSeen"],
+                include: [
+                  {
+                    model: models.Profile,
+                    as: "profile",
+                    attributes: ["profileImage"]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            model: models.ChatMessage,
+            as: "messages",
+            limit: 1,
+            order: [["createdAt", "DESC"]],
+            include: [
+              {
+                model: models.User,
+                as: "sender",
+                attributes: ["firstName", "lastName"]
+              }
+            ]
+          },
+          {
+            model: models.Group,
+            as: "group",
+            attributes: ["id", "name", "description", "profilePictureUrl", "memberCount"]
+          }
+        ]
+      }
+    ];
+
+    const loadChats = (chatAttributes: string[]) => models.ChatParticipant.findAll({
       where: { userId },
-      include: [
-        {
-          model: models.Chat,
-          as: "chat",
-          attributes: ['id', 'isGroup', 'groupId', 'type', 'createdAt', 'updatedAt'], // Explicitly include groupId + chat type
-          include: [
-            {
-              model: models.ChatParticipant,
-              as: "participants",
-              include: [
-                {
-                  model: models.User,
-                  as: "user",
-                  attributes: ["id", "firstName", "lastName", "email", "isOnline", "lastSeen"],
-                  include: [
-                    {
-                      model: models.Profile,
-                      as: "profile",
-                      attributes: ["profileImage"]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              model: models.ChatMessage,
-              as: "messages",
-              limit: 1,
-              order: [["createdAt", "DESC"]],
-              include: [
-                {
-                  model: models.User,
-                  as: "sender",
-                  attributes: ["firstName", "lastName"]
-                }
-              ]
-            },
-            {
-              model: models.Group,
-              as: "group",
-              attributes: ["id", "name", "description", "profilePictureUrl", "memberCount"]
-            }
-          ]
-        }
-      ]
+      include: chatIncludes(chatAttributes) as any
     });
+
+    let chats;
+    try {
+      chats = await loadChats(['id', 'isGroup', 'groupId', 'type', 'securityMode', 'protocolVersion', 'createdAt', 'updatedAt']);
+    } catch (error: any) {
+      const missingSecureChatColumns =
+        error?.parent?.code === "42703" &&
+        ["chat.securityMode", "chat.protocolVersion"].some((column) =>
+          String(error?.parent?.message || error?.message || "").includes(column)
+        );
+
+      if (!missingSecureChatColumns) {
+        throw error;
+      }
+
+      console.warn("Chats table is missing E2EE metadata columns; loading chats in legacy compatibility mode.");
+      chats = await loadChats(['id', 'isGroup', 'groupId', 'type', 'createdAt', 'updatedAt']);
+    }
 
     // Deduplicate by chatId — a user may have multiple ChatParticipant rows for
     // the same chat (e.g. they joined both as a regular user and as admin in a
@@ -178,6 +199,8 @@ export const getUserChats = async (
         name: chatName,
         isGroup: chat.isGroup,
         type: chat.type,
+        securityMode: chat.securityMode || "legacy",
+        protocolVersion: chat.protocolVersion || null,
         groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {
@@ -198,9 +221,61 @@ export const getUserChats = async (
       };
     });
 
+    const preferredDirectChats = new Map<string, (typeof formattedChats)[number]>();
+
+    for (const chat of formattedChats) {
+      if (chat.isGroup || chat.type === "support") {
+        continue;
+      }
+
+      const otherParticipant = chat.participants.find((participant: any) => participant.userId !== userId);
+      if (!otherParticipant) {
+        continue;
+      }
+
+      const mapKey = `dm:${otherParticipant.userId}`;
+      const existing = preferredDirectChats.get(mapKey);
+
+      if (!existing) {
+        preferredDirectChats.set(mapKey, chat);
+        continue;
+      }
+
+      const existingIsSecure = existing.securityMode === "secure_dm_v1";
+      const currentIsSecure = chat.securityMode === "secure_dm_v1";
+
+      if (currentIsSecure && !existingIsSecure) {
+        preferredDirectChats.set(mapKey, chat);
+        continue;
+      }
+
+      if (currentIsSecure === existingIsSecure) {
+        const existingTimestamp = new Date(existing.lastMessage?.createdAt || 0).getTime();
+        const currentTimestamp = new Date(chat.lastMessage?.createdAt || 0).getTime();
+
+        if (currentTimestamp > existingTimestamp) {
+          preferredDirectChats.set(mapKey, chat);
+        }
+      }
+    }
+
+    const dedupedFormattedChats = formattedChats.filter((chat) => {
+      if (chat.isGroup || chat.type === "support") {
+        return true;
+      }
+
+      const otherParticipant = chat.participants.find((participant: any) => participant.userId !== userId);
+      if (!otherParticipant) {
+        return true;
+      }
+
+      const preferredChat = preferredDirectChats.get(`dm:${otherParticipant.userId}`);
+      return preferredChat?.id === chat.id;
+    });
+
     res.json({
       success: true,
-      data: formattedChats
+      data: dedupedFormattedChats
     });
 
   } catch (error) {
@@ -422,7 +497,8 @@ export const createOrGetDMChat = async (
     const participantChatIds = participantChats.map(cp => cp.chatId);
     const commonChatIds = userChatIds.filter(id => participantChatIds.includes(id));
 
-    let existingChat = null;
+    let existingSecureChat = null;
+    let existingLegacyChat = null;
     if (commonChatIds.length > 0) {
       // Verify it's exactly a 2-person chat
       for (const chatId of commonChatIds) {
@@ -431,16 +507,27 @@ export const createOrGetDMChat = async (
         });
 
         if (participantCount === 2) {
-          existingChat = await models.Chat.findByPk(chatId);
-          break;
+          const candidateChat = await models.Chat.findByPk(chatId);
+          if (candidateChat?.securityMode === "secure_dm_v1") {
+            existingSecureChat = candidateChat;
+            break;
+          }
+          if (!existingLegacyChat) {
+            existingLegacyChat = candidateChat;
+          }
         }
       }
     }
 
-    if (existingChat) {
+    const resolvedChat = existingSecureChat || existingLegacyChat;
+    if (resolvedChat) {
       res.json({
         success: true,
-        data: { chatId: existingChat.id },
+        data: {
+          chatId: resolvedChat.id,
+          securityMode: resolvedChat.securityMode || "legacy",
+          protocolVersion: resolvedChat.protocolVersion || null,
+        },
         message: "Existing chat found"
       });
       return;
@@ -475,13 +562,20 @@ export const createOrGetDMChat = async (
       return;
     }
 
+    const shouldCreateSecureChat = await supportsSecureDmBetweenUsers(models, [
+      userId,
+      participantId,
+    ]);
+
     // Create new DM chat
     const transaction = await sequelizeConnection.transaction();
 
     try {
       const newChat = await models.Chat.create(
         {
-          isGroup: false
+          isGroup: false,
+          securityMode: shouldCreateSecureChat ? "secure_dm_v1" : "legacy",
+          protocolVersion: shouldCreateSecureChat ? SECURE_DM_PROTOCOL_VERSION : null,
         },
         { transaction }
       );
@@ -504,7 +598,11 @@ export const createOrGetDMChat = async (
 
       res.status(201).json({
         success: true,
-        data: { chatId: newChat.id },
+        data: {
+          chatId: newChat.id,
+          securityMode: newChat.securityMode,
+          protocolVersion: newChat.protocolVersion,
+        },
         message: "Chat created successfully"
       });
 
@@ -971,7 +1069,9 @@ export const joinGroupChat = async (
         // Create the chat
         chat = await models.Chat.create({
           isGroup: true,
-          groupId
+          groupId,
+          securityMode: "legacy",
+          protocolVersion: null,
         }, { transaction });
 
         // Get all active group members

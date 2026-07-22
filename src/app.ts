@@ -37,12 +37,21 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:3003",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+  "http://127.0.0.1:3003",
+  "http://[::1]:3000",
+  "http://[::1]:3001",
+  "http://[::1]:3003",
   process.env.ADMIN_FRONTEND_URL,
   process.env.FRONTEND_URL,
+  "https://qiew-code-dev2.netlify.app",
   "https://qc-dev2.netlify.app",
 ].filter(Boolean);
-const netlifyPreviewOriginPattern =
-  /^https:\/\/deploy-preview-\d+--qiew-code-dev2\.netlify\.app$/;
+const netlifyPreviewOriginPatterns = [
+  /^https:\/\/deploy-preview-\d+--qiew-code-dev2\.netlify\.app$/,
+  /^https:\/\/deploy-preview-\d+--qc-dev2\.netlify\.app$/,
+];
 
 // CORS configuration - allow credentials with specific origin
 const corsOptions = {
@@ -53,7 +62,7 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     if (
       allowedOrigins.includes(origin) ||
-      netlifyPreviewOriginPattern.test(origin)
+      netlifyPreviewOriginPatterns.some((pattern) => pattern.test(origin))
     ) {
       return callback(null, true);
     } else {
@@ -67,6 +76,7 @@ const corsOptions = {
     "Authorization",
     "X-Requested-With",
     "Accept",
+    "x-qc-device-id",
   ],
   exposedHeaders: ["Content-Range", "X-Content-Range"],
   maxAge: 86400, // 24 hours
