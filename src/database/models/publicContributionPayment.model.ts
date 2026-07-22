@@ -1,12 +1,12 @@
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
 import {
-  GroupContributionPaymentAttributes,
-  GroupContributionPaymentCreationAttributes,
+  PublicContributionPaymentAttributes,
+  PublicContributionPaymentCreationAttributes,
 } from "../../types/model";
 
-class GroupContributionPayment extends Model<
-  GroupContributionPaymentAttributes,
-  GroupContributionPaymentCreationAttributes
+class PublicContributionPayment extends Model<
+  PublicContributionPaymentAttributes,
+  PublicContributionPaymentCreationAttributes
 > {
   public id!: string;
   public contributionId!: string;
@@ -19,8 +19,8 @@ class GroupContributionPayment extends Model<
   public updatedAt?: Date;
 }
 
-const groupContributionPayment_model = (sequelize: Sequelize) => {
-  GroupContributionPayment.init(
+const publicContributionPayment_model = (sequelize: Sequelize) => {
+  PublicContributionPayment.init(
     {
       id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
       contributionId: { type: DataTypes.UUID, allowNull: false },
@@ -30,10 +30,10 @@ const groupContributionPayment_model = (sequelize: Sequelize) => {
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
       isAnonymous: { type: DataTypes.BOOLEAN, defaultValue: false },
     },
-    { sequelize, tableName: "GroupContributionPayments" }
+    { sequelize, tableName: "PublicContributionPayments" }
   );
 
-  return GroupContributionPayment;
+  return PublicContributionPayment;
 };
 
-export default groupContributionPayment_model;
+export default publicContributionPayment_model;

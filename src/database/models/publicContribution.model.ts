@@ -1,16 +1,16 @@
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
 import {
-  GroupContributionAttributes,
-  GroupContributionCreationAttributes,
+  PublicContributionAttributes,
+  PublicContributionCreationAttributes,
 } from "../../types/model";
 
-class GroupContribution extends Model<
-  GroupContributionAttributes,
-  GroupContributionCreationAttributes
+class PublicContribution extends Model<
+  PublicContributionAttributes,
+  PublicContributionCreationAttributes
 > {
   public id!: string;
-  public groupId!: string;
   public createdBy!: string;
+  public walletId!: string | null;
   public title!: string;
   public note!: string | null;
   public goalAmount!: number | null;
@@ -19,22 +19,23 @@ class GroupContribution extends Model<
   public minimumAmount!: number | null;
   public deadline!: Date | null;
   public disbursementPolicy!: "hold" | "auto";
-  public disbursementRecipientId!: string | null;
   public status!: "active" | "completed" | "closed" | "expired";
-  public visibilityMode!: "all" | "admin_only";
+  public visibilityMode!: "all" | "creator_only";
   public currency!: string;
   public collectedAmount!: number;
   public contributorCount!: number;
+  public linkedGroupId!: string | null;
+  public allowContributorJoin!: boolean;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
 
-const groupContribution_model = (sequelize: Sequelize) => {
-  GroupContribution.init(
+const publicContribution_model = (sequelize: Sequelize) => {
+  PublicContribution.init(
     {
       id: { type: DataTypes.UUID, defaultValue: UUIDV4, primaryKey: true },
-      groupId: { type: DataTypes.UUID, allowNull: false },
       createdBy: { type: DataTypes.UUID, allowNull: false },
+      walletId: { type: DataTypes.UUID, allowNull: true },
       title: { type: DataTypes.STRING, allowNull: false },
       note: { type: DataTypes.TEXT, allowNull: true },
       goalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
@@ -50,23 +51,24 @@ const groupContribution_model = (sequelize: Sequelize) => {
         allowNull: false,
         defaultValue: "hold",
       },
-      disbursementRecipientId: { type: DataTypes.UUID, allowNull: true },
       status: {
         type: DataTypes.ENUM("active", "completed", "closed", "expired"),
         defaultValue: "active",
       },
       visibilityMode: {
-        type: DataTypes.ENUM("all", "admin_only"),
+        type: DataTypes.ENUM("all", "creator_only"),
         defaultValue: "all",
       },
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
       collectedAmount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
       contributorCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+      linkedGroupId: { type: DataTypes.UUID, allowNull: true },
+      allowContributorJoin: { type: DataTypes.BOOLEAN, defaultValue: false },
     },
-    { sequelize, tableName: "GroupContributions" }
+    { sequelize, tableName: "PublicContributions" }
   );
 
-  return GroupContribution;
+  return PublicContribution;
 };
 
-export default groupContribution_model;
+export default publicContribution_model;

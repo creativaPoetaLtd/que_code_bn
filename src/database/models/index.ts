@@ -38,6 +38,8 @@ import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
 import groupContribution_model from "./groupContribution.model";
 import groupContributionPayment_model from "./groupContributionPayment.model";
+import publicContribution_model from "./publicContribution.model";
+import publicContributionPayment_model from "./publicContributionPayment.model";
 import messageReaction_model from "./messageReaction.model";
 
 const Models = (sequelize: Sequelize) => {
@@ -93,6 +95,11 @@ const Models = (sequelize: Sequelize) => {
   // Group Contribution models
   const GroupContribution = groupContribution_model(sequelize);
   const GroupContributionPayment = groupContributionPayment_model(sequelize);
+
+  // Public (standalone) Contribution models
+  const PublicContribution = publicContribution_model(sequelize);
+  const PublicContributionPayment = publicContributionPayment_model(sequelize);
+
   const MessageReaction = messageReaction_model(sequelize);
 
   /* ---------- ASSOCIATIONS ---------- */
@@ -173,6 +180,9 @@ const Models = (sequelize: Sequelize) => {
 
   SubAction.hasOne(Wallet, { foreignKey: "subActionId", as: "wallet" });
   Wallet.belongsTo(SubAction, { foreignKey: "subActionId", as: "subAction" });
+
+  PublicContribution.hasOne(Wallet, { foreignKey: "publicContributionId", as: "wallet" });
+  Wallet.belongsTo(PublicContribution, { foreignKey: "publicContributionId", as: "publicContribution" });
 
   Action.hasMany(ActionPurchase, {
     foreignKey: "actionId",
@@ -525,6 +535,7 @@ const Models = (sequelize: Sequelize) => {
 
   User.hasMany(GroupContribution, { foreignKey: "createdBy", as: "createdContributions" });
   GroupContribution.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+  GroupContribution.belongsTo(User, { foreignKey: "disbursementRecipientId", as: "disbursementRecipient" });
 
   GroupContribution.hasMany(GroupContributionPayment, {
     foreignKey: "contributionId",
@@ -543,6 +554,31 @@ const Models = (sequelize: Sequelize) => {
     as: "contributionPayment",
   });
   GroupContributionPayment.belongsTo(Transaction, {
+    foreignKey: "transactionId",
+    as: "transaction",
+  });
+
+  // Public Contribution associations
+  User.hasMany(PublicContribution, { foreignKey: "createdBy", as: "publicContributions" });
+  PublicContribution.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+
+  PublicContribution.hasMany(PublicContributionPayment, {
+    foreignKey: "contributionId",
+    as: "payments",
+  });
+  PublicContributionPayment.belongsTo(PublicContribution, {
+    foreignKey: "contributionId",
+    as: "contribution",
+  });
+
+  User.hasMany(PublicContributionPayment, { foreignKey: "payerId", as: "publicContributionPayments" });
+  PublicContributionPayment.belongsTo(User, { foreignKey: "payerId", as: "payer" });
+
+  Transaction.hasOne(PublicContributionPayment, {
+    foreignKey: "transactionId",
+    as: "publicContributionPayment",
+  });
+  PublicContributionPayment.belongsTo(Transaction, {
     foreignKey: "transactionId",
     as: "transaction",
   });
@@ -588,6 +624,8 @@ const Models = (sequelize: Sequelize) => {
     GalleryItem,
     GroupContribution,
     GroupContributionPayment,
+    PublicContribution,
+    PublicContributionPayment,
     MessageReaction,
   };
 };

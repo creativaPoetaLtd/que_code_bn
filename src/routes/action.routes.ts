@@ -2,7 +2,13 @@ import express from "express";
 import actionController from "../controllers/actionController";
 import actionPurchaseController from "../controllers/actionPurchaseController";
 import actionDisplayController from "../controllers/actionDisplayController";
-import { actionCoverImageUpload } from "../middleware/multer";
+import { RequestHandler } from "express";
+import {
+  actionCoverImageUpload,
+  subActionMediaFields,
+  SUB_ACTION_MAX_GALLERY_IMAGES,
+} from "../middleware/multer";
+import { authenticate } from "../middleware/auth.unified.middleware";
 
 const actionRouter = express.Router();
 
@@ -21,10 +27,10 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
         error: "File size must be less than 10MB"
       });
     }
-    if ((err as any).code === 'LIMIT_FILE_COUNT') {
+    if ((err as any).code === 'LIMIT_FILE_COUNT' || (err as any).code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({
         message: "Too many files",
-        error: "Maximum 1 file allowed (cover image)"
+        error: `A cover image plus up to ${SUB_ACTION_MAX_GALLERY_IMAGES} gallery images are allowed`
       });
     }
   }
@@ -44,7 +50,7 @@ actionRouter.put(
 );
 actionRouter.post(
   "/actions/:actionId/sub-actions",
-  actionCoverImageUpload.single("coverImage"),
+  subActionMediaFields,
   handleMulterError,
   actionController.createSubAction
 );
@@ -106,6 +112,8 @@ actionRouter.get(
 );
 actionRouter.put(
   "/sub-actions/:subActionId",
+  subActionMediaFields,
+  handleMulterError,
   actionController.updateSubAction
 );
 actionRouter.delete(
@@ -128,6 +136,14 @@ actionRouter.get(
 actionRouter.get(
   "/users/:userId/purchases",
   actionPurchaseController.getUserPurchases
+);
+
+// Transfer ownership of a purchased ticket/pass. Authenticated: the sender is the
+// token holder, and the recipient may be any user (contact, profile link, or QR).
+actionRouter.post(
+  "/action-purchases/:purchaseId/transfer",
+  authenticate as RequestHandler,
+  actionPurchaseController.transferActionPurchase
 );
 
 // QR Object Validation

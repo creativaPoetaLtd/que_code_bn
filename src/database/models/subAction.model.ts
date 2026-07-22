@@ -20,6 +20,7 @@ class SubAction extends Model<
   public isActive!: boolean;
   public sortOrder!: number;
   public coverImage!: string | null; // Cover image URL
+  public images!: string[]; // Gallery image URLs rendered as a carousel
   public dedicatedQrCodeData!: string | null; // Base64 QR code data URL
 
   public readonly createdAt!: Date;
@@ -72,10 +73,16 @@ const SubAction_model = (sequelize: Sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
-      coverImage: { 
-        type: DataTypes.TEXT, 
+      coverImage: {
+        type: DataTypes.TEXT,
         allowNull: true,
         comment: "Cover image URL for the sub-action"
+      },
+      images: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        comment: "Gallery image URLs shown in a carousel for the sub-action"
       },
       dedicatedQrCodeData: {
         type: DataTypes.TEXT,

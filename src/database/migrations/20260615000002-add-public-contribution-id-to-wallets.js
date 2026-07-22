@@ -3,18 +3,18 @@
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     const tableDesc = await queryInterface.describeTable("Wallets");
-    if (!tableDesc.subActionId) {
-      await queryInterface.addColumn("Wallets", "subActionId", {
+    if (!tableDesc.publicContributionId) {
+      await queryInterface.addColumn("Wallets", "publicContributionId", {
         type: Sequelize.UUID,
         allowNull: true,
-        references: { model: "SubActions", key: "id" },
+        references: { model: "PublicContributions", key: "id" },
         onUpdate: "CASCADE",
-        onDelete: "CASCADE",
+        onDelete: "SET NULL",
       });
     }
   },
 
   down: async (queryInterface) => {
-    await queryInterface.removeColumn("Wallets", "subActionId");
+    await queryInterface.removeColumn("Wallets", "publicContributionId");
   },
 };

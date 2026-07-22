@@ -653,7 +653,7 @@ export interface TransactionAttributes {
 
 export type TransactionCreationAttributes = Omit<
   TransactionAttributes,
-  "id" | "createdAt" | "updatedAt"
+  "id" | "createdAt" | "updatedAt" | "fee"
 >;
 
 export interface CategoryAttributes {
@@ -710,6 +710,7 @@ export interface WalletAttributes {
   organizationId?: string;
   groupId?: string;
   subActionId?: string;
+  publicContributionId?: string;
   balance: number;
   currency: string;
   isActive: boolean;
@@ -795,6 +796,7 @@ export interface SubActionModelAttributes {
   isActive: boolean;
   sortOrder: number;
   coverImage: string | null;
+  images: string[];
   dedicatedQrCodeData: string | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -912,17 +914,80 @@ export type PaymentRequestCreationAttributes = Optional<
   "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "createdAt" | "updatedAt"
 >;
 
+export interface PublicContributionAttributes {
+  id: string;
+  createdBy: string;
+  walletId?: string | null;
+  title: string;
+  note?: string | null;
+  goalAmount?: number | null;
+  type: "fixed" | "flexible";
+  amountPerMember?: number | null;
+  minimumAmount?: number | null;
+  deadline?: Date | null;
+  disbursementPolicy: "hold" | "auto";
+  status: "active" | "completed" | "closed" | "expired";
+  visibilityMode: "all" | "creator_only";
+  currency: string;
+  collectedAmount: number;
+  contributorCount: number;
+  linkedGroupId?: string | null;
+  allowContributorJoin?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PublicContributionCreationAttributes = Optional<
+  PublicContributionAttributes,
+  | "id"
+  | "walletId"
+  | "note"
+  | "goalAmount"
+  | "amountPerMember"
+  | "minimumAmount"
+  | "deadline"
+  | "status"
+  | "visibilityMode"
+  | "disbursementPolicy"
+  | "currency"
+  | "collectedAmount"
+  | "contributorCount"
+  | "linkedGroupId"
+  | "allowContributorJoin"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface PublicContributionPaymentAttributes {
+  id: string;
+  contributionId: string;
+  payerId: string;
+  amount: number;
+  transactionId?: string | null;
+  currency: string;
+  isAnonymous: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PublicContributionPaymentCreationAttributes = Optional<
+  PublicContributionPaymentAttributes,
+  "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
+>;
+
 export interface GroupContributionAttributes {
   id: string;
   groupId: string;
   createdBy: string;
   title: string;
   note?: string | null;
-  goalAmount: number;
+  goalAmount?: number | null;
   type: "fixed" | "flexible";
   amountPerMember?: number | null;
   minimumAmount?: number | null;
   deadline?: Date | null;
+  disbursementPolicy: "hold" | "auto";
+  disbursementRecipientId?: string | null;
   status: "active" | "completed" | "closed" | "expired";
   visibilityMode: "all" | "admin_only";
   currency: string;
@@ -936,11 +1001,14 @@ export type GroupContributionCreationAttributes = Optional<
   GroupContributionAttributes,
   | "id"
   | "note"
+  | "goalAmount"
   | "amountPerMember"
   | "minimumAmount"
   | "deadline"
   | "status"
   | "visibilityMode"
+  | "disbursementPolicy"
+  | "disbursementRecipientId"
   | "currency"
   | "collectedAmount"
   | "contributorCount"
@@ -955,11 +1023,12 @@ export interface GroupContributionPaymentAttributes {
   amount: number;
   transactionId?: string | null;
   currency: string;
+  isAnonymous: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type GroupContributionPaymentCreationAttributes = Optional<
   GroupContributionPaymentAttributes,
-  "id" | "transactionId" | "currency" | "createdAt" | "updatedAt"
+  "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
 >;

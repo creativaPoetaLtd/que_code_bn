@@ -2,6 +2,8 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    const tableDesc = await queryInterface.describeTable("Actions");
+    if (tableDesc.metadata) return;
     await queryInterface.addColumn("Actions", "metadata", {
       type: Sequelize.JSONB,
       allowNull: false,

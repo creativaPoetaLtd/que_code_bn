@@ -11,6 +11,130 @@ import { Op } from "sequelize";
 import cloudinary from "../helpers/cloudinary";
 import QRCode from "qrcode";
 
+import { SUB_ACTION_MAX_GALLERY_IMAGES } from "../middleware/multer";
+import { normalizeMetadata, withNormalizedMetadata } from "../utils/metadata";
+
+// Upload a multer file (buffer or disk path) to Cloudinary and return its URL
+const uploadImageToCloudinary = async (
+  file: Express.Multer.File,
+  folder: string
+): Promise<string> => {
+  const options = {
+    folder,
+    transformation: [
+      { width: 1200, height: 630, crop: "fill", gravity: "auto" },
+      { quality: "auto", format: "auto" },
+    ],
+  };
+
+  let uploadResult: any;
+  if ((file as any).buffer && (file as any).buffer.length > 0) {
+    uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        options,
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      stream.end((file as any).buffer);
+    });
+  } else if ((file as any).path) {
+    uploadResult = await cloudinary.uploader.upload((file as any).path, options);
+  } else {
+    throw new Error("Empty file");
+  }
+
+  return uploadResult.secure_url;
+};
+
+// Multipart bodies deliver objects/arrays as JSON strings — parse them back
+const parseJsonField = <T>(value: any, fallback: T): T => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value !== "string") return value as T;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const isHttpUrl = (value: unknown): boolean =>
+  typeof value === "string" && /^https?:\/\//i.test(value.trim());
+
+// Keep only well-formed image URLs, deduped and capped
+const sanitizeImageUrls = (value: any): string[] => {
+  const list = parseJsonField<any>(value, []);
+  if (!Array.isArray(list)) return [];
+  return Array.from(
+    new Set(
+      list
+        .filter((url): url is string => isHttpUrl(url))
+        .map((url) => url.trim())
+    )
+  ).slice(0, SUB_ACTION_MAX_GALLERY_IMAGES);
+};
+
+const SOCIAL_LINK_HOSTS: Record<string, string> = {
+  instagram: "instagram.com",
+  x: "x.com",
+};
+
+// Accept "@handle", "handle" or a full profile URL; store a canonical profile URL
+const normalizeSocialLink = (
+  platform: "instagram" | "x",
+  value: unknown
+): string | null => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+
+  if (isHttpUrl(raw)) {
+    let host: string;
+    try {
+      host = new URL(raw).hostname.replace(/^www\./i, "").toLowerCase();
+    } catch {
+      return null;
+    }
+    const allowedHosts =
+      platform === "x"
+        ? ["x.com", "twitter.com"]
+        : ["instagram.com"];
+    return allowedHosts.includes(host) ? raw : null;
+  }
+
+  const handle = raw.replace(/^@/, "");
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) return null;
+  return `https://${SOCIAL_LINK_HOSTS[platform]}/${handle}`;
+};
+
+const normalizeSocialLinks = (value: any): Record<string, string> | null => {
+  const links = parseJsonField<any>(value, null);
+  if (!links || typeof links !== "object") return null;
+
+  const normalized: Record<string, string> = {};
+  const instagram = normalizeSocialLink("instagram", links.instagram);
+  const x = normalizeSocialLink("x", links.x);
+  if (instagram) normalized.instagram = instagram;
+  if (x) normalized.x = x;
+  return normalized;
+};
+
+// Sub-action metadata may arrive as a JSON string (multipart) and may carry social links
+const prepareSubActionMetadata = (value: any): Record<string, any> => {
+  const metadata = normalizeMetadata(parseJsonField<Record<string, any>>(value, {}));
+
+  if (metadata.socialLinks !== undefined) {
+    const socialLinks = normalizeSocialLinks(metadata.socialLinks);
+    if (socialLinks && Object.keys(socialLinks).length > 0) {
+      metadata.socialLinks = socialLinks;
+    } else {
+      delete metadata.socialLinks;
+    }
+  }
+
+  return metadata;
+};
+
 // Helper to generate slug from name
 const generateSlug = (name: string): string => {
   return name
@@ -267,7 +391,7 @@ const updateActionStepB = async (
 const createSubAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { actionId } = req.params;
-    const { name, description, price, stock, variants, metadata, sortOrder, coverImage } =
+    const { name, description, price, stock, variants, metadata, sortOrder, coverImage, images } =
       req.body;
 
     if (!name || price === undefined) {
@@ -293,48 +417,35 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
     let coverImageUrl: string | null = coverImage || null;
 
     // Check for file in req.file (when using .single()) or req.files (when using .fields())
-    const coverFile = (req as any).file || (req.files as { [fieldname: string]: Express.Multer.File[] })?.coverImage?.[0];
-    
+    const uploadedFiles = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const coverFile = (req as any).file || uploadedFiles?.coverImage?.[0];
+    const galleryFiles = uploadedFiles?.images ?? [];
+
     if (coverFile) {
       try {
-        // Upload cover image to Cloudinary
-        let uploadResult: any;
-        if ((coverFile as any).buffer && (coverFile as any).buffer.length > 0) {
-          // Upload from buffer
-          uploadResult = await new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              {
-                folder: 'subactions/cover-images',
-                transformation: [
-                  { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
-                  { quality: 'auto', format: 'auto' }
-                ]
-              },
-              (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-              }
-            );
-            stream.end((coverFile as any).buffer);
-          });
-        } else if ((coverFile as any).path) {
-          // Upload from file path
-          uploadResult = await cloudinary.uploader.upload((coverFile as any).path, {
-            folder: 'subactions/cover-images',
-            transformation: [
-              { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
-              { quality: 'auto', format: 'auto' }
-            ]
-          });
-        } else {
-          throw new Error('Empty file');
-        }
-
-        coverImageUrl = uploadResult.secure_url;
+        coverImageUrl = await uploadImageToCloudinary(coverFile, 'subactions/cover-images');
       } catch (uploadError: any) {
         console.error("Error uploading cover image to Cloudinary:", uploadError);
         res.status(500).json({
           message: "Failed to upload cover image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
+    }
+
+    // Gallery images: already-hosted URLs from the body plus any freshly uploaded files
+    let galleryImages = sanitizeImageUrls(images);
+    if (galleryFiles.length > 0) {
+      try {
+        const uploadedGallery = await Promise.all(
+          galleryFiles.map((file) => uploadImageToCloudinary(file, 'subactions/gallery'))
+        );
+        galleryImages = sanitizeImageUrls([...galleryImages, ...uploadedGallery]);
+      } catch (uploadError: any) {
+        console.error("Error uploading gallery images to Cloudinary:", uploadError);
+        res.status(500).json({
+          message: "Failed to upload gallery images to Cloudinary",
           error: uploadError.message,
         });
         return;
@@ -348,11 +459,12 @@ const createSubAction = async (req: Request, res: Response): Promise<void> => {
       price: parseFloat(price),
       stock: stock !== undefined && stock !== null ? parseInt(stock) : null,
       stockReserved: 0,
-      variants: variants || {},
-      metadata: metadata || {},
+      variants: parseJsonField<Record<string, any>>(variants, {}),
+      metadata: prepareSubActionMetadata(metadata),
       isActive: true,
       sortOrder: sortOrder !== undefined && sortOrder !== null ? parseInt(sortOrder) : 0,
       coverImage: coverImageUrl,
+      images: galleryImages,
       dedicatedQrCodeData: null,
     };
 
@@ -1020,7 +1132,9 @@ const getSubActions = async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({
       message: "Sub-actions retrieved successfully",
-      data: subActions,
+      data: Array.isArray(subActions)
+        ? subActions.map(withNormalizedMetadata)
+        : subActions,
     });
   } catch (error: any) {
     console.error("Error in getSubActions:", error);
@@ -1064,7 +1178,7 @@ const getSubActionById = async (req: Request, res: Response): Promise<void> => {
     );
 
     // Convert Sequelize instance to plain object
-    const subActionData = (subAction as any).toJSON ? (subAction as any).toJSON() : subAction;
+    const subActionData = withNormalizedMetadata(subAction);
 
     res.status(200).json({
       message: "Sub-action retrieved successfully",
@@ -1086,27 +1200,91 @@ const getSubActionById = async (req: Request, res: Response): Promise<void> => {
 const updateSubAction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { subActionId } = req.params;
-    const { metadata, ...otherFields } = req.body;
+    const { metadata, images, variants, ...otherFields } = req.body;
+
+    const existing = await read_function<SubActionModelAttributes>(
+      "SubAction",
+      "findOne",
+      { where: { id: subActionId } }
+    );
+    if (!existing) {
+      res.status(404).json({ message: "Sub-action not found" });
+      return;
+    }
 
     const updateData: any = { ...otherFields };
 
     if (metadata !== undefined) {
-      const existing = await read_function<SubActionModelAttributes>(
-        "SubAction",
-        "findOne",
-        { where: { id: subActionId } }
-      );
-      if (!existing) {
-        res.status(404).json({ message: "Sub-action not found" });
-        return;
-      }
-      updateData.metadata = { ...((existing as any).metadata || {}), ...metadata };
+      // Older rows may hold a stringified metadata blob, so normalize before merging
+      const existingMetadata = normalizeMetadata((existing as any).metadata);
+      updateData.metadata = {
+        ...existingMetadata,
+        ...prepareSubActionMetadata(metadata),
+      };
     }
 
-    const updatedSubAction = await insert_function<SubActionModelAttributes>(
+    if (variants !== undefined) {
+      updateData.variants = parseJsonField<Record<string, any>>(variants, {});
+    }
+
+    const uploadedFiles = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const coverFile = (req as any).file || uploadedFiles?.coverImage?.[0];
+    const galleryFiles = uploadedFiles?.images ?? [];
+
+    if (coverFile) {
+      try {
+        updateData.coverImage = await uploadImageToCloudinary(
+          coverFile,
+          "subactions/cover-images"
+        );
+      } catch (uploadError: any) {
+        console.error("Error uploading cover image to Cloudinary:", uploadError);
+        res.status(500).json({
+          message: "Failed to upload cover image to Cloudinary",
+          error: uploadError.message,
+        });
+        return;
+      }
+    }
+
+    // `images` in the body is the full list of existing URLs to keep; uploads are appended
+    if (images !== undefined || galleryFiles.length > 0) {
+      let galleryImages =
+        images !== undefined
+          ? sanitizeImageUrls(images)
+          : sanitizeImageUrls((existing as any).images);
+
+      if (galleryFiles.length > 0) {
+        try {
+          const uploadedGallery = await Promise.all(
+            galleryFiles.map((file) =>
+              uploadImageToCloudinary(file, "subactions/gallery")
+            )
+          );
+          galleryImages = sanitizeImageUrls([...galleryImages, ...uploadedGallery]);
+        } catch (uploadError: any) {
+          console.error("Error uploading gallery images to Cloudinary:", uploadError);
+          res.status(500).json({
+            message: "Failed to upload gallery images to Cloudinary",
+            error: uploadError.message,
+          });
+          return;
+        }
+      }
+
+      updateData.images = galleryImages;
+    }
+
+    await insert_function<SubActionModelAttributes>(
       "SubAction",
       "update",
       updateData,
+      { where: { id: subActionId } }
+    );
+
+    const updatedSubAction = await read_function<SubActionModelAttributes>(
+      "SubAction",
+      "findOne",
       { where: { id: subActionId } }
     );
 

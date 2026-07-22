@@ -8,6 +8,7 @@ class Wallet extends Model<WalletAttributes, WalletCreationAttributes> {
   public organizationId?: string;
   public groupId?: string;
   public subActionId?: string;
+  public publicContributionId?: string;
   public balance!: number;
   public currency!: string;
   public isActive!: boolean;
@@ -21,6 +22,7 @@ const Wallet_model = (sequelize: Sequelize) => {
       organizationId: DataTypes.UUID,
       groupId: DataTypes.UUID,
       subActionId: DataTypes.UUID,
+      publicContributionId: DataTypes.UUID,
       balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
       isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
