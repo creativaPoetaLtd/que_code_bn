@@ -48,6 +48,30 @@ const removeIndexIfExists = async (queryInterface, tableName, indexName) => {
   }
 };
 
+const removeDuplicateOneTimePreKeys = async (queryInterface) => {
+  if (!(await tableExists(queryInterface, "DeviceOneTimePreKeys"))) {
+    return;
+  }
+
+  await queryInterface.sequelize.query(`
+    DELETE FROM "DeviceOneTimePreKeys" duplicate_keys
+    USING (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (
+          PARTITION BY "userDeviceId", "preKeyId"
+          ORDER BY
+            CASE WHEN "usedAt" IS NOT NULL THEN 0 ELSE 1 END,
+            "createdAt" ASC NULLS LAST,
+            id ASC
+        ) AS duplicate_rank
+      FROM "DeviceOneTimePreKeys"
+    ) ranked_keys
+    WHERE duplicate_keys.id = ranked_keys.id
+      AND ranked_keys.duplicate_rank > 1;
+  `);
+};
+
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     await addColumnIfMissing(queryInterface, "Chats", "securityMode", {
@@ -240,6 +264,8 @@ module.exports = {
     await addIndexIfMissing(queryInterface, "DeviceOneTimePreKeys", ["userDeviceId", "usedAt"], {
       name: "idx_device_one_time_pre_keys_device_used_at",
     });
+    await removeDuplicateOneTimePreKeys(queryInterface);
+
     await addIndexIfMissing(queryInterface, "DeviceOneTimePreKeys", ["userDeviceId", "preKeyId"], {
       name: "idx_device_one_time_pre_keys_device_prekey",
       unique: true,
