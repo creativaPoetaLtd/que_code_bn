@@ -19,54 +19,74 @@ export const getUserChats = async (
     const userId = req.user.id;
     const models = req.app.get("models") as ReturnType<typeof Models>;
 
-    const chats = await models.ChatParticipant.findAll({
+    const chatIncludes = (chatAttributes: string[]) => [
+      {
+        model: models.Chat,
+        as: "chat",
+        attributes: chatAttributes,
+        include: [
+          {
+            model: models.ChatParticipant,
+            as: "participants",
+            include: [
+              {
+                model: models.User,
+                as: "user",
+                attributes: ["id", "firstName", "lastName", "email", "isOnline", "lastSeen"],
+                include: [
+                  {
+                    model: models.Profile,
+                    as: "profile",
+                    attributes: ["profileImage"]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            model: models.ChatMessage,
+            as: "messages",
+            limit: 1,
+            order: [["createdAt", "DESC"]],
+            include: [
+              {
+                model: models.User,
+                as: "sender",
+                attributes: ["firstName", "lastName"]
+              }
+            ]
+          },
+          {
+            model: models.Group,
+            as: "group",
+            attributes: ["id", "name", "description", "profilePictureUrl", "memberCount"]
+          }
+        ]
+      }
+    ];
+
+    const loadChats = (chatAttributes: string[]) => models.ChatParticipant.findAll({
       where: { userId },
-      include: [
-        {
-          model: models.Chat,
-          as: "chat",
-          attributes: ['id', 'isGroup', 'groupId', 'type', 'securityMode', 'protocolVersion', 'createdAt', 'updatedAt'], // Explicitly include groupId + chat type
-          include: [
-            {
-              model: models.ChatParticipant,
-              as: "participants",
-              include: [
-                {
-                  model: models.User,
-                  as: "user",
-                  attributes: ["id", "firstName", "lastName", "email", "isOnline", "lastSeen"],
-                  include: [
-                    {
-                      model: models.Profile,
-                      as: "profile",
-                      attributes: ["profileImage"]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              model: models.ChatMessage,
-              as: "messages",
-              limit: 1,
-              order: [["createdAt", "DESC"]],
-              include: [
-                {
-                  model: models.User,
-                  as: "sender",
-                  attributes: ["firstName", "lastName"]
-                }
-              ]
-            },
-            {
-              model: models.Group,
-              as: "group",
-              attributes: ["id", "name", "description", "profilePictureUrl", "memberCount"]
-            }
-          ]
-        }
-      ]
+      include: chatIncludes(chatAttributes) as any
     });
+
+    let chats;
+    try {
+      chats = await loadChats(['id', 'isGroup', 'groupId', 'type', 'securityMode', 'protocolVersion', 'createdAt', 'updatedAt']);
+    } catch (error: any) {
+      const missingSecureChatColumns =
+        error?.parent?.code === "42703" &&
+        ["chat.securityMode", "chat.protocolVersion"].some((column) =>
+          String(error?.parent?.message || error?.message || "").includes(column)
+        );
+
+      if (!missingSecureChatColumns) {
+        throw error;
+      }
+
+      console.warn("Chats table is missing E2EE metadata columns; loading chats in legacy compatibility mode.");
+      chats = await loadChats(['id', 'isGroup', 'groupId', 'type', 'createdAt', 'updatedAt']);
+    }
 
     // Deduplicate by chatId — a user may have multiple ChatParticipant rows for
     // the same chat (e.g. they joined both as a regular user and as admin in a
@@ -179,8 +199,8 @@ export const getUserChats = async (
         name: chatName,
         isGroup: chat.isGroup,
         type: chat.type,
-        securityMode: chat.securityMode,
-        protocolVersion: chat.protocolVersion,
+        securityMode: chat.securityMode || "legacy",
+        protocolVersion: chat.protocolVersion || null,
         groupId: chat.groupId, // Include groupId for group chats
         avatar: chatAvatar,
         lastMessage: lastMessage ? {
