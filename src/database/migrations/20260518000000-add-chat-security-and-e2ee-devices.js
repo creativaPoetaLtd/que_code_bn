@@ -1,14 +1,62 @@
 "use strict";
 
+const tableExists = async (queryInterface, tableName) => {
+  const tables = await queryInterface.showAllTables();
+  return tables.some((table) => {
+    const name = typeof table === "string" ? table : table.tableName || table.name;
+    return name === tableName;
+  });
+};
+
+const getTableColumns = async (queryInterface, tableName) => {
+  if (!(await tableExists(queryInterface, tableName))) {
+    return {};
+  }
+  return queryInterface.describeTable(tableName);
+};
+
+const addColumnIfMissing = async (queryInterface, tableName, columnName, definition) => {
+  const columns = await getTableColumns(queryInterface, tableName);
+  if (!columns[columnName]) {
+    await queryInterface.addColumn(tableName, columnName, definition);
+  }
+};
+
+const createTableIfMissing = async (queryInterface, tableName, definition) => {
+  if (!(await tableExists(queryInterface, tableName))) {
+    await queryInterface.createTable(tableName, definition);
+  }
+};
+
+const indexExists = async (queryInterface, tableName, indexName) => {
+  if (!(await tableExists(queryInterface, tableName))) {
+    return false;
+  }
+  const indexes = await queryInterface.showIndex(tableName);
+  return indexes.some((index) => index.name === indexName);
+};
+
+const addIndexIfMissing = async (queryInterface, tableName, fields, options) => {
+  if (!(await indexExists(queryInterface, tableName, options.name))) {
+    await queryInterface.addIndex(tableName, fields, options);
+  }
+};
+
+const removeIndexIfExists = async (queryInterface, tableName, indexName) => {
+  if (await indexExists(queryInterface, tableName, indexName)) {
+    await queryInterface.removeIndex(tableName, indexName);
+  }
+};
+
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.addColumn("Chats", "securityMode", {
+    await addColumnIfMissing(queryInterface, "Chats", "securityMode", {
       type: Sequelize.STRING(32),
       allowNull: false,
       defaultValue: "legacy",
     });
 
-    await queryInterface.addColumn("Chats", "protocolVersion", {
+    await addColumnIfMissing(queryInterface, "Chats", "protocolVersion", {
       type: Sequelize.STRING(32),
       allowNull: true,
       defaultValue: null,
@@ -18,7 +66,7 @@ module.exports = {
       `UPDATE "Chats" SET "securityMode" = 'support_plain' WHERE "type" = 'support';`,
     );
 
-    await queryInterface.createTable("UserDevices", {
+    await createTableIfMissing(queryInterface, "UserDevices", {
       id: {
         type: Sequelize.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -77,7 +125,7 @@ module.exports = {
       },
     });
 
-    await queryInterface.createTable("DeviceKeyBundles", {
+    await createTableIfMissing(queryInterface, "DeviceKeyBundles", {
       id: {
         type: Sequelize.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -134,7 +182,7 @@ module.exports = {
       },
     });
 
-    await queryInterface.createTable("DeviceOneTimePreKeys", {
+    await createTableIfMissing(queryInterface, "DeviceOneTimePreKeys", {
       id: {
         type: Sequelize.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -175,42 +223,53 @@ module.exports = {
       },
     });
 
-    await queryInterface.addIndex("Chats", ["securityMode"], {
+    await addIndexIfMissing(queryInterface, "Chats", ["securityMode"], {
       name: "idx_chats_security_mode",
     });
-    await queryInterface.addIndex("UserDevices", ["userId", "isActive"], {
+    await addIndexIfMissing(queryInterface, "UserDevices", ["userId", "isActive"], {
       name: "idx_user_devices_user_active",
     });
-    await queryInterface.addIndex("UserDevices", ["deviceId"], {
+    await addIndexIfMissing(queryInterface, "UserDevices", ["deviceId"], {
       name: "idx_user_devices_device_id",
       unique: true,
     });
-    await queryInterface.addIndex("DeviceKeyBundles", ["userDeviceId"], {
+    await addIndexIfMissing(queryInterface, "DeviceKeyBundles", ["userDeviceId"], {
       name: "idx_device_key_bundles_user_device_id",
       unique: true,
     });
-    await queryInterface.addIndex("DeviceOneTimePreKeys", ["userDeviceId", "usedAt"], {
+    await addIndexIfMissing(queryInterface, "DeviceOneTimePreKeys", ["userDeviceId", "usedAt"], {
       name: "idx_device_one_time_pre_keys_device_used_at",
     });
-    await queryInterface.addIndex("DeviceOneTimePreKeys", ["userDeviceId", "preKeyId"], {
+    await addIndexIfMissing(queryInterface, "DeviceOneTimePreKeys", ["userDeviceId", "preKeyId"], {
       name: "idx_device_one_time_pre_keys_device_prekey",
       unique: true,
     });
   },
 
   down: async (queryInterface) => {
-    await queryInterface.removeIndex("DeviceOneTimePreKeys", "idx_device_one_time_pre_keys_device_prekey");
-    await queryInterface.removeIndex("DeviceOneTimePreKeys", "idx_device_one_time_pre_keys_device_used_at");
-    await queryInterface.removeIndex("DeviceKeyBundles", "idx_device_key_bundles_user_device_id");
-    await queryInterface.removeIndex("UserDevices", "idx_user_devices_device_id");
-    await queryInterface.removeIndex("UserDevices", "idx_user_devices_user_active");
-    await queryInterface.removeIndex("Chats", "idx_chats_security_mode");
+    await removeIndexIfExists(queryInterface, "DeviceOneTimePreKeys", "idx_device_one_time_pre_keys_device_prekey");
+    await removeIndexIfExists(queryInterface, "DeviceOneTimePreKeys", "idx_device_one_time_pre_keys_device_used_at");
+    await removeIndexIfExists(queryInterface, "DeviceKeyBundles", "idx_device_key_bundles_user_device_id");
+    await removeIndexIfExists(queryInterface, "UserDevices", "idx_user_devices_device_id");
+    await removeIndexIfExists(queryInterface, "UserDevices", "idx_user_devices_user_active");
+    await removeIndexIfExists(queryInterface, "Chats", "idx_chats_security_mode");
 
-    await queryInterface.dropTable("DeviceOneTimePreKeys");
-    await queryInterface.dropTable("DeviceKeyBundles");
-    await queryInterface.dropTable("UserDevices");
+    if (await tableExists(queryInterface, "DeviceOneTimePreKeys")) {
+      await queryInterface.dropTable("DeviceOneTimePreKeys");
+    }
+    if (await tableExists(queryInterface, "DeviceKeyBundles")) {
+      await queryInterface.dropTable("DeviceKeyBundles");
+    }
+    if (await tableExists(queryInterface, "UserDevices")) {
+      await queryInterface.dropTable("UserDevices");
+    }
 
-    await queryInterface.removeColumn("Chats", "protocolVersion");
-    await queryInterface.removeColumn("Chats", "securityMode");
+    const chatColumns = await getTableColumns(queryInterface, "Chats");
+    if (chatColumns.protocolVersion) {
+      await queryInterface.removeColumn("Chats", "protocolVersion");
+    }
+    if (chatColumns.securityMode) {
+      await queryInterface.removeColumn("Chats", "securityMode");
+    }
   },
 };
