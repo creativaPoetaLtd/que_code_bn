@@ -105,7 +105,7 @@ jobs:
           HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
         run: |
           echo "Checking application health..."
-          web_url=$(heroku apps:info "$HEROKU_APP_NAME" --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => { const app = JSON.parse(data); process.stdout.write(app.web_url || ''); });")
+          web_url=$(heroku apps:info "$HEROKU_APP_NAME" | awk -F'Web URL:[[:space:]]*' '/Web URL:/ { print $2; exit }' | tr -d '[:space:]')
           app_url="${web_url%/}/health"
           echo "Health check URL: $app_url"
 
