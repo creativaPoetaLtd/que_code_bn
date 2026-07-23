@@ -100,9 +100,14 @@ jobs:
           git push heroku HEAD:main --force
 
       - name: Verify deployment health
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
         run: |
           echo "Checking application health..."
-          app_url="https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com/health"
+          web_url=$(heroku apps:info "$HEROKU_APP_NAME" --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => { const app = JSON.parse(data); process.stdout.write(app.web_url || ''); });")
+          app_url="${web_url%/}/health"
+          echo "Health check URL: $app_url"
 
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             response=$(curl -s -o /dev/null -w "%{http_code}" "$app_url")
@@ -130,8 +135,8 @@ jobs:
         run: |
           if [ "${{ needs.deploy.result }}" == "success" ]; then
             echo "Deployment to Heroku completed successfully!"
-            echo "Application URL: https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com"
-            echo "Health Check: https://${{ secrets.HEROKU_APP_NAME }}.herokuapp.com/health"
+            echo "Application URL: see Heroku app web_url"
+            echo "Health Check: see Heroku app web_url + /health"
           else
             echo "Deployment to Heroku failed!"
             echo "Build Status: ${{ needs.test-and-build.result }}"
