@@ -501,8 +501,30 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
 
             if (existingMembership.status === GroupMemberStatus.PENDING) {
                 message = "You already have a pending request to join this group";
+                res.status(200).json({
+                    message,
+                    data: {
+                        requestId: existingMembership.id,
+                        groupId: group.id,
+                        groupName: group.name,
+                        status: existingMembership.status,
+                        requiresApproval: true
+                    }
+                });
+                return;
             } else if (existingMembership.status === GroupMemberStatus.ACTIVE) {
                 message = "You are already a member of this group";
+                res.status(200).json({
+                    message,
+                    data: {
+                        requestId: existingMembership.id,
+                        groupId: group.id,
+                        groupName: group.name,
+                        status: existingMembership.status,
+                        requiresApproval: false
+                    }
+                });
+                return;
             } else if (existingMembership.status === GroupMemberStatus.REMOVED) {
                 message = "Your previous request to join was declined";
             }
@@ -570,19 +592,23 @@ const joinGroupByLink = async (req: AuthenticatedRequest, res: Response, next: N
                 }
             });
 
-            // Email notification
-            await sendEmail({
-                to: owner.email,
-                subject: `New Join Request for ${group.name}`,
-                type: "group_join_request",
-                data: {
-                    userName: `${user.firstName} ${user.lastName}`,
-                    userEmail: user.email,
-                    groupName: group.name,
-                    approveUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=approve`,
-                    declineUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=decline`
-                }
-            });
+            // Email notification. Do not fail the join request if SMTP is unavailable.
+            try {
+                await sendEmail({
+                    to: owner.email,
+                    subject: `New Join Request for ${group.name}`,
+                    type: "group_join_request",
+                    data: {
+                        userName: `${user.firstName} ${user.lastName}`,
+                        userEmail: user.email,
+                        groupName: group.name,
+                        approveUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=approve`,
+                        declineUrl: `${process.env.FRONTEND_URL}/groups/${group.id}/requests/${membership.id}/respond?action=decline`
+                    }
+                });
+            } catch (emailError) {
+                console.error("Failed to send group join request email:", emailError);
+            }
         }
 
         res.status(200).json({
@@ -1429,19 +1455,23 @@ const requestToJoinGroup = async (req: AuthenticatedRequest, res: Response, next
         ]);
 
         if (user && owner) {
-            // Send email notification to group owner
-            await sendEmail({
-                to: owner.email,
-                subject: `New Join Request for ${group.name}`,
-                type: "group_join_request",
-                data: {
-                    userName: `${user.firstName} ${user.lastName}`,
-                    userEmail: user.email,
-                    groupName: group.name,
-                    approveUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=approve`,
-                    declineUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=decline`
-                }
-            });
+            // Send email notification to group owner. Do not fail the join request if SMTP is unavailable.
+            try {
+                await sendEmail({
+                    to: owner.email,
+                    subject: `New Join Request for ${group.name}`,
+                    type: "group_join_request",
+                    data: {
+                        userName: `${user.firstName} ${user.lastName}`,
+                        userEmail: user.email,
+                        groupName: group.name,
+                        approveUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=approve`,
+                        declineUrl: `${process.env.FRONTEND_URL}/groups/${groupId}/requests/${membership.id}/respond?action=decline`
+                    }
+                });
+            } catch (emailError) {
+                console.error("Failed to send group join request email:", emailError);
+            }
 
             // Send in-app notification to group owner
             await createAndSendNotification(req.app, {
@@ -1660,7 +1690,7 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
                             ? `You can now access the group and participate in conversations`
                             : `Feel free to request to join again if you wish`,
                         groupLink: action === 'approve'
-                            ? `${process.env.FRONTEND_URL}/groups/${groupId}`
+                            ? `${process.env.FRONTEND_URL}/chat`
                             : undefined
                     }
                 });
