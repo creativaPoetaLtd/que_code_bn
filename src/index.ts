@@ -33,11 +33,20 @@ const startServer = async () => {
     const server = http.createServer(app);
 
     // 6. Set up Socket.IO with enhanced chat functionality
+    const socketAllowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+      process.env.FRONTEND_URL,
+      process.env.ADMIN_FRONTEND_URL,
+      "https://qiew-code-dev2.netlify.app",
+      "https://qc-dev2.netlify.app",
+    ].filter(Boolean) as string[];
+
     const io = new SocketIOServer(server, {
       cors: {
-        origin: process.env.NODE_ENV === "production" 
-          ? ["https://your-frontend-domain.com"] 
-          : ["http://localhost:3000", "http://localhost:3001"],
+        origin: socketAllowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
       },

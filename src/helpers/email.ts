@@ -577,8 +577,9 @@ class EmailService {
     try {
       // Add a timeout promise
       const emailPromise = this.transporter.sendMail({
-        from: process.env.EMAIL_USER,
+        from: process.env.EMAIL_FROM || `"QiewCode" <${process.env.EMAIL_USER}>`,
         to,
+        replyTo: process.env.EMAIL_REPLY_TO || process.env.EMAIL_SUPPORT || process.env.EMAIL_USER,
         subject,
         html: htmlTemplate,
       });
