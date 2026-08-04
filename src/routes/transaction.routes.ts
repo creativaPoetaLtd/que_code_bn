@@ -2,6 +2,11 @@ import express, { RequestHandler } from "express";
 import transactionController from "../controllers/transactionController";
 import { downloadReceipt } from "../controllers/receiptController";
 import { authenticate } from "../middleware/auth.unified.middleware";
+import {
+  createBatchTransfer,
+  getUserBatchTransfers,
+  getBatchTransferById,
+} from "../controllers/batchTransferController";
 
 const router = express.Router();
 
@@ -18,6 +23,24 @@ router.get(
 router.post(
   "/transfer",
   transactionController.transferMoney as express.RequestHandler,
+);
+
+// Send money to multiple recipients in one request
+router.post(
+  "/batch-transfer",
+  createBatchTransfer as express.RequestHandler,
+);
+
+// List the authenticated user's batch transfers
+router.get(
+  "/batches",
+  getUserBatchTransfers as express.RequestHandler,
+);
+
+// Get a single batch transfer with per-recipient results
+router.get(
+  "/batch/:id",
+  getBatchTransferById as express.RequestHandler,
 );
 
 // Download transaction receipt

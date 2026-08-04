@@ -6,6 +6,7 @@ import { Op } from "sequelize";
 import { sequelizeConnection } from "../database/config/db.config";
 import ChatService from "../services/chatService";
 import { PDFGenerator } from "../utils/pdfGenerator";
+import { getAvailableBalance } from "../utils/walletBalance";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -327,7 +328,7 @@ export const sendMoneyInChat = async (
 
         console.log('Transfer details:', { transferAmount, fee, totalAmount, amount, isGroupFundraising });
 
-        if (senderWallet.balance < totalAmount) {
+        if (getAvailableBalance(senderWallet) < totalAmount) {
             await dbTransaction.rollback();
             res.status(400).json({
                 success: false,

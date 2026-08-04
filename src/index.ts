@@ -8,6 +8,7 @@ import * as http from "http";
 import { Server as SocketIOServer } from "socket.io";
 // Remove PORT import since we define it locally as SERVER_PORT
 import Models from "./database/models";
+import { initScheduledTransferJobs } from "./jobs/scheduledTransferJobs";
 
 const startServer = async () => {
   try {
@@ -58,6 +59,9 @@ const startServer = async () => {
     const SocketManager = await import("./socket/socketManager");
     const socketManager = new SocketManager.default(io, app);
     app.set("socketManager", socketManager);
+
+    // 7. Start scheduled-transfer background jobs (execution poller + rolling hold poller)
+    initScheduledTransferJobs(app);
 
     const SERVER_PORT = process.env.PORT || 5500;
     server.listen(SERVER_PORT, () => {

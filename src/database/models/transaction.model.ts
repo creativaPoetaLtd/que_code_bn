@@ -22,6 +22,8 @@ class Transaction extends Model<
     | "vote"
     | "topup"
     | "withdrawal";
+  public scheduledTransferId?: string | null;
+  public batchId?: string | null;
 }
 
 const Transaction_model = (sequelize: Sequelize) => {
@@ -91,6 +93,22 @@ const Transaction_model = (sequelize: Sequelize) => {
         allowNull: true,
         references: {
           model: "SubActions",
+          key: "id",
+        },
+      },
+      scheduledTransferId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "ScheduledTransfers",
+          key: "id",
+        },
+      },
+      batchId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "TransferBatches",
           key: "id",
         },
       },

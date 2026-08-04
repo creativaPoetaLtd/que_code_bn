@@ -179,6 +179,7 @@ export interface WalletModelAttributes {
   id: string;
   userId: string;
   balance: number;
+  heldBalance: number;
   currency: string;
   isActive: boolean;
   createdAt?: Date;
@@ -647,6 +648,8 @@ export interface TransactionAttributes {
   actionPurchaseId?: string;
   actionId?: string;
   subActionId?: string;
+  scheduledTransferId?: string | null;
+  batchId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -654,6 +657,171 @@ export interface TransactionAttributes {
 export type TransactionCreationAttributes = Omit<
   TransactionAttributes,
   "id" | "createdAt" | "updatedAt" | "fee"
+>;
+
+export interface ScheduledTransferRecurrenceRule {
+  frequency: "daily" | "weekly" | "monthly" | "yearly";
+  interval: number;
+  endDate?: string;
+  maxOccurrences?: number;
+}
+
+export interface ScheduledTransferAttributes {
+  id: string;
+  createdByUserId: string;
+  senderUserId?: string | null;
+  senderOrganizationId?: string | null;
+  senderSubActionId?: string | null;
+  receiverUserId?: string | null;
+  receiverOrganizationId?: string | null;
+  receiverWalletId?: string | null;
+  amount: number;
+  fee: number;
+  currency: string;
+  type: "transfer" | "payment" | "donation" | "vote" | "topup" | "withdrawal";
+  description?: string | null;
+  categoryId?: string | null;
+  applyConstraints: boolean;
+  scheduledFor: Date;
+  timezone: string;
+  recurrenceRule: ScheduledTransferRecurrenceRule | null;
+  occurrenceCount: number;
+  status:
+    | "scheduled"
+    | "held"
+    | "executing"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "paused";
+  heldAmount?: number | null;
+  heldAt?: Date | null;
+  idempotencyKey: string;
+  lastExecutedTransactionId?: string | null;
+  consecutiveFailureCount: number;
+  lastFailureReason?: string | null;
+  pinVerifiedAt?: Date | null;
+  scheduledBatchId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type ScheduledTransferCreationAttributes = Optional<
+  ScheduledTransferAttributes,
+  | "id"
+  | "fee"
+  | "currency"
+  | "type"
+  | "description"
+  | "categoryId"
+  | "applyConstraints"
+  | "occurrenceCount"
+  | "status"
+  | "heldAmount"
+  | "heldAt"
+  | "lastExecutedTransactionId"
+  | "consecutiveFailureCount"
+  | "lastFailureReason"
+  | "pinVerifiedAt"
+  | "scheduledBatchId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface ScheduledTransferBatchFailureEntry {
+  receiverUserId?: string | null;
+  receiverOrganizationId?: string | null;
+  receiverWalletId?: string | null;
+  amount: number;
+  reason: string;
+}
+
+export interface ScheduledTransferBatchAttributes {
+  id: string;
+  createdByUserId: string;
+  senderUserId?: string | null;
+  senderOrganizationId?: string | null;
+  senderSubActionId?: string | null;
+  currency: string;
+  type: "transfer" | "payment" | "donation" | "vote" | "topup" | "withdrawal";
+  description?: string | null;
+  categoryId?: string | null;
+  applyConstraints: boolean;
+  recipientCount: number;
+  totalRequestedAmount: number;
+  successCount: number;
+  failureCount: number;
+  status: "completed" | "partial" | "failed";
+  failures?: ScheduledTransferBatchFailureEntry[] | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type ScheduledTransferBatchCreationAttributes = Optional<
+  ScheduledTransferBatchAttributes,
+  | "id"
+  | "currency"
+  | "type"
+  | "description"
+  | "categoryId"
+  | "applyConstraints"
+  | "successCount"
+  | "failureCount"
+  | "status"
+  | "failures"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface TransferBatchFailureEntry {
+  receiverUserId?: string | null;
+  receiverOrganizationId?: string | null;
+  receiverWalletId?: string | null;
+  amount: number;
+  reason: string;
+}
+
+export interface TransferBatchAttributes {
+  id: string;
+  createdByUserId: string;
+  senderUserId?: string | null;
+  senderOrganizationId?: string | null;
+  senderSubActionId?: string | null;
+  currency: string;
+  type: "transfer" | "payment" | "donation" | "vote" | "topup" | "withdrawal";
+  description?: string | null;
+  categoryId?: string | null;
+  applyConstraints: boolean;
+  idempotencyKey?: string | null;
+  recipientCount: number;
+  totalRequestedAmount: number;
+  totalSentAmount: number;
+  totalFailedAmount: number;
+  successCount: number;
+  failureCount: number;
+  status: "completed" | "partial" | "failed";
+  failures?: TransferBatchFailureEntry[] | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type TransferBatchCreationAttributes = Optional<
+  TransferBatchAttributes,
+  | "id"
+  | "currency"
+  | "type"
+  | "description"
+  | "categoryId"
+  | "applyConstraints"
+  | "idempotencyKey"
+  | "totalSentAmount"
+  | "totalFailedAmount"
+  | "successCount"
+  | "failureCount"
+  | "status"
+  | "failures"
+  | "createdAt"
+  | "updatedAt"
 >;
 
 export interface CategoryAttributes {
@@ -712,6 +880,7 @@ export interface WalletAttributes {
   subActionId?: string;
   publicContributionId?: string;
   balance: number;
+  heldBalance: number;
   currency: string;
   isActive: boolean;
   createdAt?: Date;
@@ -719,9 +888,10 @@ export interface WalletAttributes {
 }
 export type WalletCreationAttributes = Omit<
   WalletAttributes,
-  "id" | "currency" | "isActive" | "createdAt" | "updatedAt"
+  "id" | "currency" | "isActive" | "createdAt" | "updatedAt" | "heldBalance"
 > & {
   balance?: number;
+  heldBalance?: number;
 };
 
 export interface WalletRestrictionAttributes {

@@ -34,6 +34,9 @@ import actionPurchase_model from "./actionPurchase.model";
 import qrObject_model from "./qrObject.model";
 import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
+import scheduledTransfer_model from "./scheduledTransfer.model";
+import transferBatch_model from "./transferBatch.model";
+import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
 import groupContribution_model from "./groupContribution.model";
@@ -91,6 +94,15 @@ const Models = (sequelize: Sequelize) => {
 
   // Payment Request model
   const PaymentRequest = paymentRequest_model(sequelize);
+
+  // Scheduled Transfer model
+  const ScheduledTransfer = scheduledTransfer_model(sequelize);
+
+  // Transfer Batch model
+  const TransferBatch = transferBatch_model(sequelize);
+
+  // Scheduled Transfer Batch model
+  const ScheduledTransferBatch = scheduledTransferBatch_model(sequelize);
 
   // Group Contribution models
   const GroupContribution = groupContribution_model(sequelize);
@@ -298,6 +310,39 @@ const Models = (sequelize: Sequelize) => {
 
   Transaction.hasOne(PaymentRequest, { foreignKey: "transactionId", as: "paymentRequest" });
   PaymentRequest.belongsTo(Transaction, { foreignKey: "transactionId", as: "transaction" });
+
+  // Scheduled Transfers
+  User.hasMany(ScheduledTransfer, { foreignKey: "createdByUserId", as: "createdScheduledTransfers" });
+  ScheduledTransfer.belongsTo(User, { foreignKey: "createdByUserId", as: "createdBy" });
+
+  User.hasMany(ScheduledTransfer, { foreignKey: "senderUserId", as: "sentScheduledTransfers" });
+  ScheduledTransfer.belongsTo(User, { foreignKey: "senderUserId", as: "senderUser" });
+
+  User.hasMany(ScheduledTransfer, { foreignKey: "receiverUserId", as: "receivedScheduledTransfers" });
+  ScheduledTransfer.belongsTo(User, { foreignKey: "receiverUserId", as: "receiverUser" });
+
+  Organization.hasMany(ScheduledTransfer, { foreignKey: "senderOrganizationId", as: "sentScheduledTransfers" });
+  ScheduledTransfer.belongsTo(Organization, { foreignKey: "senderOrganizationId", as: "senderOrganization" });
+
+  Organization.hasMany(ScheduledTransfer, { foreignKey: "receiverOrganizationId", as: "receivedScheduledTransfers" });
+  ScheduledTransfer.belongsTo(Organization, { foreignKey: "receiverOrganizationId", as: "receiverOrganization" });
+
+  ScheduledTransfer.hasMany(Transaction, { foreignKey: "scheduledTransferId", as: "executedTransactions" });
+  Transaction.belongsTo(ScheduledTransfer, { foreignKey: "scheduledTransferId", as: "scheduledTransfer" });
+
+  // Transfer Batches
+  User.hasMany(TransferBatch, { foreignKey: "createdByUserId", as: "createdTransferBatches" });
+  TransferBatch.belongsTo(User, { foreignKey: "createdByUserId", as: "createdBy" });
+
+  TransferBatch.hasMany(Transaction, { foreignKey: "batchId", as: "transactions" });
+  Transaction.belongsTo(TransferBatch, { foreignKey: "batchId", as: "batch" });
+
+  // Scheduled Transfer Batches
+  User.hasMany(ScheduledTransferBatch, { foreignKey: "createdByUserId", as: "createdScheduledTransferBatches" });
+  ScheduledTransferBatch.belongsTo(User, { foreignKey: "createdByUserId", as: "createdBy" });
+
+  ScheduledTransferBatch.hasMany(ScheduledTransfer, { foreignKey: "scheduledBatchId", as: "scheduledTransfers" });
+  ScheduledTransfer.belongsTo(ScheduledTransferBatch, { foreignKey: "scheduledBatchId", as: "batch" });
 
   // Groups
   User.hasMany(Group, { foreignKey: "ownerId", as: "ownedGroups" });
@@ -620,6 +665,9 @@ const Models = (sequelize: Sequelize) => {
     QRObject,
     AuditLog,
     PaymentRequest,
+    ScheduledTransfer,
+    TransferBatch,
+    ScheduledTransferBatch,
     OutsideMessage,
     GalleryItem,
     GroupContribution,

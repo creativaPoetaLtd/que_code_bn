@@ -69,7 +69,21 @@ export enum NotificationType {
   PAYMENT_REQUEST_RECEIVED = "PAYMENT_REQUEST_RECEIVED",
   PAYMENT_REQUEST_DECLINED = "PAYMENT_REQUEST_DECLINED",
   PAYMENT_REQUEST_ACCEPTED = "PAYMENT_REQUEST_ACCEPTED",
-  
+  BATCH_TRANSFER_COMPLETED = "BATCH_TRANSFER_COMPLETED",
+  SCHEDULED_BATCH_CREATED = "SCHEDULED_BATCH_CREATED",
+
+  // Scheduled transfer notifications
+  SCHEDULED_TRANSFER_CREATED = "SCHEDULED_TRANSFER_CREATED",
+  SCHEDULED_TRANSFER_HELD = "SCHEDULED_TRANSFER_HELD",
+  SCHEDULED_TRANSFER_HOLD_FAILED = "SCHEDULED_TRANSFER_HOLD_FAILED",
+  SCHEDULED_TRANSFER_UPCOMING = "SCHEDULED_TRANSFER_UPCOMING",
+  SCHEDULED_TRANSFER_EXECUTED = "SCHEDULED_TRANSFER_EXECUTED",
+  SCHEDULED_TRANSFER_FAILED = "SCHEDULED_TRANSFER_FAILED",
+  SCHEDULED_TRANSFER_CANCELLED = "SCHEDULED_TRANSFER_CANCELLED",
+  SCHEDULED_TRANSFER_PAUSED = "SCHEDULED_TRANSFER_PAUSED",
+  SCHEDULED_TRANSFER_RESUMED = "SCHEDULED_TRANSFER_RESUMED",
+  SCHEDULED_SERIES_AUTO_PAUSED = "SCHEDULED_SERIES_AUTO_PAUSED",
+
   // Wallet-related notifications
   WALLET_CREATED = "WALLET_CREATED",
   WALLET_RESTRICTION_ADDED = "WALLET_RESTRICTION_ADDED",
@@ -157,7 +171,17 @@ export interface NotificationPayload {
     currency?: string;
     transactionType?: string;
     fee?: number;
-    
+
+    // Scheduled transfer data
+    scheduledTransferId?: string;
+    scheduledFor?: string;
+
+    // Batch transfer data
+    batchId?: string;
+    successCount?: number;
+    failureCount?: number;
+    recipientCount?: number;
+
     // Contact-related data
     contactId?: string;
     contactName?: string;
@@ -461,7 +485,57 @@ const notificationConfig = {
     description: "Your payment request was accepted",
     priority: "high",
   },
-  
+  [NotificationType.BATCH_TRANSFER_COMPLETED]: {
+    description: "A batch transfer to multiple people has finished processing",
+    priority: "high",
+  },
+  [NotificationType.SCHEDULED_BATCH_CREATED]: {
+    description: "A batch of scheduled transfers to multiple people has been set up",
+    priority: "high",
+  },
+
+  // Scheduled transfer notifications
+  [NotificationType.SCHEDULED_TRANSFER_CREATED]: {
+    description: "A transfer has been scheduled",
+    priority: "normal",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_HELD]: {
+    description: "Funds have been reserved for an upcoming scheduled transfer",
+    priority: "low",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_HOLD_FAILED]: {
+    description: "Could not reserve funds for an upcoming scheduled transfer",
+    priority: "high",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_UPCOMING]: {
+    description: "A scheduled transfer is about to be sent",
+    priority: "high",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_EXECUTED]: {
+    description: "A scheduled transfer has been sent",
+    priority: "high",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_FAILED]: {
+    description: "A scheduled transfer could not be completed",
+    priority: "high",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_CANCELLED]: {
+    description: "A scheduled transfer was cancelled",
+    priority: "normal",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_PAUSED]: {
+    description: "A scheduled transfer series was paused",
+    priority: "normal",
+  },
+  [NotificationType.SCHEDULED_TRANSFER_RESUMED]: {
+    description: "A scheduled transfer series was resumed",
+    priority: "normal",
+  },
+  [NotificationType.SCHEDULED_SERIES_AUTO_PAUSED]: {
+    description: "A recurring transfer was automatically paused after repeated failures",
+    priority: "critical",
+  },
+
   // Wallet notifications
   [NotificationType.WALLET_CREATED]: {
     description: "Your wallet has been created",

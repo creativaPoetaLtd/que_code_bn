@@ -14,6 +14,7 @@ import {
   notifyPaymentRequestAccepted,
 } from '../utils/notificationHelpers';
 import { AuthRequest } from '../middleware/auth.unified.middleware';
+import { getAvailableBalance } from '../utils/walletBalance';
 
 const {
   Wallet,
@@ -398,8 +399,8 @@ const transferMoney = async (
 
     const receiverIsUser = !!receiverWallet.userId;
 
-    // Check sufficient balance
-    if (senderWallet.balance < totalAmount) {
+    // Check sufficient balance (excluding funds already reserved by scheduled transfers)
+    if (getAvailableBalance(senderWallet) < totalAmount) {
       await transaction?.rollback();
       res.status(400).json({
         success: false,
@@ -427,8 +428,8 @@ const transferMoney = async (
       0,
     );
 
-    // Calculate available unrestricted amount
-    const totalBalance = parseFloat(senderWallet.balance.toString());
+    // Calculate available unrestricted amount (balance minus funds held by scheduled transfers)
+    const totalBalance = getAvailableBalance(senderWallet);
     // Prevent negative unrestricted amount when restrictions exceed total balance
     const availableUnrestrictedAmount = Math.max(
       0,
@@ -826,6 +827,8 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
       data: {
         walletId: wallet.id,
         balance: parseFloat(wallet.balance.toString()),
+        heldBalance: parseFloat(wallet.heldBalance.toString()),
+        availableBalance: getAvailableBalance(wallet),
         currency: wallet.currency,
         isActive: wallet.isActive,
       },
@@ -2974,7 +2977,7 @@ const acceptPaymentRequest = async (
       return;
     }
 
-    if (Number(payerWallet.balance) < totalAmount) {
+    if (getAvailableBalance(payerWallet) < totalAmount) {
       await dbTransaction.rollback();
       res.status(400).json({
         success: false,
