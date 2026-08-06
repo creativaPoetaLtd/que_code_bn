@@ -70,6 +70,28 @@ router.delete(
   transactionController.deleteRestriction as express.RequestHandler,
 );
 
+// Incoming rules (auto-categorize received money by sender) — self-service
+router.get(
+  "/wallet/:walletId/incoming-rules",
+  transactionController.getWalletIncomingRules as express.RequestHandler,
+);
+router.get(
+  "/wallet/:walletId/incoming-senders",
+  transactionController.getIncomingSenders as express.RequestHandler,
+);
+router.post(
+  "/incoming-rules",
+  transactionController.createIncomingRule as express.RequestHandler,
+);
+router.put(
+  "/incoming-rules/:id",
+  transactionController.updateIncomingRule as express.RequestHandler,
+);
+router.delete(
+  "/incoming-rules/:id",
+  transactionController.deleteIncomingRule as express.RequestHandler,
+);
+
 // Get user's wallet information
 router.get("/user/:userId/wallet", transactionController.getUserWallet);
 

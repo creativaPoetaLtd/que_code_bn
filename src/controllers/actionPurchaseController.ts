@@ -15,7 +15,7 @@ import { NotificationType } from "../utils/notificationConfig";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
 
-const { Wallet, Transaction: TransactionModel } = database_models;
+const { Wallet, WalletItem, Transaction: TransactionModel } = database_models;
 
 // Purchase an action (integrated with transaction system)
 const purchaseAction = async (req: Request, res: Response): Promise<void> => {
@@ -899,6 +899,11 @@ const transferActionPurchase = async (
     const senderName = nameOf(sender);
     const recipientName = nameOf(recipient);
 
+    // Load the action once — used for the recipient's wallet item and the notification
+    const action = await read_function<ActionModelAttributes>("Action", "findOne", {
+      where: { id: (purchase as any).actionId },
+    });
+
     // 5. Reassign ownership and append to the transfer trail, atomically
     const dbTransaction = await database_models.sequelize.transaction();
     try {
@@ -928,6 +933,38 @@ const transferActionPurchase = async (
         { where: { id: qrObjectId }, transaction: dbTransaction } as any
       );
 
+      // Move the ticket's "items wallet" card to the new owner: clear any existing
+      // card for this purchase, then drop a fresh transferred_item in the
+      // recipient's wallet so it shows up on their wallet page immediately.
+      await WalletItem.destroy({
+        where: { referenceId: purchaseId },
+        transaction: dbTransaction,
+      });
+      const recipientWallet = await Wallet.findOne({
+        where: { userId: recipientId, isActive: true },
+        transaction: dbTransaction,
+      });
+      if (recipientWallet) {
+        await WalletItem.create(
+          {
+            walletId: recipientWallet.id,
+            itemType: "transferred_item",
+            referenceId: purchaseId,
+            title: (action as any)?.name || "Transferred ticket",
+            subtitle: `Received from ${senderName}`,
+            imageUrl: (action as any)?.coverImage || null,
+            metadata: {
+              actionId: (purchase as any).actionId,
+              purchaseId,
+              qrObjectId,
+              fromId: senderId,
+              fromName: senderName,
+            },
+          },
+          { transaction: dbTransaction }
+        );
+      }
+
       await dbTransaction.commit();
     } catch (txError) {
       await dbTransaction.rollback();
@@ -936,9 +973,6 @@ const transferActionPurchase = async (
 
     // 6. Notify the recipient (best-effort — never fail the transfer over this)
     try {
-      const action = await read_function<ActionModelAttributes>("Action", "findOne", {
-        where: { id: (purchase as any).actionId },
-      });
       await createAndSendNotification(req.app as Application, {
         type: NotificationType.ACTION_PURCHASE_TRANSFERRED,
         recipientId,

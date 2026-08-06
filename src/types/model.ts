@@ -737,6 +737,57 @@ export type WalletRestrictionCreationAttributes = Omit<
   "id" | "createdAt" | "updatedAt"
 >;
 
+export interface WalletIncomingRuleAttributes {
+  id: string;
+  walletId: string;
+  senderWalletId: string;
+  categoryId: string;
+  cap: number | null;
+  restrictedTotal: number;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type WalletIncomingRuleCreationAttributes = Omit<
+  WalletIncomingRuleAttributes,
+  "id" | "restrictedTotal" | "isActive" | "createdAt" | "updatedAt"
+> &
+  Partial<Pick<WalletIncomingRuleAttributes, "restrictedTotal" | "isActive">>;
+
+export type WalletItemType =
+  | "voucher"
+  | "pass"
+  | "saved_action"
+  | "custom_card"
+  | "transferred_item"
+  | "action_purchase_ref";
+
+export type WalletItemStatus = "active" | "used" | "expired" | "archived";
+
+export interface WalletItemAttributes {
+  id: string;
+  walletId: string;
+  itemType: WalletItemType;
+  referenceId?: string | null;
+  title: string;
+  subtitle?: string | null;
+  imageUrl?: string | null;
+  metadata: any;
+  status: WalletItemStatus;
+  isPinned: boolean;
+  expiresAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+export type WalletItemCreationAttributes = Omit<
+  WalletItemAttributes,
+  "id" | "status" | "isPinned" | "metadata" | "createdAt" | "updatedAt"
+> & {
+  status?: WalletItemStatus;
+  isPinned?: boolean;
+  metadata?: any;
+};
+
 // Action-related types
 export interface ActionModelAttributes {
   id: string;

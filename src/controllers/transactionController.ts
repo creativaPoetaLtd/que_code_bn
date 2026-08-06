@@ -20,6 +20,7 @@ const {
   Transaction: TransactionModel,
   Category,
   WalletRestriction,
+  WalletIncomingRule,
   User,
   Organization,
   Profile,
@@ -584,34 +585,75 @@ const transferMoney = async (
       { transaction },
     );
 
-    // Create wallet restriction if constraints are applied
+    // Auto-file the received money into a category envelope on the receiver's
+    // wallet. Precedence: the sender's explicit category wins; otherwise the
+    // receiver's own incoming rule for this sender (if any) decides.
+    let receiverCategoryId: string | null = null;
+    let restrictedPortion = 0;
+    let ruleToAdvance: any = null;
+
     if (applyConstraints && categoryId) {
-      // Check if restriction already exists for this wallet and category
-      const existingRestriction = await WalletRestriction.findOne({
+      receiverCategoryId = categoryId;
+      restrictedPortion = transferAmount;
+    } else {
+      const incomingRule = await WalletIncomingRule.findOne({
         where: {
           walletId: receiverWallet.id,
-          categoryId: categoryId,
+          senderWalletId: senderWallet.id,
+          isActive: true,
         },
         transaction,
       });
 
+      if (incomingRule) {
+        receiverCategoryId = incomingRule.categoryId;
+        // Per-payment cap: file at most `cap` of THIS payment; the rest stays
+        // free. No cap → file the whole payment. Applies on every transfer.
+        if (incomingRule.cap == null) {
+          restrictedPortion = transferAmount;
+        } else {
+          restrictedPortion = Math.min(
+            transferAmount,
+            parseFloat(incomingRule.cap.toString()),
+          );
+        }
+        ruleToAdvance = incomingRule;
+      }
+    }
+
+    if (receiverCategoryId && restrictedPortion > 0) {
+      const existingRestriction = await WalletRestriction.findOne({
+        where: { walletId: receiverWallet.id, categoryId: receiverCategoryId },
+        transaction,
+      });
+
       if (existingRestriction) {
-        // Update existing restriction amount
         await existingRestriction.update(
           {
             amount:
               parseFloat(existingRestriction.amount.toString()) +
-              transferAmount,
+              restrictedPortion,
           },
           { transaction },
         );
       } else {
-        // Create new restriction
         await WalletRestriction.create(
           {
             walletId: receiverWallet.id,
-            categoryId: categoryId,
-            amount: transferAmount,
+            categoryId: receiverCategoryId,
+            amount: restrictedPortion,
+          },
+          { transaction },
+        );
+      }
+
+      // Advance the rule's lifetime total so a cap is honoured across payments.
+      if (ruleToAdvance) {
+        await ruleToAdvance.update(
+          {
+            restrictedTotal:
+              parseFloat(ruleToAdvance.restrictedTotal.toString()) +
+              restrictedPortion,
           },
           { transaction },
         );
@@ -2375,6 +2417,39 @@ const getAllRestrictions = async (
 };
 
 /**
+ * Ownership guard for wallet restrictions (self-service).
+ * A user may manage restrictions on a wallet they own — their personal wallet
+ * or a wallet belonging to their organization. Admins bypass the check.
+ * Returns true when access is allowed; otherwise writes a 403 and returns false.
+ */
+const canManageWalletRestrictions = (
+  req: Request,
+  res: Response,
+  wallet: { userId?: string | null; organizationId?: string | null },
+): boolean => {
+  const user = (req as AuthRequest).user;
+  if (!user) {
+    res.status(401).json({ success: false, message: "Authentication required" });
+    return false;
+  }
+  const ownsWallet =
+    user.isAdmin ||
+    (!!wallet.userId && wallet.userId === user.id) ||
+    (!!wallet.organizationId &&
+      !!user.organizationId &&
+      wallet.organizationId === user.organizationId);
+
+  if (!ownsWallet) {
+    res.status(403).json({
+      success: false,
+      message: "You are not allowed to manage restrictions on this wallet",
+    });
+    return false;
+  }
+  return true;
+};
+
+/**
  * Create a new wallet restriction
  * POST /api/v1/transactions/restrictions
  */
@@ -2413,6 +2488,9 @@ export const createRestriction: RequestHandler = async (req, res) => {
       return;
     }
 
+    // Only the wallet owner (or an admin) may add restrictions
+    if (!canManageWalletRestrictions(req, res, wallet)) return;
+
     // Verify category exists
     const category = await models.Category.findByPk(categoryId);
     if (!category) {
@@ -2432,6 +2510,26 @@ export const createRestriction: RequestHandler = async (req, res) => {
       res.status(409).json({
         success: false,
         message: "Restriction already exists for this wallet and category",
+      });
+      return;
+    }
+
+    // Cap: reserved funds (existing restrictions + this one) may not exceed the balance
+    const walletRestrictions = await models.WalletRestriction.findAll({
+      where: { walletId },
+    });
+    const alreadyReserved = walletRestrictions.reduce(
+      (sum, r) => sum + parseFloat(r.amount.toString()),
+      0,
+    );
+    const walletBalance = parseFloat(wallet.balance.toString());
+    if (alreadyReserved + restrictionAmount > walletBalance) {
+      res.status(400).json({
+        success: false,
+        message: `Reserved funds would exceed your balance. Available to reserve: ${
+          walletBalance - alreadyReserved
+        }`,
+        availableToReserve: walletBalance - alreadyReserved,
       });
       return;
     }
@@ -2538,6 +2636,46 @@ export const updateRestriction: RequestHandler = async (req, res) => {
       return;
     }
 
+    // Only the wallet owner (or an admin) may change restrictions
+    const ownerWallet = await models.Wallet.findByPk(restriction.walletId);
+    if (!ownerWallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, ownerWallet)) return;
+
+    // Increase-only: a reserved amount may be raised but never lowered by the owner.
+    // (Spending within the category still reduces it automatically at transfer time.)
+    const currentAmount = parseFloat(restriction.amount.toString());
+    const isAdmin = !!(req as AuthRequest).user?.isAdmin;
+    if (!isAdmin && restrictionAmount < currentAmount) {
+      res.status(400).json({
+        success: false,
+        message: `Reserved funds can only be increased, not reduced. Currently reserved: ${currentAmount}`,
+        currentAmount,
+      });
+      return;
+    }
+
+    // Cap: reserved funds across all restrictions (with this new amount) may not exceed the balance
+    const siblingRestrictions = await models.WalletRestriction.findAll({
+      where: { walletId: restriction.walletId },
+    });
+    const otherReserved = siblingRestrictions
+      .filter((r) => r.id !== restriction.id)
+      .reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0);
+    const ownerBalance = parseFloat(ownerWallet.balance.toString());
+    if (otherReserved + restrictionAmount > ownerBalance) {
+      res.status(400).json({
+        success: false,
+        message: `Reserved funds would exceed your balance. Available to reserve: ${
+          ownerBalance - otherReserved
+        }`,
+        availableToReserve: ownerBalance - otherReserved,
+      });
+      return;
+    }
+
     // Update restriction
     await restriction.update({ amount: restrictionAmount });
 
@@ -2610,6 +2748,24 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
       return;
     }
 
+    // Only the wallet owner (or an admin) may delete restrictions
+    const ownerWallet = await models.Wallet.findByPk(restriction.walletId);
+    if (!ownerWallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, ownerWallet)) return;
+
+    // Reserved funds cannot be released by the owner — restrictions are increase-only.
+    // Admins retain the ability to remove them for support/cleanup.
+    if (!(req as AuthRequest).user?.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: "Reserved funds cannot be released. Restrictions can only be increased.",
+      });
+      return;
+    }
+
     // Check if restriction has been used in transactions
     const transactionCount = await models.Transaction.count({
       where: {
@@ -2644,6 +2800,384 @@ export const deleteRestriction: RequestHandler = async (req, res) => {
       message: "Internal server error",
     });
     return;
+  }
+};
+
+/**
+ * Resolve a sender identity (wallet id, or user/org id) to an active wallet id.
+ * Returns the wallet id, or null if it can't be resolved.
+ */
+const resolveSenderWalletId = async (
+  models: typeof database_models,
+  body: {
+    senderWalletId?: string;
+    senderUserId?: string;
+    senderOrganizationId?: string;
+  },
+): Promise<string | null> => {
+  if (body.senderWalletId) {
+    const w = await models.Wallet.findByPk(body.senderWalletId);
+    return w ? w.id : null;
+  }
+  const where = body.senderUserId
+    ? { userId: body.senderUserId }
+    : body.senderOrganizationId
+      ? { organizationId: body.senderOrganizationId }
+      : null;
+  if (!where) return null;
+  const wallet = await models.Wallet.findOne({ where });
+  return wallet ? wallet.id : null;
+};
+
+const INCOMING_RULE_INCLUDE = [
+  {
+    model: Category,
+    as: "category",
+    attributes: ["id", "name", "description"],
+  },
+  {
+    model: Wallet,
+    as: "senderWallet",
+    attributes: ["id", "userId", "organizationId"],
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id", "firstName", "lastName", "email"],
+        required: false,
+      },
+      {
+        model: Organization,
+        as: "organization",
+        attributes: ["id", "name", "email"],
+        required: false,
+      },
+    ],
+  },
+];
+
+/**
+ * List a wallet's incoming rules.
+ * GET /api/v1/transactions/wallet/:walletId/incoming-rules
+ */
+export const getWalletIncomingRules: RequestHandler = async (req, res) => {
+  try {
+    const { walletId } = req.params;
+    if (!walletId || walletId === "undefined" || walletId === "null") {
+      res.status(400).json({ success: false, message: "Valid walletId is required" });
+      return;
+    }
+    const models = req.app.get("models") as typeof database_models;
+
+    const wallet = await models.Wallet.findByPk(walletId);
+    if (!wallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, wallet)) return;
+
+    const rules = await models.WalletIncomingRule.findAll({
+      where: { walletId },
+      include: INCOMING_RULE_INCLUDE as any,
+      order: [["createdAt", "DESC"]],
+    });
+
+    res.status(200).json({ success: true, data: rules });
+  } catch (error: any) {
+    console.error("Get incoming rules error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
+ * Distinct senders (users/orgs) that have sent money to this wallet — used to
+ * populate the "Add rule" picker.
+ * GET /api/v1/transactions/wallet/:walletId/incoming-senders
+ */
+export const getIncomingSenders: RequestHandler = async (req, res) => {
+  try {
+    const { walletId } = req.params;
+    if (!walletId || walletId === "undefined" || walletId === "null") {
+      res.status(400).json({ success: false, message: "Valid walletId is required" });
+      return;
+    }
+    const models = req.app.get("models") as typeof database_models;
+
+    const wallet = await models.Wallet.findByPk(walletId);
+    if (!wallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, wallet)) return;
+
+    // Recent completed incoming transfers, newest first; de-duplicate by sender wallet.
+    const incoming = await models.Transaction.findAll({
+      where: { receiverWalletId: walletId, status: "completed" },
+      attributes: ["senderWalletId", "createdAt"],
+      order: [["createdAt", "DESC"]],
+      limit: 200,
+      include: [
+        {
+          model: models.Wallet,
+          as: "senderWallet",
+          attributes: ["id", "userId", "organizationId"],
+          include: [
+            {
+              model: models.User,
+              as: "user",
+              attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+            },
+            {
+              model: models.Organization,
+              as: "organization",
+              attributes: ["id", "name", "email"],
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    const seen = new Set<string>();
+    const senders: any[] = [];
+    for (const tx of incoming as any[]) {
+      const sw = tx.senderWallet;
+      if (!sw || !sw.id || sw.id === walletId || seen.has(sw.id)) continue;
+      // Account-to-account only: must be a real user or organization wallet
+      if (!sw.userId && !sw.organizationId) continue;
+      seen.add(sw.id);
+      senders.push({
+        senderWalletId: sw.id,
+        type: sw.organizationId ? "organization" : "user",
+        userId: sw.userId || null,
+        organizationId: sw.organizationId || null,
+        name: sw.organization
+          ? sw.organization.name
+          : `${sw.user?.firstName || ""} ${sw.user?.lastName || ""}`.trim() || "Unknown",
+        source: "recent",
+      });
+    }
+
+    // Also include the owner's contacts (users), so a rule can be pre-set before
+    // that person has sent any money. Contacts are user-to-user in this app.
+    if (wallet.userId) {
+      const contacts = await models.Contact.findAll({
+        where: {
+          status: "active",
+          [Op.or]: [{ userAId: wallet.userId }, { userBId: wallet.userId }],
+        },
+        include: [
+          {
+            model: models.User,
+            as: "userA",
+            attributes: ["id", "firstName", "lastName"],
+            include: [{ model: models.Wallet, as: "wallet", attributes: ["id"], required: false }],
+          },
+          {
+            model: models.User,
+            as: "userB",
+            attributes: ["id", "firstName", "lastName"],
+            include: [{ model: models.Wallet, as: "wallet", attributes: ["id"], required: false }],
+          },
+        ],
+      });
+
+      for (const ct of contacts as any[]) {
+        const other = ct.userAId === wallet.userId ? ct.userB : ct.userA;
+        const sw = other?.wallet;
+        if (!other || !sw?.id || sw.id === walletId || seen.has(sw.id)) continue;
+        seen.add(sw.id);
+        senders.push({
+          senderWalletId: sw.id,
+          type: "user",
+          userId: other.id,
+          organizationId: null,
+          name: `${other.firstName || ""} ${other.lastName || ""}`.trim() || "Contact",
+          source: "contact",
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, data: senders });
+  } catch (error: any) {
+    console.error("Get incoming senders error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
+ * Create an incoming rule.
+ * POST /api/v1/transactions/incoming-rules
+ * body: { walletId, categoryId, cap?, senderWalletId | senderUserId | senderOrganizationId }
+ */
+export const createIncomingRule: RequestHandler = async (req, res) => {
+  try {
+    const { walletId, categoryId, cap } = req.body;
+    if (!walletId || !categoryId) {
+      res.status(400).json({ success: false, message: "walletId and categoryId are required" });
+      return;
+    }
+
+    const models = req.app.get("models") as typeof database_models;
+
+    const wallet = await models.Wallet.findByPk(walletId);
+    if (!wallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, wallet)) return;
+
+    const senderWalletId = await resolveSenderWalletId(models, req.body);
+    if (!senderWalletId) {
+      res.status(400).json({ success: false, message: "Could not resolve the sender's wallet" });
+      return;
+    }
+    if (senderWalletId === walletId) {
+      res.status(400).json({ success: false, message: "You cannot create a rule for your own wallet" });
+      return;
+    }
+
+    const category = await models.Category.findByPk(categoryId);
+    if (!category) {
+      res.status(404).json({ success: false, message: "Category not found" });
+      return;
+    }
+
+    // Optional cap must be a positive number when provided
+    let capValue: number | null = null;
+    if (cap !== undefined && cap !== null && cap !== "") {
+      capValue = Number(cap);
+      if (isNaN(capValue) || capValue <= 0) {
+        res.status(400).json({ success: false, message: "Cap must be a positive number" });
+        return;
+      }
+    }
+
+    const existing = await models.WalletIncomingRule.findOne({
+      where: { walletId, senderWalletId },
+    });
+    if (existing) {
+      res.status(409).json({
+        success: false,
+        message: "A rule for this sender already exists. Edit it instead.",
+      });
+      return;
+    }
+
+    const rule = await models.WalletIncomingRule.create({
+      walletId,
+      senderWalletId,
+      categoryId,
+      cap: capValue,
+    });
+
+    const created = await models.WalletIncomingRule.findByPk(rule.id, {
+      include: INCOMING_RULE_INCLUDE as any,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Incoming rule created",
+      data: created,
+    });
+  } catch (error: any) {
+    console.error("Create incoming rule error:", error);
+    res.status(500).json({ success: false, message: error.message || "Internal server error" });
+  }
+};
+
+/**
+ * Update an incoming rule (category, cap, and/or active state).
+ * PUT /api/v1/transactions/incoming-rules/:id
+ */
+export const updateIncomingRule: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { categoryId, cap, isActive } = req.body;
+
+    const models = req.app.get("models") as typeof database_models;
+
+    const rule = await models.WalletIncomingRule.findByPk(id as string);
+    if (!rule) {
+      res.status(404).json({ success: false, message: "Rule not found" });
+      return;
+    }
+
+    const ownerWallet = await models.Wallet.findByPk(rule.walletId);
+    if (!ownerWallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, ownerWallet)) return;
+
+    const updates: any = {};
+
+    if (categoryId !== undefined) {
+      const category = await models.Category.findByPk(categoryId);
+      if (!category) {
+        res.status(404).json({ success: false, message: "Category not found" });
+        return;
+      }
+      updates.categoryId = categoryId;
+    }
+
+    if (cap !== undefined) {
+      if (cap === null || cap === "") {
+        updates.cap = null;
+      } else {
+        const capValue = Number(cap);
+        if (isNaN(capValue) || capValue <= 0) {
+          res.status(400).json({ success: false, message: "Cap must be a positive number" });
+          return;
+        }
+        updates.cap = capValue;
+      }
+    }
+
+    if (isActive !== undefined) updates.isActive = !!isActive;
+
+    await rule.update(updates);
+
+    const updated = await models.WalletIncomingRule.findByPk(id as string, {
+      include: INCOMING_RULE_INCLUDE as any,
+    });
+
+    res.status(200).json({ success: true, message: "Incoming rule updated", data: updated });
+  } catch (error: any) {
+    console.error("Update incoming rule error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
+ * Delete an incoming rule. This only stops future auto-filing; money already
+ * filed into category envelopes is untouched.
+ * DELETE /api/v1/transactions/incoming-rules/:id
+ */
+export const deleteIncomingRule: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const models = req.app.get("models") as typeof database_models;
+
+    const rule = await models.WalletIncomingRule.findByPk(id as string);
+    if (!rule) {
+      res.status(404).json({ success: false, message: "Rule not found" });
+      return;
+    }
+
+    const ownerWallet = await models.Wallet.findByPk(rule.walletId);
+    if (!ownerWallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
+      return;
+    }
+    if (!canManageWalletRestrictions(req, res, ownerWallet)) return;
+
+    await rule.destroy();
+    res.status(200).json({ success: true, message: "Incoming rule removed" });
+  } catch (error: any) {
+    console.error("Delete incoming rule error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -3294,6 +3828,11 @@ export default {
   createRestriction,
   updateRestriction,
   deleteRestriction,
+  getWalletIncomingRules,
+  getIncomingSenders,
+  createIncomingRule,
+  updateIncomingRule,
+  deleteIncomingRule,
   getUserWallet,
   getOrganizationWallet,
   getTransactionCategories,
