@@ -5,6 +5,7 @@ import resetRouter from "./reset.routes";
 import transactionRouter from "./transaction.routes";
 import scheduledTransferRouter from "./scheduledTransfer.routes";
 import escrowRouter from "./escrow.routes";
+import walletItemsRouter from "./walletItems.routes";
 import analyticsRouter from "./analytics.routes";
 import contactRouter from "./contact.routes";
 import contactInvitationRouter from "./contactInvitation.routes";
@@ -56,6 +57,7 @@ router.use("/auth", resetRouter);
 router.use("/transactions", transactionRouter); // Includes unified endpoints
 router.use("/scheduled-transfers", scheduledTransferRouter);
 router.use("/escrows", escrowRouter);
+router.use("/wallets", walletItemsRouter); // Wallet summary + items ("items wallet")
 router.use("/analytics", analyticsRouter);
 router.use("/contacts", contactRouter);
 router.use("/contact-invitations", contactInvitationRouter);

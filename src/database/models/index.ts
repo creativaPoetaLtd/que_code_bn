@@ -14,6 +14,8 @@ import chatMessage_model from "./chatMessage.model";
 import chatKey_model from "./chatKey.model";
 import userKey_model from "./userKey.model";
 import WalletRestriction_model from "./walletRestrictions.model";
+import WalletIncomingRule_model from "./walletIncomingRule.model";
+import WalletItem_model from "./walletItem.model";
 import Category_model from "./categories.model";
 import ExternalAccount_model from "./externalAccounts.model";
 import ContactInvitation_model from "./contactInvitations.model";
@@ -54,6 +56,8 @@ const Models = (sequelize: Sequelize) => {
 
   const Wallet = wallet_model(sequelize);
   const WalletRestriction = WalletRestriction_model(sequelize);
+  const WalletIncomingRule = WalletIncomingRule_model(sequelize);
+  const WalletItem = WalletItem_model(sequelize);
   const Transaction = transaction_model(sequelize);
   const Category = Category_model(sequelize);
   const Payment = payment_model(sequelize);
@@ -152,11 +156,30 @@ const Models = (sequelize: Sequelize) => {
   });
   WalletRestriction.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
 
+  // Wallet items ("items wallet"): generic non-monetary things kept in a wallet
+  Wallet.hasMany(WalletItem, { foreignKey: "walletId", as: "items" });
+  WalletItem.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
+
   Category.hasMany(WalletRestriction, {
     foreignKey: "categoryId",
     as: "restrictions",
   });
   WalletRestriction.belongsTo(Category, {
+    foreignKey: "categoryId",
+    as: "category",
+  });
+
+  // Incoming rules: auto-file money arriving from a specific sender wallet
+  Wallet.hasMany(WalletIncomingRule, {
+    foreignKey: "walletId",
+    as: "incomingRules",
+  });
+  WalletIncomingRule.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
+  WalletIncomingRule.belongsTo(Wallet, {
+    foreignKey: "senderWalletId",
+    as: "senderWallet",
+  });
+  WalletIncomingRule.belongsTo(Category, {
     foreignKey: "categoryId",
     as: "category",
   });
@@ -657,6 +680,8 @@ const Models = (sequelize: Sequelize) => {
     Profile,
     Wallet,
     WalletRestriction,
+    WalletIncomingRule,
+    WalletItem,
     Transaction,
     Category,
     Payment,
