@@ -231,6 +231,7 @@ export interface ChatMessageAttributes {
     | "image"
     | "file"
     | "money"
+    | "escrow"
     | "audio"
     | "video"
     | "document";
@@ -650,6 +651,7 @@ export interface TransactionAttributes {
   subActionId?: string;
   scheduledTransferId?: string | null;
   batchId?: string | null;
+  escrowId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -724,6 +726,55 @@ export type ScheduledTransferCreationAttributes = Optional<
   | "lastFailureReason"
   | "pinVerifiedAt"
   | "scheduledBatchId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface EscrowAttributes {
+  id: string;
+  chatId?: string | null;
+  payerWalletId: string;
+  payeeWalletId: string;
+  payerUserId: string;
+  payeeUserId: string;
+  amount: number;
+  currency: string;
+  description?: string | null;
+  status: "held" | "released" | "refunded" | "disputed" | "cancelled" | "expired";
+  releaseMode: "manual" | "auto_timeout";
+  autoReleaseAt?: Date | null;
+  fundedAt: Date;
+  releasedAt?: Date | null;
+  refundedAt?: Date | null;
+  releaseTransactionId?: string | null;
+  disputeRaisedBy?: string | null;
+  disputeReason?: string | null;
+  disputeRaisedAt?: Date | null;
+  resolvedByAdminId?: string | null;
+  resolutionNote?: string | null;
+  resolvedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type EscrowCreationAttributes = Optional<
+  EscrowAttributes,
+  | "id"
+  | "chatId"
+  | "currency"
+  | "description"
+  | "status"
+  | "releaseMode"
+  | "autoReleaseAt"
+  | "releasedAt"
+  | "refundedAt"
+  | "releaseTransactionId"
+  | "disputeRaisedBy"
+  | "disputeReason"
+  | "disputeRaisedAt"
+  | "resolvedByAdminId"
+  | "resolutionNote"
+  | "resolvedAt"
   | "createdAt"
   | "updatedAt"
 >;

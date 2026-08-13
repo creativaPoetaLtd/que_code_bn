@@ -35,6 +35,7 @@ import qrObject_model from "./qrObject.model";
 import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
 import scheduledTransfer_model from "./scheduledTransfer.model";
+import escrow_model from "./escrow.model";
 import transferBatch_model from "./transferBatch.model";
 import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
@@ -97,6 +98,9 @@ const Models = (sequelize: Sequelize) => {
 
   // Scheduled Transfer model
   const ScheduledTransfer = scheduledTransfer_model(sequelize);
+
+  // Escrow model
+  const Escrow = escrow_model(sequelize);
 
   // Transfer Batch model
   const TransferBatch = transferBatch_model(sequelize);
@@ -329,6 +333,24 @@ const Models = (sequelize: Sequelize) => {
 
   ScheduledTransfer.hasMany(Transaction, { foreignKey: "scheduledTransferId", as: "executedTransactions" });
   Transaction.belongsTo(ScheduledTransfer, { foreignKey: "scheduledTransferId", as: "scheduledTransfer" });
+
+  Wallet.hasMany(Escrow, { foreignKey: "payerWalletId", as: "escrowsAsPayer" });
+  Escrow.belongsTo(Wallet, { foreignKey: "payerWalletId", as: "payerWallet" });
+
+  Wallet.hasMany(Escrow, { foreignKey: "payeeWalletId", as: "escrowsAsPayee" });
+  Escrow.belongsTo(Wallet, { foreignKey: "payeeWalletId", as: "payeeWallet" });
+
+  User.hasMany(Escrow, { foreignKey: "payerUserId", as: "escrowsAsPayer" });
+  Escrow.belongsTo(User, { foreignKey: "payerUserId", as: "payerUser" });
+
+  User.hasMany(Escrow, { foreignKey: "payeeUserId", as: "escrowsAsPayee" });
+  Escrow.belongsTo(User, { foreignKey: "payeeUserId", as: "payeeUser" });
+
+  Chat.hasMany(Escrow, { foreignKey: "chatId", as: "escrows" });
+  Escrow.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
+
+  Escrow.hasMany(Transaction, { foreignKey: "escrowId", as: "transactions" });
+  Transaction.belongsTo(Escrow, { foreignKey: "escrowId", as: "escrow" });
 
   // Transfer Batches
   User.hasMany(TransferBatch, { foreignKey: "createdByUserId", as: "createdTransferBatches" });
@@ -666,6 +688,7 @@ const Models = (sequelize: Sequelize) => {
     AuditLog,
     PaymentRequest,
     ScheduledTransfer,
+    Escrow,
     TransferBatch,
     ScheduledTransferBatch,
     OutsideMessage,

@@ -9,6 +9,7 @@ import { Server as SocketIOServer } from "socket.io";
 // Remove PORT import since we define it locally as SERVER_PORT
 import Models from "./database/models";
 import { initScheduledTransferJobs } from "./jobs/scheduledTransferJobs";
+import { initEscrowJobs } from "./jobs/escrowJobs";
 
 const startServer = async () => {
   try {
@@ -62,6 +63,9 @@ const startServer = async () => {
 
     // 7. Start scheduled-transfer background jobs (execution poller + rolling hold poller)
     initScheduledTransferJobs(app);
+
+    // 7b. Start escrow auto-release job
+    initEscrowJobs(app);
 
     const SERVER_PORT = process.env.PORT || 5500;
     server.listen(SERVER_PORT, () => {

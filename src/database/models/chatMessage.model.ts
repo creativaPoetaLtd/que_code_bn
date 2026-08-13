@@ -10,7 +10,7 @@ class ChatMessage extends Model<
   public chatId!: string;
   public senderId!: string;
   public content!: string;
-  public messageType!: "text" | "image" | "file" | "money" | "audio" | "video" | "document";
+  public messageType!: "text" | "image" | "file" | "money" | "escrow" | "audio" | "video" | "document";
   public replyToMessageId?: string;
   public transactionId?: string;
   public isEncrypted!: boolean;
@@ -39,7 +39,7 @@ const ChatMessage_model = (sequelize: Sequelize) => {
       senderId: { type: DataTypes.UUID, allowNull: false },
       content: { type: DataTypes.TEXT, allowNull: false },
       messageType: {
-        type: DataTypes.ENUM("text", "image", "file", "money", "audio", "video", "document"),
+        type: DataTypes.ENUM("text", "image", "file", "money", "escrow", "audio", "video", "document"),
         allowNull: false,
       },
       replyToMessageId: { type: DataTypes.UUID, allowNull: true },
