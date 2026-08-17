@@ -22,12 +22,16 @@ class Escrow extends Model<EscrowAttributes, EscrowCreationAttributes> {
   public releaseMode!: "manual" | "auto_timeout";
   public autoReleaseAt?: Date | null;
   public fundedAt!: Date;
+  public fulfilledAt?: Date | null;
   public releasedAt?: Date | null;
   public refundedAt?: Date | null;
   public releaseTransactionId?: string | null;
   public disputeRaisedBy?: string | null;
   public disputeReason?: string | null;
   public disputeRaisedAt?: Date | null;
+  public disputeResponse?: string | null;
+  public disputeRespondedBy?: string | null;
+  public disputeRespondedAt?: Date | null;
   public resolvedByAdminId?: string | null;
   public resolutionNote?: string | null;
   public resolvedAt?: Date | null;
@@ -64,12 +68,16 @@ const escrow_model = (sequelize: Sequelize) => {
       },
       autoReleaseAt: { type: DataTypes.DATE, allowNull: true },
       fundedAt: { type: DataTypes.DATE, allowNull: false },
+      fulfilledAt: { type: DataTypes.DATE, allowNull: true },
       releasedAt: { type: DataTypes.DATE, allowNull: true },
       refundedAt: { type: DataTypes.DATE, allowNull: true },
       releaseTransactionId: { type: DataTypes.UUID, allowNull: true },
       disputeRaisedBy: { type: DataTypes.UUID, allowNull: true },
       disputeReason: { type: DataTypes.STRING, allowNull: true },
       disputeRaisedAt: { type: DataTypes.DATE, allowNull: true },
+      disputeResponse: { type: DataTypes.STRING, allowNull: true },
+      disputeRespondedBy: { type: DataTypes.UUID, allowNull: true },
+      disputeRespondedAt: { type: DataTypes.DATE, allowNull: true },
       resolvedByAdminId: { type: DataTypes.UUID, allowNull: true },
       resolutionNote: { type: DataTypes.STRING, allowNull: true },
       resolvedAt: { type: DataTypes.DATE, allowNull: true },

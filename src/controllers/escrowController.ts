@@ -16,6 +16,10 @@ const PARTY_INCLUDES = [
 
 const MIN_AUTO_RELEASE_LEAD_MINUTES = 60;
 const MAX_AUTO_RELEASE_HORIZON_DAYS = 90;
+// Once the payee marks an escrow fulfilled, the payer can no longer cancel it -
+// only release or dispute. This deadline protects the payee from a payer who then
+// goes silent: if the payer does neither within this window, it auto-releases.
+const FULFILLMENT_AUTO_RELEASE_DAYS = 3;
 
 class ControllerError extends Error {
   status: number;
@@ -328,7 +332,57 @@ const releaseEscrow = async (req: AuthenticatedRequest, res: Response): Promise<
   }
 };
 
-/** Only the payer can cancel a still-held escrow unilaterally; disputes go through an admin. */
+/**
+ * Payee marks their end done. This strips the payer's unilateral cancel (they can
+ * now only release or dispute), and starts a grace-period auto-release deadline so
+ * the payee isn't left waiting forever on a payer who never acts.
+ */
+const fulfillEscrow = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const authenticatedUserId = req.user.id;
+    let updated: any;
+
+    await sequelize.transaction(async (t: DbTransaction) => {
+      const escrow = await Escrow.findByPk(id, { lock: t.LOCK.UPDATE, transaction: t });
+      if (!escrow) throw new ControllerError(404, "Escrow not found");
+      if (escrow.payeeUserId !== authenticatedUserId) {
+        throw new ControllerError(403, "Only the payee can mark this escrow as fulfilled");
+      }
+      if (escrow.status !== "held") {
+        throw new ControllerError(400, `Escrow cannot be fulfilled from status '${escrow.status}'`);
+      }
+      if (escrow.fulfilledAt) {
+        throw new ControllerError(400, "Escrow is already marked as fulfilled");
+      }
+
+      const now = new Date();
+      const graceDeadline = new Date(now.getTime() + FULFILLMENT_AUTO_RELEASE_DAYS * 24 * 60 * 60 * 1000);
+      const existingDeadline = escrow.autoReleaseAt ? new Date(escrow.autoReleaseAt) : null;
+      const nextAutoReleaseAt = existingDeadline && existingDeadline < graceDeadline ? existingDeadline : graceDeadline;
+
+      await escrow.update(
+        {
+          fulfilledAt: now,
+          releaseMode: "auto_timeout",
+          autoReleaseAt: nextAutoReleaseAt,
+        },
+        { transaction: t }
+      );
+      updated = escrow;
+    });
+
+    res.status(200).json({ success: true, message: "Escrow marked as fulfilled", data: updated });
+  } catch (error) {
+    handleControllerError(res, error, "Fulfill escrow");
+  }
+};
+
+/**
+ * Only the payer can cancel, and only before the payee has marked the escrow
+ * fulfilled - once that happens, a cancel would let the payer take back money for
+ * something they already received. Disputes go through an admin instead.
+ */
 const refundEscrow = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -343,6 +397,9 @@ const refundEscrow = async (req: AuthenticatedRequest, res: Response): Promise<v
       }
       if (escrow.status !== "held") {
         throw new ControllerError(400, `Escrow cannot be refunded from status '${escrow.status}'`);
+      }
+      if (escrow.fulfilledAt) {
+        throw new ControllerError(400, "The payee has marked this escrow fulfilled - release the funds or raise a dispute instead");
       }
 
       await refundEscrowFunds(escrow, t);
@@ -384,6 +441,46 @@ const raiseDispute = async (req: AuthenticatedRequest, res: Response): Promise<v
     res.status(200).json({ success: true, message: "Dispute raised", data: escrow });
   } catch (error) {
     handleControllerError(res, error, "Raise escrow dispute");
+  }
+};
+
+/**
+ * Lets the party who did NOT raise the dispute put their side on record before an
+ * admin reviews it. One-shot (not a thread) - keeps this simple while still making
+ * sure a review isn't working off only the complainant's account.
+ */
+const respondToDispute = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { response } = req.body;
+    const authenticatedUserId = req.user.id;
+
+    if (!response) throw new ControllerError(400, "A response is required");
+
+    const escrow = await Escrow.findByPk(id);
+    if (!escrow) throw new ControllerError(404, "Escrow not found");
+    if (escrow.payerUserId !== authenticatedUserId && escrow.payeeUserId !== authenticatedUserId) {
+      throw new ControllerError(403, "Only the payer or payee can respond to this dispute");
+    }
+    if (escrow.status !== "disputed") {
+      throw new ControllerError(400, "This escrow is not currently disputed");
+    }
+    if (escrow.disputeRaisedBy === authenticatedUserId) {
+      throw new ControllerError(400, "You raised this dispute - a response is for the other party");
+    }
+    if (escrow.disputeResponse) {
+      throw new ControllerError(400, "A response has already been recorded for this dispute");
+    }
+
+    await escrow.update({
+      disputeResponse: response,
+      disputeRespondedBy: authenticatedUserId,
+      disputeRespondedAt: new Date(),
+    });
+
+    res.status(200).json({ success: true, message: "Response recorded", data: escrow });
+  } catch (error) {
+    handleControllerError(res, error, "Respond to escrow dispute");
   }
 };
 
@@ -448,7 +545,9 @@ export default {
   listMyEscrows,
   getEscrowById,
   releaseEscrow,
+  fulfillEscrow,
   refundEscrow,
   raiseDispute,
+  respondToDispute,
   resolveDispute,
 };

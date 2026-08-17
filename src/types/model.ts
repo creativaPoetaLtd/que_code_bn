@@ -744,12 +744,16 @@ export interface EscrowAttributes {
   releaseMode: "manual" | "auto_timeout";
   autoReleaseAt?: Date | null;
   fundedAt: Date;
+  fulfilledAt?: Date | null;
   releasedAt?: Date | null;
   refundedAt?: Date | null;
   releaseTransactionId?: string | null;
   disputeRaisedBy?: string | null;
   disputeReason?: string | null;
   disputeRaisedAt?: Date | null;
+  disputeResponse?: string | null;
+  disputeRespondedBy?: string | null;
+  disputeRespondedAt?: Date | null;
   resolvedByAdminId?: string | null;
   resolutionNote?: string | null;
   resolvedAt?: Date | null;
@@ -766,12 +770,16 @@ export type EscrowCreationAttributes = Optional<
   | "status"
   | "releaseMode"
   | "autoReleaseAt"
+  | "fulfilledAt"
   | "releasedAt"
   | "refundedAt"
   | "releaseTransactionId"
   | "disputeRaisedBy"
   | "disputeReason"
   | "disputeRaisedAt"
+  | "disputeResponse"
+  | "disputeRespondedBy"
+  | "disputeRespondedAt"
   | "resolvedByAdminId"
   | "resolutionNote"
   | "resolvedAt"
