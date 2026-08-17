@@ -2099,3 +2099,290 @@ export const notifyExternalAccountVerified = async (
     },
   });
 };
+
+/* ---------- Scheduled transfer notifications ---------- */
+
+export const notifyScheduledTransferCreated = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string,
+  scheduledFor: Date,
+  isRecurring: boolean
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_CREATED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      scheduledFor: scheduledFor.toISOString(),
+      title: isRecurring ? "Recurring Transfer Scheduled" : "Transfer Scheduled",
+      message: `${amount} ${currency} will be sent on ${scheduledFor.toLocaleString()}${isRecurring ? ", repeating" : ""}. Funds have been reserved.`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferHeld = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string,
+  scheduledFor: Date
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_HELD,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      scheduledFor: scheduledFor.toISOString(),
+      title: "Funds Reserved",
+      message: `${amount} ${currency} has been reserved for your transfer on ${scheduledFor.toLocaleString()}`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferHoldFailed = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string,
+  reason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_HOLD_FAILED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      reason,
+      title: "Couldn't Reserve Funds Yet",
+      message: `We couldn't reserve ${amount} ${currency} for your upcoming scheduled transfer: ${reason}. We'll keep trying.`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferUpcoming = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string,
+  scheduledFor: Date,
+  receiverName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_UPCOMING,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      scheduledFor: scheduledFor.toISOString(),
+      userName: receiverName,
+      title: "Upcoming Scheduled Transfer",
+      message: `${amount} ${currency} will be sent to ${receiverName} on ${scheduledFor.toLocaleString()}`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+      actions: [
+        {
+          type: "cancel",
+          label: "Cancel",
+          url: `/scheduled-transfers/${scheduledTransferId}/cancel`,
+        },
+      ],
+    },
+  });
+};
+
+export const notifyScheduledTransferExecuted = async (
+  app: Application,
+  recipientId: string,
+  transactionId: string,
+  amount: number,
+  currency: string,
+  receiverName: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_EXECUTED,
+    recipientId,
+    data: {
+      transactionId,
+      amount,
+      currency,
+      userName: receiverName,
+      title: "Scheduled Transfer Sent",
+      message: `Your scheduled transfer of ${amount} ${currency} to ${receiverName} has been sent`,
+      url: `/transactions/${transactionId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferFailed = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string,
+  reason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_FAILED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      reason,
+      title: "Scheduled Transfer Failed",
+      message: `Your scheduled transfer of ${amount} ${currency} could not be completed: ${reason}`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferCancelled = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  amount: number,
+  currency: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_CANCELLED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      amount,
+      currency,
+      title: "Scheduled Transfer Cancelled",
+      message: `Your scheduled transfer of ${amount} ${currency} has been cancelled and reserved funds released`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferPaused = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_PAUSED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      title: "Scheduled Transfer Paused",
+      message: `Your recurring transfer has been paused. No further occurrences will be sent until you resume it.`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledTransferResumed = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_TRANSFER_RESUMED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      title: "Scheduled Transfer Resumed",
+      message: `Your recurring transfer has been resumed`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledSeriesAutoPaused = async (
+  app: Application,
+  recipientId: string,
+  scheduledTransferId: string,
+  reason: string
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_SERIES_AUTO_PAUSED,
+    recipientId,
+    data: {
+      scheduledTransferId,
+      reason,
+      title: "Recurring Transfer Paused",
+      message: `Your recurring transfer was automatically paused after repeated failures: ${reason}. Resume it once you've topped up.`,
+      url: `/scheduled-transfers/${scheduledTransferId}`,
+    },
+  });
+};
+
+export const notifyScheduledBatchCreated = async (
+  app: Application,
+  recipientId: string,
+  batchId: string,
+  successCount: number,
+  failureCount: number,
+  scheduledFor: Date,
+  isRecurring: boolean
+) => {
+  const recipientCount = successCount + failureCount;
+  const message =
+    failureCount > 0
+      ? `Scheduled for ${successCount} of ${recipientCount} people on ${scheduledFor.toLocaleString()}${isRecurring ? ", repeating" : ""}. ${failureCount} could not be scheduled.`
+      : `Scheduled for ${successCount} ${successCount === 1 ? "person" : "people"} on ${scheduledFor.toLocaleString()}${isRecurring ? ", repeating" : ""}. Funds have been reserved.`;
+
+  return createAndSendNotification(app, {
+    type: NotificationType.SCHEDULED_BATCH_CREATED,
+    recipientId,
+    data: {
+      batchId,
+      successCount,
+      failureCount,
+      recipientCount,
+      scheduledFor: scheduledFor.toISOString(),
+      title: failureCount > 0 ? "Scheduled Batch Partially Set Up" : "Scheduled Batch Created",
+      message,
+      url: `/scheduled-transfers/batches/${batchId}`,
+    },
+  });
+};
+
+export const notifyBatchTransferCompleted = async (
+  app: Application,
+  recipientId: string,
+  batchId: string,
+  successCount: number,
+  failureCount: number,
+  totalSent: number,
+  currency: string
+) => {
+  const recipientCount = successCount + failureCount;
+  const message =
+    failureCount > 0
+      ? `Sent ${totalSent} ${currency} to ${successCount} of ${recipientCount} people. ${failureCount} failed.`
+      : `Sent ${totalSent} ${currency} to ${successCount} ${successCount === 1 ? "person" : "people"}`;
+
+  return createAndSendNotification(app, {
+    type: NotificationType.BATCH_TRANSFER_COMPLETED,
+    recipientId,
+    data: {
+      batchId,
+      successCount,
+      failureCount,
+      recipientCount,
+      amount: totalSent,
+      currency,
+      title: failureCount > 0 ? "Batch Transfer Partially Completed" : "Batch Transfer Completed",
+      message,
+      url: `/transfer/batches/${batchId}`,
+    },
+  });
+};

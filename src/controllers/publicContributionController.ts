@@ -8,6 +8,7 @@ import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
 import { GroupMemberRole, GroupMemberStatus, GroupPrivacyType, GroupExpirationType } from "../types/group";
 import { redactAnonymousPayments } from "../utils/paymentPrivacy";
+import { getAvailableBalance } from "../utils/walletBalance";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -324,7 +325,7 @@ export const contribute = async (
         return;
       }
 
-      const payerBalance = parseFloat(payerWallet.balance.toString());
+      const payerBalance = getAvailableBalance(payerWallet);
       if (payerBalance < contributionAmount) {
         await dbTransaction.rollback();
         res.status(400).json({ success: false, message: "Insufficient balance" });

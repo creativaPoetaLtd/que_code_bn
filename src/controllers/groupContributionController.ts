@@ -8,6 +8,7 @@ import { GroupMemberRole, GroupMemberStatus } from "../types/group";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
 import { redactAnonymousPayments } from "../utils/paymentPrivacy";
+import { getAvailableBalance } from "../utils/walletBalance";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -480,7 +481,7 @@ export const contribute = async (
         return;
       }
 
-      const memberBalance = parseFloat(memberWallet.balance.toString());
+      const memberBalance = getAvailableBalance(memberWallet);
       if (memberBalance < contributionAmount) {
         await dbTransaction.rollback();
         res

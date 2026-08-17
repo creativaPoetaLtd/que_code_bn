@@ -638,7 +638,7 @@ export const getSecureDMMessagePage = async (
       {
         model: models.ChatMessageRecipientPayload,
         as: "recipientPayloads",
-        required: true,
+        required: false,
         where: {
           recipientUserId: userId,
           recipientDeviceId: deviceId,
@@ -648,6 +648,16 @@ export const getSecureDMMessagePage = async (
     order: [["createdAt", "DESC"]],
     limit,
     offset: (page - 1) * limit,
+  });
+
+  // Plain (non-E2EE) messages - money/escrow holds, etc. - never get a recipient
+  // payload row, so the left join above leaves them with none; keep those as-is.
+  // Encrypted messages with no payload for this device are ciphertext this device
+  // was never given the key for, so drop them rather than showing an undecryptable stub.
+  result.rows = result.rows.filter((message: any) => {
+    if (!message.isEncrypted) return true;
+    const payload = Array.isArray(message.recipientPayloads) ? message.recipientPayloads[0] : null;
+    return Boolean(payload);
   });
 
   const justDeliveredIds = result.rows
@@ -742,6 +752,10 @@ export const getSecureDMMessagePage = async (
         createdAt: message.createdAt,
         senderId: message.senderId,
         sender: message.sender,
+        isEncrypted: message.isEncrypted,
+        // Plain messages (money/escrow holds, etc.) carry their real content straight
+        // through - there's no per-device envelope to decrypt for these.
+        content: message.isEncrypted ? undefined : message.content,
         encryptedEnvelope: payload?.encryptedEnvelope || null,
       };
     }),

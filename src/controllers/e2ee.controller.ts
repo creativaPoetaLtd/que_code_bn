@@ -349,7 +349,8 @@ export const getSecureChatMessages = async (
         messages: result.rows.map((message: any) => ({
           id: message.id,
           chatId: message.chatId,
-          content: "",
+          content: message.isEncrypted ? "" : message.content,
+          isEncrypted: message.isEncrypted,
           encryptedEnvelope: message.encryptedEnvelope,
           messageType: message.messageType,
           replyToMessageId: message.replyToMessageId,

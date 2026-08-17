@@ -9,6 +9,7 @@ import adminWalletsRouter from "./admin.wallets.routes";
 import adminNotificationsRouter from "./admin.notifications.routes";
 import adminAnalyticsRouter from "./admin.analytics.routes";
 import adminSupportRouter from "./admin.support.routes";
+import adminEscrowDisputesRouter from "./admin.escrowDisputes.routes";
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use("/wallets", adminWalletsRouter);
 router.use("/notifications", adminNotificationsRouter);
 router.use("/analytics", adminAnalyticsRouter);
 router.use("/support", adminSupportRouter);
+router.use("/escrow-disputes", adminEscrowDisputesRouter);
 
 export default router;
