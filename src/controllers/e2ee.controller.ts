@@ -14,6 +14,7 @@ import {
   getSecureDMMessagePage,
   markSecureChatMessagesAsRead,
   sendSecureDMMessage,
+  editSecureDMMessage,
 } from "../services/e2eeMessage.service";
 import { notifyChatMessageReceived } from "../utils/notificationHelpers";
 import { uploadEncryptedChatMedia } from "../services/mediaUploadService";
@@ -300,6 +301,67 @@ export const createOrGetSecureDM = async (
 const resolveSecureDeviceId = (req: AuthenticatedRequest) =>
   req.header("x-qc-device-id")?.trim() || req.body?.senderDeviceId?.trim() || "";
 
+export const editSecureChatMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+    const userId = await ensureAuthenticatedUser(req, models);
+    const { chatId, messageId } = req.params;
+    const deviceId = resolveSecureDeviceId(req);
+    const { recipientPayloads } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "x-qc-device-id is required for secure message editing",
+      });
+    }
+
+    const result = await editSecureDMMessage(models, {
+      chatId,
+      messageId,
+      userId,
+      senderDeviceId: deviceId,
+      recipientPayloads,
+    });
+
+    // The new ciphertext is per-device, so recipients have to re-read the message
+    // rather than being handed the text over the socket.
+    const io = req.app.get("io");
+    if (io) {
+      const participants = await models.ChatParticipant.findAll({
+        where: { chatId },
+        attributes: ["userId"],
+      });
+      for (const participant of participants) {
+        io.to(`user_${participant.userId}`).emit("message_edited", {
+          chatId,
+          messageId,
+          editedAt: result.editedAt,
+          securityMode: "secure_dm_v1",
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Message updated",
+      data: result,
+    });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return next(error);
+  }
+};
+
 export const getSecureChatMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -351,6 +413,8 @@ export const getSecureChatMessages = async (
           chatId: message.chatId,
           content: message.isEncrypted ? "" : message.content,
           isEncrypted: message.isEncrypted,
+          deletedAt: message.deletedAt,
+          deletedBy: message.deletedBy,
           encryptedEnvelope: message.encryptedEnvelope,
           messageType: message.messageType,
           replyToMessageId: message.replyToMessageId,

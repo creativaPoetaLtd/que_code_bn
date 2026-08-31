@@ -371,37 +371,26 @@ const assertValidSecureEnvelope = ({
   }
 };
 
-export const sendSecureDMMessage = async (
+/**
+ * Shared gate for anything that writes per-device ciphertext into a secure chat:
+ * the sender must be a participant on a known device, and every submitted envelope
+ * must target a device that actually belongs to this conversation. Sending and
+ * editing both go through here so the two can never drift apart.
+ */
+const validateSecureRecipientPayloads = async (
   models: any,
   {
     chatId,
     userId,
     senderDeviceId,
-    messageType,
-    replyToMessageId,
     recipientPayloads,
   }: {
     chatId: string;
     userId: string;
     senderDeviceId: string;
-    messageType: SecureMessageType;
-    replyToMessageId?: string | null;
     recipientPayloads: SecureRecipientPayloadInput[];
   },
 ) => {
-  if (!["text", "image", "file", "audio", "video", "document"].includes(messageType)) {
-    throw Object.assign(
-      new Error("Unsupported secure message type"),
-      { statusCode: 400 },
-    );
-  }
-
-  if (!Array.isArray(recipientPayloads) || recipientPayloads.length === 0) {
-    throw Object.assign(new Error("At least one encrypted payload is required"), {
-      statusCode: 400,
-    });
-  }
-
   await assertSecureChatParticipant(models, chatId, userId);
   await assertSecureUserDevice(models, userId, senderDeviceId);
 
@@ -493,6 +482,47 @@ export const sendSecureDMMessage = async (
       { statusCode: 400 },
     );
   }
+
+  return { oneTimePreKeyUsages };
+};
+
+export const sendSecureDMMessage = async (
+  models: any,
+  {
+    chatId,
+    userId,
+    senderDeviceId,
+    messageType,
+    replyToMessageId,
+    recipientPayloads,
+  }: {
+    chatId: string;
+    userId: string;
+    senderDeviceId: string;
+    messageType: SecureMessageType;
+    replyToMessageId?: string | null;
+    recipientPayloads: SecureRecipientPayloadInput[];
+  },
+) => {
+  if (!["text", "image", "file", "audio", "video", "document"].includes(messageType)) {
+    throw Object.assign(
+      new Error("Unsupported secure message type"),
+      { statusCode: 400 },
+    );
+  }
+
+  if (!Array.isArray(recipientPayloads) || recipientPayloads.length === 0) {
+    throw Object.assign(new Error("At least one encrypted payload is required"), {
+      statusCode: 400,
+    });
+  }
+
+  const { oneTimePreKeyUsages } = await validateSecureRecipientPayloads(models, {
+    chatId,
+    userId,
+    senderDeviceId,
+    recipientPayloads,
+  });
 
   if (replyToMessageId) {
     const replyTarget = await models.ChatMessage.findOne({
@@ -601,6 +631,90 @@ export const sendSecureDMMessage = async (
   });
 };
 
+/**
+ * Replace the ciphertext of a secure message you sent.
+ *
+ * There is no "edit" at the crypto layer - the new text is encrypted afresh for every
+ * device in the chat and the old envelopes are dropped, so nobody keeps a readable
+ * copy of what the message used to say.
+ */
+export const editSecureDMMessage = async (
+  models: any,
+  {
+    chatId,
+    messageId,
+    userId,
+    senderDeviceId,
+    recipientPayloads,
+  }: {
+    chatId: string;
+    messageId: string;
+    userId: string;
+    senderDeviceId: string;
+    recipientPayloads: SecureRecipientPayloadInput[];
+  },
+) => {
+  if (!Array.isArray(recipientPayloads) || recipientPayloads.length === 0) {
+    throw Object.assign(new Error("At least one encrypted payload is required"), {
+      statusCode: 400,
+    });
+  }
+
+  const message = await models.ChatMessage.findOne({ where: { id: messageId, chatId } });
+  if (!message) {
+    throw Object.assign(new Error("Message not found"), { statusCode: 404 });
+  }
+  if (message.senderId !== userId) {
+    throw Object.assign(new Error("You can only edit messages you sent"), {
+      statusCode: 403,
+    });
+  }
+  if (message.deletedAt) {
+    throw Object.assign(new Error("This message was deleted"), { statusCode: 409 });
+  }
+  if (message.messageType !== "text") {
+    throw Object.assign(new Error("Only text messages can be edited"), {
+      statusCode: 400,
+    });
+  }
+
+  await validateSecureRecipientPayloads(models, {
+    chatId,
+    userId,
+    senderDeviceId,
+    recipientPayloads,
+  });
+
+  const editedAt = new Date();
+
+  await sequelizeConnection.transaction(async (transaction) => {
+    await models.ChatMessageRecipientPayload.destroy({
+      where: { chatMessageId: messageId },
+      transaction,
+    });
+
+    await models.ChatMessageRecipientPayload.bulkCreate(
+      recipientPayloads.map((payload) => ({
+        chatMessageId: messageId,
+        recipientUserId: payload.recipientUserId,
+        recipientDeviceId: payload.recipientDeviceId,
+        senderDeviceId,
+        encryptedEnvelope: payload.encryptedEnvelope,
+        deliveredAt: payload.recipientUserId === userId ? new Date() : null,
+        readAt: payload.recipientUserId === userId ? new Date() : null,
+      })),
+      { transaction },
+    );
+
+    await models.ChatMessage.update(
+      { editedAt },
+      { where: { id: messageId }, transaction },
+    );
+  });
+
+  return { messageId, chatId, editedAt };
+};
+
 export const getSecureDMMessagePage = async (
   models: any,
   {
@@ -656,6 +770,9 @@ export const getSecureDMMessagePage = async (
   // was never given the key for, so drop them rather than showing an undecryptable stub.
   result.rows = result.rows.filter((message: any) => {
     if (!message.isEncrypted) return true;
+    // A deleted message has had its envelopes destroyed on purpose. It still belongs
+    // in the list as a tombstone, so it must not be mistaken for undecryptable noise.
+    if (message.deletedAt) return true;
     const payload = Array.isArray(message.recipientPayloads) ? message.recipientPayloads[0] : null;
     return Boolean(payload);
   });
@@ -753,6 +870,8 @@ export const getSecureDMMessagePage = async (
         senderId: message.senderId,
         sender: message.sender,
         isEncrypted: message.isEncrypted,
+        deletedAt: message.deletedAt,
+        deletedBy: message.deletedBy,
         // Plain messages (money/escrow holds, etc.) carry their real content straight
         // through - there's no per-device envelope to decrypt for these.
         content: message.isEncrypted ? undefined : message.content,

@@ -42,6 +42,9 @@ import transferBatch_model from "./transferBatch.model";
 import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
+import sharedNote_model from "./sharedNote.model";
+import poll_model from "./poll.model";
+import pollVote_model from "./pollVote.model";
 import groupContribution_model from "./groupContribution.model";
 import groupContributionPayment_model from "./groupContributionPayment.model";
 import publicContribution_model from "./publicContribution.model";
@@ -113,6 +116,13 @@ const Models = (sequelize: Sequelize) => {
   const ScheduledTransferBatch = scheduledTransferBatch_model(sequelize);
 
   // Group Contribution models
+  // Shared note model
+  const SharedNote = sharedNote_model(sequelize);
+
+  // Poll models
+  const Poll = poll_model(sequelize);
+  const PollVote = pollVote_model(sequelize);
+
   const GroupContribution = groupContribution_model(sequelize);
   const GroupContributionPayment = groupContributionPayment_model(sequelize);
 
@@ -648,6 +658,30 @@ const Models = (sequelize: Sequelize) => {
     as: "transaction",
   });
 
+  // Shared note associations
+  Chat.hasMany(SharedNote, { foreignKey: "chatId", as: "sharedNotes" });
+  SharedNote.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
+
+  User.hasMany(SharedNote, { foreignKey: "createdBy", as: "createdSharedNotes" });
+  SharedNote.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+  SharedNote.belongsTo(User, { foreignKey: "lastEditedBy", as: "lastEditor" });
+
+  // Poll associations
+  Chat.hasMany(Poll, { foreignKey: "chatId", as: "polls" });
+  Poll.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
+
+  Group.hasMany(Poll, { foreignKey: "groupId", as: "polls" });
+  Poll.belongsTo(Group, { foreignKey: "groupId", as: "group" });
+
+  User.hasMany(Poll, { foreignKey: "createdBy", as: "createdPolls" });
+  Poll.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+
+  Poll.hasMany(PollVote, { foreignKey: "pollId", as: "votes" });
+  PollVote.belongsTo(Poll, { foreignKey: "pollId", as: "poll" });
+
+  User.hasMany(PollVote, { foreignKey: "userId", as: "pollVotes" });
+  PollVote.belongsTo(User, { foreignKey: "userId", as: "voter" });
+
   // Public Contribution associations
   User.hasMany(PublicContribution, { foreignKey: "createdBy", as: "publicContributions" });
   PublicContribution.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
@@ -718,6 +752,9 @@ const Models = (sequelize: Sequelize) => {
     ScheduledTransferBatch,
     OutsideMessage,
     GalleryItem,
+    SharedNote,
+    Poll,
+    PollVote,
     GroupContribution,
     GroupContributionPayment,
     PublicContribution,

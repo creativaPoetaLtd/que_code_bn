@@ -146,6 +146,13 @@ actionRouter.post(
   actionPurchaseController.transferActionPurchase
 );
 
+// Share an action into a conversation as a card (no ownership changes)
+actionRouter.post(
+  "/actions/:actionId/share-to-chat",
+  authenticate as RequestHandler,
+  actionPurchaseController.shareActionToChat
+);
+
 // QR Object Validation
 actionRouter.get(
   "/qr-objects/:qrObjectId/validate",

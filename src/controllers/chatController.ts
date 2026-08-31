@@ -153,6 +153,45 @@ export const getUserChats = async (
       return acc;
     }, {} as Record<string, number>);
 
+    // Which DM partners have a visible gallery. Resolved once for the whole list -
+    // the alternative, a lookup per avatar, would be a query per conversation.
+    const dmPartnerIds = Array.from(
+      new Set(
+        finalChats
+          .map((chatParticipant) => {
+            const chatData = chatParticipant.get("chat") as any;
+            const chat = chatData?.dataValues || chatData;
+            if (!chat || chat.isGroup || chat.type === "support") return null;
+            const other = (chat.participants || []).find((p: any) => p.userId !== userId);
+            return other?.userId || null;
+          })
+          .filter(Boolean) as string[]
+      )
+    );
+
+    const galleryUserIds = new Set<string>();
+    if (dmPartnerIds.length > 0) {
+      const [galleryOwners, hiddenProfiles] = await Promise.all([
+        models.GalleryItem.findAll({
+          where: { userId: { [Op.in]: dmPartnerIds } },
+          attributes: ["userId"],
+          group: ["userId"],
+        }),
+        // A gallery the person chose not to show on their profile stays private -
+        // the ring must not give away that it exists.
+        models.Profile.findAll({
+          where: { userId: { [Op.in]: dmPartnerIds }, showGalleryOnWelcome: false },
+          attributes: ["userId"],
+        }),
+      ]);
+
+      const hiddenIds = new Set(hiddenProfiles.map((profile: any) => profile.userId));
+      for (const owner of galleryOwners) {
+        const ownerId = (owner as any).userId;
+        if (ownerId && !hiddenIds.has(ownerId)) galleryUserIds.add(ownerId);
+      }
+    }
+
     // Format the response
     const formattedChats = finalChats.map(chatParticipant => {
       const chatData = chatParticipant.get("chat") as any;
@@ -166,6 +205,7 @@ export const getUserChats = async (
       let chatAvatar = null;
       let isOnline = false;
       let memberCount = participants.length;
+      let hasGallery = false;
 
       if (chat.type === 'support') {
         // Support chats always display as "Support" regardless of participants
@@ -178,6 +218,7 @@ export const getUserChats = async (
           chatName = `${firstName} ${lastName}`.trim() || 'Unknown User';
           chatAvatar = otherParticipant.user.profile?.profileImage;
           isOnline = otherParticipant.user.isOnline;
+          hasGallery = galleryUserIds.has(otherParticipant.userId);
         }
       } else {
         // For groups, get group name from the associated group
@@ -213,6 +254,8 @@ export const getUserChats = async (
         } : null,
         unreadCount,
         isOnline,
+        // Drives the gold ring on the avatar: this person has photos worth opening
+        hasGallery,
         memberCount: chat.isGroup ? memberCount : undefined,
         participants: participants.map((p: any) => ({
           userId: p.userId,
@@ -954,6 +997,443 @@ export const createGroupChat = async (
 };
 
 // Delete chat
+/**
+ * Who may pin in this conversation. A DM is between equals, so either person can
+ * pin; a group's pinned bar is shared furniture, so it belongs to its admins.
+ */
+const canPinInChat = async (
+  models: ReturnType<typeof Models>,
+  chat: any,
+  userId: string
+): Promise<boolean> => {
+  if (!chat?.isGroup) return true;
+  if (!chat.groupId) return false;
+  const membership = await models.GroupMember.findOne({
+    where: {
+      groupId: chat.groupId,
+      userId,
+      role: { [Op.in]: ["owner", "admin"] },
+      status: "active",
+    },
+  });
+  return Boolean(membership);
+};
+
+const loadPinnableMessage = async (
+  models: ReturnType<typeof Models>,
+  chatId: string,
+  messageId: string,
+  userId: string
+) => {
+  const participant = await models.ChatParticipant.findOne({
+    where: { chatId, userId },
+  });
+  if (!participant) {
+    throw Object.assign(new Error("You are not a participant in this chat"), {
+      statusCode: 403,
+    });
+  }
+
+  const message = await models.ChatMessage.findOne({ where: { id: messageId, chatId } });
+  if (!message) {
+    throw Object.assign(new Error("Message not found"), { statusCode: 404 });
+  }
+
+  const chat = await models.Chat.findByPk(chatId, {
+    attributes: ["id", "isGroup", "groupId"],
+  });
+  if (!(await canPinInChat(models, chat, userId))) {
+    throw Object.assign(new Error("Only group admins can pin in this chat"), {
+      statusCode: 403,
+    });
+  }
+
+  return message;
+};
+
+const emitPinEvent = async (
+  req: AuthenticatedRequest,
+  event: "message_pinned" | "message_unpinned",
+  payload: Record<string, any>
+) => {
+  const models = req.app.get("models") as ReturnType<typeof Models>;
+  const io = req.app.get("io");
+  if (!io) return;
+  const participants = await models.ChatParticipant.findAll({
+    where: { chatId: payload.chatId },
+    attributes: ["userId"],
+  });
+  for (const participant of participants) {
+    io.to(`user_${(participant as any).userId}`).emit(event, payload);
+  }
+};
+
+/** Pin anything in the conversation - a message, a card, a photo. */
+export const pinMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId, messageId } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const message = await loadPinnableMessage(models, chatId, messageId, userId);
+    if ((message as any).deletedAt) {
+      res.status(409).json({ success: false, message: "This message was deleted" });
+      return;
+    }
+
+    const pinnedAt = (message as any).pinnedAt || new Date();
+    if (!(message as any).pinnedAt) {
+      await models.ChatMessage.update(
+        { pinnedAt, pinnedBy: userId } as any,
+        { where: { id: messageId } }
+      );
+    }
+
+    const pinnedByUser = await models.User.findByPk(userId, {
+      attributes: ["id", "firstName", "lastName"],
+    });
+    const payload = {
+      chatId,
+      messageId,
+      pinnedAt,
+      pinnedBy: userId,
+      pinnedByName:
+        `${(pinnedByUser as any)?.firstName || ""} ${(pinnedByUser as any)?.lastName || ""}`.trim() ||
+        "Someone",
+    };
+
+    await emitPinEvent(req, "message_pinned", payload);
+    res.status(200).json({ success: true, message: "Message pinned", data: payload });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    next(error);
+  }
+};
+
+export const unpinMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId, messageId } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    await loadPinnableMessage(models, chatId, messageId, userId);
+    await models.ChatMessage.update(
+      { pinnedAt: null, pinnedBy: null } as any,
+      { where: { id: messageId } }
+    );
+
+    const payload = { chatId, messageId };
+    await emitPinEvent(req, "message_unpinned", payload);
+    res.status(200).json({ success: true, message: "Message unpinned", data: payload });
+  } catch (error: any) {
+    if (error?.statusCode) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    next(error);
+  }
+};
+
+/**
+ * The pins in a conversation, newest first.
+ *
+ * Encrypted text never leaves as ciphertext: a secure message reports only who sent
+ * it and when, and the client renders the preview from its own decrypted copy.
+ */
+export const getPinnedMessages = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const participant = await models.ChatParticipant.findOne({
+      where: { chatId, userId },
+    });
+    if (!participant) {
+      res.status(403).json({
+        success: false,
+        message: "You are not a participant in this chat",
+      });
+      return;
+    }
+
+    const pinned = await models.ChatMessage.findAll({
+      where: { chatId, pinnedAt: { [Op.ne]: null }, deletedAt: null },
+      include: [
+        {
+          model: models.User,
+          as: "sender",
+          attributes: ["id", "firstName", "lastName"],
+        },
+      ],
+      order: [["pinnedAt", "DESC"]],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: pinned.map((message: any) => ({
+        messageId: message.id,
+        chatId: message.chatId,
+        messageType: message.messageType,
+        // Ciphertext stays on the server; the client already holds the plaintext
+        content: message.isEncrypted ? null : message.content,
+        isEncrypted: message.isEncrypted,
+        createdAt: message.createdAt,
+        pinnedAt: message.pinnedAt,
+        pinnedBy: message.pinnedBy,
+        senderId: message.senderId,
+        senderName: message.sender
+          ? `${message.sender.firstName || ""} ${message.sender.lastName || ""}`.trim() ||
+            "Unknown"
+          : "Unknown",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Edit the text of a message you sent.
+ *
+ * Plain conversations only: in a secure chat the text lives as per-device ciphertext,
+ * so an edit has to be re-encrypted by the sending device and goes through
+ * PATCH /e2ee/chats/:chatId/messages/:messageId instead.
+ */
+export const editMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId, messageId } = req.params;
+    const { content } = req.body;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const trimmed = String(content ?? "").trim();
+    if (!trimmed) {
+      res.status(400).json({ success: false, message: "A message cannot be empty" });
+      return;
+    }
+
+    const chat = await models.Chat.findByPk(chatId, {
+      attributes: ["id", "securityMode"],
+    });
+    if ((chat as any)?.securityMode === "secure_dm_v1") {
+      res.status(400).json({
+        success: false,
+        message: "Secure messages must be edited through the secure endpoint",
+      });
+      return;
+    }
+
+    const message = await models.ChatMessage.findOne({
+      where: { id: messageId, chatId },
+    });
+    if (!message) {
+      res.status(404).json({ success: false, message: "Message not found" });
+      return;
+    }
+    if ((message as any).senderId !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "You can only edit messages you sent",
+      });
+      return;
+    }
+    if ((message as any).deletedAt) {
+      res.status(409).json({ success: false, message: "This message was deleted" });
+      return;
+    }
+    if ((message as any).messageType !== "text") {
+      res.status(400).json({
+        success: false,
+        message: "Only text messages can be edited",
+      });
+      return;
+    }
+
+    const editedAt = new Date();
+    await models.ChatMessage.update(
+      { content: trimmed, editedAt } as any,
+      { where: { id: messageId } }
+    );
+
+    const io = req.app.get("io");
+    if (io) {
+      const participants = await models.ChatParticipant.findAll({
+        where: { chatId },
+        attributes: ["userId"],
+      });
+      for (const participant of participants) {
+        io.to(`user_${(participant as any).userId}`).emit("message_edited", {
+          chatId,
+          messageId,
+          content: trimmed,
+          editedAt,
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Message updated",
+      data: { chatId, messageId, content: trimmed, editedAt },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete a message you sent, for everyone.
+ *
+ * The row stays as a tombstone so the conversation keeps its shape and both sides
+ * see the same thing - but everything that carried the content goes: the text, the
+ * media fields, the mentions, and (for secure chats) the per-device ciphertext
+ * envelopes, which would otherwise still hold the readable message.
+ */
+export const deleteMessage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const { chatId, messageId } = req.params;
+    const models = req.app.get("models") as ReturnType<typeof Models>;
+
+    const message = await models.ChatMessage.findOne({
+      where: { id: messageId, chatId },
+    });
+    if (!message) {
+      res.status(404).json({ success: false, message: "Message not found" });
+      return;
+    }
+    if ((message as any).senderId !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "You can only delete messages you sent",
+      });
+      return;
+    }
+
+    // Deleting twice is not an error - report the existing tombstone
+    const [ownedNote, ownedPoll] = await Promise.all([
+      models.SharedNote.findOne({ where: { messageId } }),
+      models.Poll.findOne({ where: { messageId } }),
+    ]);
+
+    if (!(message as any).deletedAt) {
+      const deletedAt = new Date();
+
+      await sequelizeConnection.transaction(async (transaction) => {
+        await models.ChatMessage.update(
+          {
+            content: "",
+            mediaUrl: null,
+            mediaType: null,
+            thumbnailUrl: null,
+            fileName: null,
+            mimeType: null,
+            fileSize: null,
+            duration: null,
+            mentions: null,
+            deletedAt,
+            deletedBy: userId,
+          } as any,
+          { where: { id: messageId }, transaction }
+        );
+
+        // Secure chats keep the ciphertext per recipient device - drop those too,
+        // otherwise the message is still readable by anyone holding a key.
+        await models.ChatMessageRecipientPayload.destroy({
+          where: { chatMessageId: messageId },
+          transaction,
+        });
+
+        // Some cards own a resource that outlives the message: a shared note stays
+        // in the pinned bar, a poll stays live with nothing left linking to it.
+        // Deleting the card takes its resource with it rather than orphaning it.
+        if (ownedNote) {
+          await models.SharedNote.destroy({
+            where: { id: (ownedNote as any).id },
+            transaction,
+          });
+        }
+        if (ownedPoll) {
+          await models.PollVote.destroy({
+            where: { pollId: (ownedPoll as any).id },
+            transaction,
+          });
+          await models.Poll.destroy({
+            where: { id: (ownedPoll as any).id },
+            transaction,
+          });
+        }
+      });
+
+      (message as any).deletedAt = deletedAt;
+    }
+
+    const io = req.app.get("io");
+    if (io) {
+      const participants = await models.ChatParticipant.findAll({
+        where: { chatId },
+        attributes: ["userId"],
+      });
+      for (const participant of participants) {
+        const room = `user_${(participant as any).userId}`;
+        io.to(room).emit("message_deleted", {
+          chatId,
+          messageId,
+          deletedAt: (message as any).deletedAt,
+          deletedBy: userId,
+        });
+        // Pinned bars, note panels and open editors need to let go of the resource
+        if (ownedNote) {
+          io.to(room).emit("shared_note_deleted", {
+            chatId,
+            noteId: (ownedNote as any).id,
+          });
+        }
+        if (ownedPoll) {
+          io.to(room).emit("poll_deleted", { chatId, pollId: (ownedPoll as any).id });
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Message deleted",
+      data: {
+        chatId,
+        messageId,
+        deletedAt: (message as any).deletedAt,
+        deletedBy: userId,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteChat = async (
   req: AuthenticatedRequest,
   res: Response,
