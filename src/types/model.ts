@@ -1298,6 +1298,44 @@ export type SharedNoteCreationAttributes = Optional<
   | "updatedAt"
 >;
 
+/** One freehand stroke on a whiteboard - drawn in a fixed 800x500 logical space
+ *  so it renders identically regardless of the drawer's screen size. */
+export interface WhiteboardStroke {
+  id: string;
+  authorId: string;
+  points: number[];
+  color: string;
+  width: number;
+  erase?: boolean;
+}
+
+export interface WhiteboardAttributes {
+  id: string;
+  chatId: string;
+  groupId?: string | null;
+  createdBy: string;
+  strokes: WhiteboardStroke[];
+  version: number;
+  lastEditedBy?: string | null;
+  lastEditedAt?: Date | null;
+  messageId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type WhiteboardCreationAttributes = Optional<
+  WhiteboardAttributes,
+  | "id"
+  | "groupId"
+  | "strokes"
+  | "version"
+  | "lastEditedBy"
+  | "lastEditedAt"
+  | "messageId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
 export interface PollOption {
   id: string;
   text: string;

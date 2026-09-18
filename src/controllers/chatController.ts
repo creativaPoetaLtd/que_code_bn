@@ -1335,9 +1335,10 @@ export const deleteMessage = async (
     }
 
     // Deleting twice is not an error - report the existing tombstone
-    const [ownedNote, ownedPoll] = await Promise.all([
+    const [ownedNote, ownedPoll, ownedWhiteboard] = await Promise.all([
       models.SharedNote.findOne({ where: { messageId } }),
       models.Poll.findOne({ where: { messageId } }),
+      models.Whiteboard.findOne({ where: { messageId } }),
     ]);
 
     if (!(message as any).deletedAt) {
@@ -1387,6 +1388,12 @@ export const deleteMessage = async (
             transaction,
           });
         }
+        if (ownedWhiteboard) {
+          await models.Whiteboard.destroy({
+            where: { id: (ownedWhiteboard as any).id },
+            transaction,
+          });
+        }
       });
 
       (message as any).deletedAt = deletedAt;
@@ -1415,6 +1422,12 @@ export const deleteMessage = async (
         }
         if (ownedPoll) {
           io.to(room).emit("poll_deleted", { chatId, pollId: (ownedPoll as any).id });
+        }
+        if (ownedWhiteboard) {
+          io.to(room).emit("whiteboard_deleted", {
+            chatId,
+            whiteboardId: (ownedWhiteboard as any).id,
+          });
         }
       }
     }

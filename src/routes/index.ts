@@ -21,6 +21,7 @@ import chatRouter from "./chat.routes";
 import actionRouter from "./action.routes";
 import pollRouter from "./poll.routes";
 import sharedNoteRouter from "./sharedNote.routes";
+import whiteboardRouter from "./whiteboard.routes";
 import roleRouter from "./role.routes";
 import permissionRouter from "./permission.routes";
 import adminDashboardRouter from "./admin.dashboard.routes";
@@ -78,6 +79,7 @@ router.use("/fcm", fcmRouter);
   router.use("", actionRouter);
   router.use("", pollRouter); // /chats/:chatId/polls and /polls/:pollId
   router.use("", sharedNoteRouter); // /chats/:chatId/notes and /notes/:noteId
+  router.use("", whiteboardRouter); // /chats/:chatId/whiteboards and /whiteboards/:whiteboardId
 
 // Role and Permission management (admin-only with middleware)
 router.use("/roles", roleRouter);

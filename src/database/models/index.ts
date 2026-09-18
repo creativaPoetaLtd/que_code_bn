@@ -43,6 +43,7 @@ import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
 import outsideMessage_model from "./outsideMessage.model";
 import sharedNote_model from "./sharedNote.model";
+import whiteboard_model from "./whiteboard.model";
 import poll_model from "./poll.model";
 import pollVote_model from "./pollVote.model";
 import groupContribution_model from "./groupContribution.model";
@@ -118,6 +119,7 @@ const Models = (sequelize: Sequelize) => {
   // Group Contribution models
   // Shared note model
   const SharedNote = sharedNote_model(sequelize);
+  const Whiteboard = whiteboard_model(sequelize);
 
   // Poll models
   const Poll = poll_model(sequelize);
@@ -666,6 +668,14 @@ const Models = (sequelize: Sequelize) => {
   SharedNote.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
   SharedNote.belongsTo(User, { foreignKey: "lastEditedBy", as: "lastEditor" });
 
+  // Whiteboard associations
+  Chat.hasMany(Whiteboard, { foreignKey: "chatId", as: "whiteboards" });
+  Whiteboard.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
+
+  User.hasMany(Whiteboard, { foreignKey: "createdBy", as: "createdWhiteboards" });
+  Whiteboard.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+  Whiteboard.belongsTo(User, { foreignKey: "lastEditedBy", as: "lastEditor" });
+
   // Poll associations
   Chat.hasMany(Poll, { foreignKey: "chatId", as: "polls" });
   Poll.belongsTo(Chat, { foreignKey: "chatId", as: "chat" });
@@ -753,6 +763,7 @@ const Models = (sequelize: Sequelize) => {
     OutsideMessage,
     GalleryItem,
     SharedNote,
+    Whiteboard,
     Poll,
     PollVote,
     GroupContribution,

@@ -1190,6 +1190,15 @@ const leaveGroup = async (req: AuthenticatedRequest, res: Response, next: NextFu
             respondedAt: new Date()
         });
 
+        // GroupMember tracks who's in the group, but chat read/send permissions
+        // are actually gated on ChatParticipant, which nothing else prunes on its
+        // own - without this, someone who left keeps full access to the group chat.
+        const groupChat = await models.Chat.findOne({ where: { groupId, isGroup: true } });
+        if (groupChat) {
+            await models.ChatParticipant.destroy({ where: { chatId: groupChat.id, userId } });
+            await models.ChatKey.destroy({ where: { chatId: groupChat.id, userId } });
+        }
+
         // Decrease group member count
         await models.Group.decrement('memberCount', { where: { id: groupId } });
         const members = await models.GroupMember.findAll({
@@ -1283,6 +1292,19 @@ const removeMember = async (req: AuthenticatedRequest, res: Response, next: Next
             status: GroupMemberStatus.REMOVED,
             respondedAt: new Date()
         });
+
+        // GroupMember tracks who's in the group, but chat read/send permissions
+        // are actually gated on ChatParticipant, which nothing else prunes on its
+        // own - without this, a removed member keeps full access to the group chat.
+        const removedFromChat = await models.Chat.findOne({ where: { groupId, isGroup: true } });
+        if (removedFromChat) {
+            await models.ChatParticipant.destroy({
+                where: { chatId: removedFromChat.id, userId: memberToRemove.userId },
+            });
+            await models.ChatKey.destroy({
+                where: { chatId: removedFromChat.id, userId: memberToRemove.userId },
+            });
+        }
 
         // Decrease group member count
         await models.Group.decrement('memberCount', { where: { id: groupId } });
