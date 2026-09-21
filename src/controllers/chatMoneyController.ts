@@ -106,12 +106,13 @@ export const sendMoneyInChat = async (
         let recipientUser: any;
         let recipientWallet: any;
         let isGroupFundraising = false;
+        let isSharedWalletDeposit = false;
         let groupDetails: any;
 
-        // Handle group chats with fundraising
+        // Handle group chats with fundraising or a shared wallet
         if (chat.isGroup) {
             const group = (chat as any).group;
-            
+
             if (!group) {
                 await dbTransaction.rollback();
                 res.status(404).json({
@@ -121,12 +122,12 @@ export const sendMoneyInChat = async (
                 return;
             }
 
-            // Check if group has fundraising enabled
-            if (!group.hasFundraising) {
+            // Check if group accepts incoming money at all
+            if (!group.hasFundraising && !group.sharedWalletId) {
                 await dbTransaction.rollback();
                 res.status(400).json({
                     success: false,
-                    message: "This group does not accept donations. Money can only be sent to fundraising groups."
+                    message: "This group does not accept money. Money can only be sent to fundraising groups or shared wallets."
                 });
                 return;
             }
@@ -150,7 +151,8 @@ export const sendMoneyInChat = async (
                 return;
             }
 
-            isGroupFundraising = true;
+            isGroupFundraising = !!group.hasFundraising;
+            isSharedWalletDeposit = !isGroupFundraising && !!group.sharedWalletId;
             groupDetails = group;
             recipientWallet = group.wallet;
         } else {
@@ -170,6 +172,11 @@ export const sendMoneyInChat = async (
             recipientId = recipientParticipant.userId;
             recipientUser = recipientParticipant.get('user') as any;
         }
+
+        // True whenever the recipient is a group (fundraising or shared wallet) rather
+        // than a DM participant - used wherever the code needs "group name" instead of
+        // "recipientUser's name", regardless of which kind of group wallet it is.
+        const isGroupRecipient = isGroupFundraising || isSharedWalletDeposit;
 
         // Get authenticated user for PIN verification
         const authenticatedUser = await models.User.findByPk(userId, {
@@ -275,7 +282,7 @@ export const sendMoneyInChat = async (
         }
 
         // Get or verify receiver wallet based on chat type
-        if (!isGroupFundraising) {
+        if (!isGroupRecipient) {
             recipientWallet = await models.Wallet.findOne({
                 where: { userId: recipientId, isActive: true },
                 lock: dbTransaction.LOCK.UPDATE,
@@ -339,9 +346,11 @@ export const sendMoneyInChat = async (
 
         // Determine transaction type and description
         const transactionType = isGroupFundraising ? 'donation' : 'transfer';
-        const description = note || (isGroupFundraising 
-            ? `Donation to ${groupDetails.name}` 
-            : `Money sent via chat`);
+        const description = note || (isGroupFundraising
+            ? `Donation to ${groupDetails.name}`
+            : isSharedWalletDeposit
+                ? `Deposit to ${groupDetails.name}`
+                : `Money sent via chat`);
 
         // Create transaction record
         const transactionRecord = await models.Transaction.create({
@@ -394,8 +403,8 @@ export const sendMoneyInChat = async (
         try {
             console.log('Starting PDF receipt generation...');
 
-            const recipientName = isGroupFundraising 
-                ? groupDetails.name 
+            const recipientName = isGroupRecipient
+                ? groupDetails.name
                 : `${recipientUser.firstName} ${recipientUser.lastName}`;
 
             const newBalance = parseFloat(recipientWallet.balance.toString());
@@ -416,8 +425,8 @@ export const sendMoneyInChat = async (
                 status: 'completed',
                 note: note,
                 isGroupDonation: isGroupFundraising,
-                groupName: isGroupFundraising ? groupDetails.name : undefined,
-                fundraisingTarget: isGroupFundraising && groupDetails.fundraisingTarget 
+                groupName: isGroupRecipient ? groupDetails.name : undefined,
+                fundraisingTarget: isGroupFundraising && groupDetails.fundraisingTarget
                     ? parseFloat(groupDetails.fundraisingTarget.toString()) 
                     : undefined,
                 currentProgress: isGroupFundraising ? newBalance : undefined
@@ -459,18 +468,18 @@ export const sendMoneyInChat = async (
         console.log('Preparing message content...');
 
         // Create well-structured message content
-        const recipientName = isGroupFundraising 
-            ? groupDetails.name 
+        const recipientName = isGroupRecipient
+            ? groupDetails.name
             : `${recipientUser.firstName} ${recipientUser.lastName}`;
 
         const messageContent = JSON.stringify({
-            type: isGroupFundraising ? 'group_donation' : 'money_transfer',
+            type: isGroupFundraising ? 'group_donation' : isSharedWalletDeposit ? 'shared_wallet_deposit' : 'money_transfer',
             amount: transferAmount,
             currency: 'RWF',
             senderName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
             recipientName: recipientName,
-            groupId: isGroupFundraising ? groupDetails.id : undefined,
-            groupName: isGroupFundraising ? groupDetails.name : undefined,
+            groupId: isGroupRecipient ? groupDetails.id : undefined,
+            groupName: isGroupRecipient ? groupDetails.name : undefined,
             note: note || '',
             transactionId: transactionRecord.id,
             referenceId: transactionRecord.referenceId,
@@ -532,14 +541,18 @@ export const sendMoneyInChat = async (
                 io.to(`user_${p.userId}`).emit('new_message', broadcastMessage);
 
                 // Send notification to recipient (for DMs) or all group members (for groups)
-                if (isGroupFundraising || p.userId === recipientId) {
-                    const notificationEvent = isGroupFundraising ? 'group_donation_received' : 'money_received';
+                if (isGroupRecipient || p.userId === recipientId) {
+                    const notificationEvent = isGroupFundraising
+                        ? 'group_donation_received'
+                        : isSharedWalletDeposit
+                            ? 'shared_wallet_deposit_received'
+                            : 'money_received';
                     io.to(`user_${p.userId}`).emit(notificationEvent, {
                         amount: transferAmount,
                         currency: 'RWF',
                         from: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
-                        groupId: isGroupFundraising ? groupDetails.id : undefined,
-                        groupName: isGroupFundraising ? groupDetails.name : undefined,
+                        groupId: isGroupRecipient ? groupDetails.id : undefined,
+                        groupName: isGroupRecipient ? groupDetails.name : undefined,
                         transactionId: transactionRecord.id,
                         referenceId: transactionRecord.referenceId,
                         receiptUrl: receiptUrl || '',
@@ -565,15 +578,27 @@ export const sendMoneyInChat = async (
                     donationAmount: transferAmount
                 });
             }
+
+            // Emit balance update for shared wallet deposits, so the chat header badge
+            // (SharedWalletBalanceBadge) refreshes live instead of only on next load.
+            if (isSharedWalletDeposit) {
+                const newBalance = parseFloat(recipientWallet.balance.toString());
+                io.to(`group:${groupDetails.id}`).emit('shared_wallet_balance_update', {
+                    groupId: groupDetails.id,
+                    balance: newBalance
+                });
+            }
         }
 
-        const recipientDisplayName = isGroupFundraising 
-            ? groupDetails.name 
+        const recipientDisplayName = isGroupRecipient
+            ? groupDetails.name
             : `${recipientUser.firstName} ${recipientUser.lastName}`;
 
         const successMessage = isGroupFundraising
             ? `Successfully donated RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`
-            : `Successfully sent RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`;
+            : isSharedWalletDeposit
+                ? `Successfully added RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`
+                : `Successfully sent RWF ${transferAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} to ${recipientDisplayName}`;
 
         res.status(201).json({
             success: true,
@@ -589,7 +614,7 @@ export const sendMoneyInChat = async (
                     type: transactionType,
                     recipientName: recipientDisplayName,
                     isGroupDonation: isGroupFundraising,
-                    groupId: isGroupFundraising ? groupDetails.id : undefined,
+                    groupId: isGroupRecipient ? groupDetails.id : undefined,
                     status: 'completed',
                     timestamp: new Date().toISOString()
                 },

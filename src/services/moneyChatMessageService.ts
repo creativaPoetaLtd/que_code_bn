@@ -80,3 +80,44 @@ export const updateScheduledTransferMessage = async (
     chatId: message.chatId,
   });
 };
+
+/**
+ * Patches an already-posted shared_wallet_withdrawal_request message's content in place
+ * (vote tally, and status once it resolves) and broadcasts the update, same live-update
+ * pattern as updateScheduledTransferMessage above.
+ */
+export const updateSharedWalletWithdrawalMessage = async (
+  io: any,
+  models: any,
+  chatMessageId: string,
+  updates: { status: string; approveCount: number; declineCount: number; transactionId?: string | null }
+): Promise<void> => {
+  const message = await models.ChatMessage.findByPk(chatMessageId);
+  if (!message) return;
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(message.content);
+  } catch {
+    return;
+  }
+  if (parsed?.type !== "shared_wallet_withdrawal_request") return;
+
+  const updatedContent = {
+    ...parsed,
+    status: updates.status,
+    approveCount: updates.approveCount,
+    declineCount: updates.declineCount,
+    transactionId: updates.transactionId ?? parsed.transactionId,
+  };
+  await message.update({ content: JSON.stringify(updatedContent) });
+
+  await broadcastToChatParticipants(io, models, message.chatId, "shared_wallet_withdrawal_updated", {
+    withdrawalId: parsed.withdrawalId,
+    status: updates.status,
+    approveCount: updates.approveCount,
+    declineCount: updates.declineCount,
+    transactionId: updates.transactionId ?? parsed.transactionId ?? null,
+    chatId: message.chatId,
+  });
+};

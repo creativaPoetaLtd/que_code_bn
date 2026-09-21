@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import database_models from "../database/config/db.config";
 import cloudinary from "../helpers/cloudinary";
 import { WalletItemCreationAttributes } from "../types/model";
+import { getAvailableBalance } from "../utils/walletBalance";
 
 const {
   Wallet,
@@ -159,6 +160,11 @@ const getWalletSummary = async (req: Request, res: Response): Promise<void> => {
       (sum: number, r: any) => sum + num(r.amount),
       0
     );
+    // Funds reserved by pending scheduled transfers/escrow holds - not spendable,
+    // same as the Home page's balance already accounts for (getWalletBalance in
+    // transactionController.ts). This endpoint previously ignored heldBalance entirely,
+    // so "Available" here could show more than what a transfer would actually allow.
+    const heldAmount = num(wallet.balance) - getAvailableBalance(wallet);
 
     // Purchased actions / tickets (canonical records live in ActionPurchases).
     // Users own purchases via buyerId; organizations via organizationId.
@@ -205,6 +211,7 @@ const getWalletSummary = async (req: Request, res: Response): Promise<void> => {
         wallet: {
           id: wallet.id,
           balance: totalBalance,
+          heldBalance: heldAmount,
           currency: wallet.currency,
           isActive: wallet.isActive,
           entityType,
@@ -213,7 +220,10 @@ const getWalletSummary = async (req: Request, res: Response): Promise<void> => {
         balanceBreakdown: {
           total: totalBalance,
           restricted: totalRestrictedAmount,
-          available: totalBalance - totalRestrictedAmount,
+          held: heldAmount,
+          // Not clamped to 0 - matches the pre-existing "restricted > total" behavior,
+          // which relies on `available` going negative to drive the overBudget alert.
+          available: totalBalance - totalRestrictedAmount - heldAmount,
         },
         restrictions: restrictions.map((r: any) => ({
           id: r.id,

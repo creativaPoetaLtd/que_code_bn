@@ -49,6 +49,7 @@ export interface GroupModelAttributes {
     hasFundraising: boolean;
     fundraisingTarget?: number;
     fundraisingCurrentAmount: number;
+    sharedWalletId?: string;
     expirationDate?: Date;
     expirationType: GroupExpirationType;
     hasAdditionalInfo: boolean;
@@ -76,6 +77,7 @@ export interface GroupCreationAttributes {
     hasFundraising?: boolean;
     fundraisingTarget?: number;
     fundraisingCurrentAmount?: CreationOptional<number>;
+    sharedWalletId?: string;
     expirationDate?: Date;
     expirationType?: GroupExpirationType;
     hasAdditionalInfo?: boolean;
@@ -139,6 +141,9 @@ export interface CreateGroupRequest {
     adminId?: string; // Admin selected from contacts
     hasFundraising?: boolean;
     fundraisingTarget?: number;
+    hasSharedWallet?: boolean;
+    withdrawalPolicy?: 'free' | 'approval';
+    pin?: string; // Required to confirm creation when hasSharedWallet is true
     expirationDate?: Date;
     expirationType?: GroupExpirationType;
     hasAdditionalInfo?: boolean;
