@@ -55,6 +55,7 @@ class ScheduledTransfer extends Model<
   public lastFailureReason?: string | null;
   public pinVerifiedAt?: Date | null;
   public scheduledBatchId?: string | null;
+  public chatMessageId?: string | null;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
@@ -111,6 +112,7 @@ const scheduledTransfer_model = (sequelize: Sequelize) => {
       lastFailureReason: DataTypes.STRING,
       pinVerifiedAt: { type: DataTypes.DATE, allowNull: true },
       scheduledBatchId: { type: DataTypes.UUID, allowNull: true },
+      chatMessageId: { type: DataTypes.UUID, allowNull: true },
     },
     { sequelize, tableName: "ScheduledTransfers" }
   );

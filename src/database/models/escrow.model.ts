@@ -18,7 +18,8 @@ class Escrow extends Model<EscrowAttributes, EscrowCreationAttributes> {
     | "refunded"
     | "disputed"
     | "cancelled"
-    | "expired";
+    | "expired"
+    | "settled";
   public releaseMode!: "manual" | "auto_timeout";
   public autoReleaseAt?: Date | null;
   public fundedAt!: Date;
@@ -35,6 +36,13 @@ class Escrow extends Model<EscrowAttributes, EscrowCreationAttributes> {
   public resolvedByAdminId?: string | null;
   public resolutionNote?: string | null;
   public resolvedAt?: Date | null;
+  public proposedByUserId?: string | null;
+  public proposedPayeeAmount?: number | null;
+  public proposedPayerAmount?: number | null;
+  public proposedNote?: string | null;
+  public proposedAt?: Date | null;
+  public settledAt?: Date | null;
+  public settlementTransactionId?: string | null;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
@@ -58,7 +66,8 @@ const escrow_model = (sequelize: Sequelize) => {
           "refunded",
           "disputed",
           "cancelled",
-          "expired"
+          "expired",
+          "settled"
         ),
         defaultValue: "held",
       },
@@ -81,6 +90,13 @@ const escrow_model = (sequelize: Sequelize) => {
       resolvedByAdminId: { type: DataTypes.UUID, allowNull: true },
       resolutionNote: { type: DataTypes.STRING, allowNull: true },
       resolvedAt: { type: DataTypes.DATE, allowNull: true },
+      proposedByUserId: { type: DataTypes.UUID, allowNull: true },
+      proposedPayeeAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+      proposedPayerAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+      proposedNote: { type: DataTypes.STRING, allowNull: true },
+      proposedAt: { type: DataTypes.DATE, allowNull: true },
+      settledAt: { type: DataTypes.DATE, allowNull: true },
+      settlementTransactionId: { type: DataTypes.UUID, allowNull: true },
     },
     { sequelize, tableName: "Escrows" }
   );

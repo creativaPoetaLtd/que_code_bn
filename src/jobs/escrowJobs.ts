@@ -21,6 +21,9 @@ const runAutoReleasePoll = async (app: Application): Promise<void> => {
         status: "held",
         releaseMode: "auto_timeout",
         autoReleaseAt: { [Op.lte]: new Date() },
+        // An open settlement proposal pauses auto-release until it's accepted or
+        // declined - firing underneath an active negotiation would be surprising.
+        proposedByUserId: null,
       },
       limit: AUTO_RELEASE_BATCH_SIZE,
     });

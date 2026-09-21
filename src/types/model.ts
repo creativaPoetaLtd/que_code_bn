@@ -704,6 +704,7 @@ export interface ScheduledTransferAttributes {
   lastFailureReason?: string | null;
   pinVerifiedAt?: Date | null;
   scheduledBatchId?: string | null;
+  chatMessageId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -726,6 +727,7 @@ export type ScheduledTransferCreationAttributes = Optional<
   | "lastFailureReason"
   | "pinVerifiedAt"
   | "scheduledBatchId"
+  | "chatMessageId"
   | "createdAt"
   | "updatedAt"
 >;
@@ -740,7 +742,7 @@ export interface EscrowAttributes {
   amount: number;
   currency: string;
   description?: string | null;
-  status: "held" | "released" | "refunded" | "disputed" | "cancelled" | "expired";
+  status: "held" | "released" | "refunded" | "disputed" | "cancelled" | "expired" | "settled";
   releaseMode: "manual" | "auto_timeout";
   autoReleaseAt?: Date | null;
   fundedAt: Date;
@@ -757,6 +759,13 @@ export interface EscrowAttributes {
   resolvedByAdminId?: string | null;
   resolutionNote?: string | null;
   resolvedAt?: Date | null;
+  proposedByUserId?: string | null;
+  proposedPayeeAmount?: number | null;
+  proposedPayerAmount?: number | null;
+  proposedNote?: string | null;
+  proposedAt?: Date | null;
+  settledAt?: Date | null;
+  settlementTransactionId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -783,6 +792,13 @@ export type EscrowCreationAttributes = Optional<
   | "resolvedByAdminId"
   | "resolutionNote"
   | "resolvedAt"
+  | "proposedByUserId"
+  | "proposedPayeeAmount"
+  | "proposedPayerAmount"
+  | "proposedNote"
+  | "proposedAt"
+  | "settledAt"
+  | "settlementTransactionId"
   | "createdAt"
   | "updatedAt"
 >;

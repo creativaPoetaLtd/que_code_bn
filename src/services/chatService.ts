@@ -7,6 +7,101 @@ import bcrypt from "bcryptjs";
 import { uploadChatMedia } from "./mediaUploadService";
 import { Application } from "express";
 import { notifyChatMessageReceived } from "../utils/notificationHelpers";
+import { SECURE_DM_PROTOCOL_VERSION, supportsSecureDmBetweenUsers } from "./e2eeMessage.service";
+import { sequelizeConnection } from "../database/config/db.config";
+
+/**
+ * Finds the existing 1:1 chat between two users (preferring a secure_dm_v1 one if both
+ * exist), or creates one if none exists and they're contacts. Used by non-chat-initiated
+ * money flows (batch/scheduled transfers) that still want to post a message somewhere -
+ * kept independent from the createOrGetDMChat HTTP handler in chatController.ts so that
+ * well-tested endpoint's behavior can't be affected by this.
+ *
+ * Throws if the two users aren't contacts and have no existing chat - callers doing this
+ * as a best-effort side effect (not the primary action) should catch and ignore/log rather
+ * than let it block the real work (e.g. a money transfer that already succeeded).
+ */
+export const findOrCreateDMChat = async (
+  models: any,
+  userId: string,
+  participantId: string
+): Promise<any> => {
+  if (participantId === userId) {
+    throw new Error("Cannot create chat with yourself");
+  }
+
+  const userChats = await models.ChatParticipant.findAll({
+    where: { userId },
+    include: [{ model: models.Chat, as: "chat", where: { isGroup: false } }],
+  });
+  const participantChats = await models.ChatParticipant.findAll({
+    where: { userId: participantId },
+    include: [{ model: models.Chat, as: "chat", where: { isGroup: false } }],
+  });
+
+  const userChatIds = userChats.map((cp: any) => cp.chatId);
+  const participantChatIds = participantChats.map((cp: any) => cp.chatId);
+  const commonChatIds = userChatIds.filter((id: string) => participantChatIds.includes(id));
+
+  let existingSecureChat: any = null;
+  let existingLegacyChat: any = null;
+  if (commonChatIds.length > 0) {
+    for (const chatId of commonChatIds) {
+      const participantCount = await models.ChatParticipant.count({ where: { chatId } });
+      if (participantCount === 2) {
+        const candidateChat = await models.Chat.findByPk(chatId);
+        if (candidateChat?.securityMode === "secure_dm_v1") {
+          existingSecureChat = candidateChat;
+          break;
+        }
+        if (!existingLegacyChat) existingLegacyChat = candidateChat;
+      }
+    }
+  }
+
+  const resolvedChat = existingSecureChat || existingLegacyChat;
+  if (resolvedChat) return resolvedChat;
+
+  const otherUser = await models.User.findByPk(participantId);
+  if (!otherUser) throw new Error("User not found");
+
+  const contactRelation = await models.Contact.findOne({
+    where: {
+      [Op.or]: [
+        { userAId: userId, userBId: participantId },
+        { userAId: participantId, userBId: userId },
+      ],
+      status: "active",
+    },
+  });
+  if (!contactRelation) throw new Error("Users are not contacts - cannot start a chat");
+
+  const shouldCreateSecureChat = await supportsSecureDmBetweenUsers(models, [userId, participantId]);
+
+  const dbTransaction = await sequelizeConnection.transaction();
+  try {
+    const newChat = await models.Chat.create(
+      {
+        isGroup: false,
+        securityMode: shouldCreateSecureChat ? "secure_dm_v1" : "legacy",
+        protocolVersion: shouldCreateSecureChat ? SECURE_DM_PROTOCOL_VERSION : null,
+      },
+      { transaction: dbTransaction }
+    );
+    await models.ChatParticipant.bulkCreate(
+      [
+        { chatId: newChat.id, userId, joinedAt: new Date() },
+        { chatId: newChat.id, userId: participantId, joinedAt: new Date() },
+      ],
+      { transaction: dbTransaction }
+    );
+    await dbTransaction.commit();
+    return newChat;
+  } catch (error) {
+    await dbTransaction.rollback();
+    throw error;
+  }
+};
 
 export class ChatService {
   private static instance: ChatService;

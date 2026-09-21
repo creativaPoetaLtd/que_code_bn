@@ -12,6 +12,8 @@ import {
   notifyScheduledSeriesAutoPaused,
   notifyPaymentReceived,
 } from "../utils/notificationHelpers";
+import { findOrCreateDMChat } from "./chatService";
+import { postMoneyChatMessage, updateScheduledTransferMessage } from "./moneyChatMessageService";
 
 const {
   sequelize,
@@ -193,6 +195,59 @@ export const attemptHold = async (app: Application, scheduledTransferId: string)
 };
 
 /**
+ * Best-effort: resolves the scheduled-transfer chat message for this occurrence - updates
+ * the pending card in place if one was posted at scheduling time (then clears
+ * chatMessageId, since a recurring series' next occurrence needs a fresh message rather
+ * than re-touching an already-resolved card), otherwise posts a fresh one. Never throws -
+ * a messaging failure must never affect the actual scheduled-transfer state machine.
+ */
+const postOrUpdateScheduledTransferChatMessage = async (
+  app: Application,
+  scheduledTransfer: any,
+  status: "completed" | "failed" | "cancelled",
+  transactionId: string | null
+): Promise<void> => {
+  if (!scheduledTransfer.senderUserId || !scheduledTransfer.receiverUserId) return;
+
+  try {
+    const io = app.get("io");
+
+    if (scheduledTransfer.chatMessageId) {
+      await updateScheduledTransferMessage(io, database_models, scheduledTransfer.chatMessageId, {
+        status,
+        transactionId,
+      });
+      await scheduledTransfer.update({ chatMessageId: null });
+      return;
+    }
+
+    const [senderUser, recipientUser] = await Promise.all([
+      User.findByPk(scheduledTransfer.senderUserId),
+      User.findByPk(scheduledTransfer.receiverUserId),
+    ]);
+    const chat = await findOrCreateDMChat(
+      database_models,
+      scheduledTransfer.senderUserId,
+      scheduledTransfer.receiverUserId
+    );
+    await postMoneyChatMessage(io, database_models, chat.id, scheduledTransfer.senderUserId, {
+      type: "scheduled_transfer",
+      scheduledTransferId: scheduledTransfer.id,
+      amount: parseFloat(scheduledTransfer.amount.toString()),
+      currency: scheduledTransfer.currency,
+      senderName: senderUser ? `${senderUser.firstName} ${senderUser.lastName}` : "A user",
+      recipientName: recipientUser ? `${recipientUser.firstName} ${recipientUser.lastName}` : "Recipient",
+      scheduledFor: scheduledTransfer.scheduledFor,
+      status,
+      transactionId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`Failed to post/update scheduled-transfer chat message (${scheduledTransfer.id}):`, error);
+  }
+};
+
+/**
  * An occurrence definitively did not happen (hard execution failure, or it went past
  * its due date without ever being held). Releases any hold, then either ends the series
  * (one-time / paused-out recurring) or rolls it forward to the next occurrence.
@@ -265,6 +320,12 @@ export const finalizeFailedOccurrence = async (
     await notifyScheduledSeriesAutoPaused(app, fresh.createdByUserId, fresh.id, reason);
   } else {
     await notifyScheduledTransferFailed(app, fresh.createdByUserId, fresh.id, fresh.amount, fresh.currency, reason);
+  }
+
+  // Only a terminal failure resolves the chat card - paused/rolling-forward recurring
+  // series are still "in progress" as far as the recipient should be told.
+  if (resultStatus === "failed") {
+    await postOrUpdateScheduledTransferChatMessage(app, fresh, "failed", null);
   }
 };
 
@@ -496,4 +557,6 @@ export const executeOccurrence = async (app: Application, scheduledTransferId: s
   if (receiverUserId) {
     await notifyPaymentReceived(app, receiverUserId, executedTransactionId, executedAmount, executedCurrency, senderName);
   }
+
+  await postOrUpdateScheduledTransferChatMessage(app, fresh, "completed", executedTransactionId);
 };

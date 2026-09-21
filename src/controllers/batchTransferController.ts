@@ -6,6 +6,8 @@ import { AuthRequest } from "../middleware/auth.unified.middleware";
 import { getAvailableBalance } from "../utils/walletBalance";
 import { resolveWalletWhere, validateFundsAvailability } from "../utils/transferValidation";
 import { notifyPaymentReceived, notifyBatchTransferCompleted } from "../utils/notificationHelpers";
+import { findOrCreateDMChat } from "../services/chatService";
+import { postMoneyChatMessage } from "../services/moneyChatMessageService";
 
 const {
   Wallet,
@@ -479,7 +481,13 @@ export const createBatchTransfer = async (
 
       totalSent += transferAmount;
       successCount += 1;
-      results.push({ ...recipientIdentity, amount: transferAmount, status: "success", transactionId: newTransaction.id });
+      results.push({
+        ...recipientIdentity,
+        amount: transferAmount,
+        status: "success",
+        transactionId: newTransaction.id,
+        referenceId: newTransaction.referenceId,
+      });
     }
 
     const failureCount = recipients.length - successCount;
@@ -536,6 +544,34 @@ export const createBatchTransfer = async (
       }
     } catch (notificationError) {
       console.error("Batch transfer notification error:", notificationError);
+    }
+
+    // Best-effort: post a normal money-sent message in each recipient's DM, same as an
+    // individual chat send would. Never let this affect the response - the transfers
+    // already committed above.
+    if (senderUserId) {
+      const io = req.app.get("io");
+      for (const result of results) {
+        if (result.status !== "success" || !result.receiverUserId) continue;
+        try {
+          const recipientUser = await User.findByPk(result.receiverUserId);
+          const senderUser = await User.findByPk(senderUserId);
+          const chat = await findOrCreateDMChat(database_models, senderUserId, result.receiverUserId);
+          await postMoneyChatMessage(io, database_models, chat.id, senderUserId, {
+            type: "money_transfer",
+            amount: result.amount,
+            currency: senderWallet.currency || "RWF",
+            senderName: senderUser ? `${senderUser.firstName} ${senderUser.lastName}` : "A user",
+            recipientName: recipientUser ? `${recipientUser.firstName} ${recipientUser.lastName}` : "Recipient",
+            note: description || "",
+            transactionId: result.transactionId,
+            referenceId: result.referenceId,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (messageError) {
+          console.error(`Batch transfer chat message error (recipient ${result.receiverUserId}):`, messageError);
+        }
+      }
     }
 
     res.status(200).json({

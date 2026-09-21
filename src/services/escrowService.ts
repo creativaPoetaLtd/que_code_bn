@@ -67,6 +67,69 @@ export const releaseEscrowFunds = async (
 };
 
 /**
+ * Executes an agreed settlement: releases the *entire* hold, but only moves
+ * `payeeAmount` of it into the payee's balance - the rest just becomes spendable
+ * again for the payer, since it never actually left their balance. `payeeAmount` of 0
+ * behaves exactly like a full refund (no Transaction written, nothing moved); the full
+ * escrow amount behaves exactly like a full release. Anything in between is a real
+ * negotiated split, in which case the Transaction records only the portion that moved.
+ */
+export const settleEscrowFunds = async (
+  escrow: any,
+  payeeAmount: number,
+  dbTransaction: DbTransaction
+): Promise<{ transactionId: string | null }> => {
+  const payerWallet = await Wallet.findByPk(escrow.payerWalletId, {
+    lock: dbTransaction.LOCK.UPDATE,
+    transaction: dbTransaction,
+  });
+  if (!payerWallet) throw new Error("Escrow payer wallet not found");
+
+  const totalAmount = parseFloat(escrow.amount.toString());
+  await payerWallet.update(
+    {
+      balance: parseFloat(payerWallet.balance.toString()) - payeeAmount,
+      heldBalance: Math.max(0, parseFloat(payerWallet.heldBalance.toString()) - totalAmount),
+    },
+    { transaction: dbTransaction }
+  );
+
+  if (payeeAmount <= 0) {
+    return { transactionId: null };
+  }
+
+  const payeeWallet = await Wallet.findByPk(escrow.payeeWalletId, {
+    lock: dbTransaction.LOCK.UPDATE,
+    transaction: dbTransaction,
+  });
+  if (!payeeWallet) throw new Error("Escrow payee wallet not found");
+
+  await payeeWallet.update(
+    { balance: parseFloat(payeeWallet.balance.toString()) + payeeAmount },
+    { transaction: dbTransaction }
+  );
+
+  const settlementTransaction = await TransactionModel.create(
+    {
+      referenceId: `ESCROW-SETTLE-${escrow.id.substring(0, 8)}-${Date.now()}`,
+      senderWalletId: payerWallet.id,
+      receiverWalletId: payeeWallet.id,
+      amount: payeeAmount,
+      fee: 0,
+      totalAmount: payeeAmount,
+      currency: escrow.currency,
+      status: "completed",
+      type: "transfer",
+      description: escrow.description || "Escrow settlement",
+      escrowId: escrow.id,
+    } as any,
+    { transaction: dbTransaction }
+  );
+
+  return { transactionId: settlementTransaction.id };
+};
+
+/**
  * Releases the hold back to the payer's spendable balance. Nothing ever left
  * payer.balance, so no ledger entry is needed - the Escrow row is the audit trail.
  */
