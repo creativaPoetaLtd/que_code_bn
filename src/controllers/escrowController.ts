@@ -4,7 +4,7 @@ import * as bcrypt from "bcrypt";
 import database_models from "../database/config/db.config";
 import { AuthenticatedRequest } from "../types/requests";
 import { getAvailableBalance } from "../utils/walletBalance";
-import { holdEscrowFunds, releaseEscrowFunds, refundEscrowFunds } from "../services/escrowService";
+import { holdEscrowFunds, releaseEscrowFunds, refundEscrowFunds, settleEscrowFunds } from "../services/escrowService";
 import { notifyPaymentReceived, notifyPaymentSent } from "../utils/notificationHelpers";
 
 const { sequelize, Wallet, Escrow, User, ChatParticipant, ChatMessage } = database_models as any;
@@ -379,11 +379,56 @@ const fulfillEscrow = async (req: AuthenticatedRequest, res: Response): Promise<
 };
 
 /**
- * Only the payer can cancel, and only before the payee has marked the escrow
- * fulfilled - once that happens, a cancel would let the payer take back money for
- * something they already received. Disputes go through an admin instead.
+ * Neither party can unilaterally take money back once it's held - only give it away
+ * (release) unilaterally. Getting money back always goes through this propose/accept
+ * negotiation, or a dispute if they can't agree. Either party may propose at any time
+ * while held, regardless of fulfilled state; a new proposal from the same proposer
+ * simply overwrites their own pending one.
  */
-const refundEscrow = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+const proposeSettlement = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { payeeAmount, note } = req.body as { payeeAmount?: number | string; note?: string };
+    const authenticatedUserId = req.user.id;
+
+    if (payeeAmount === undefined || payeeAmount === null || isNaN(Number(payeeAmount))) {
+      throw new ControllerError(400, "payeeAmount is required");
+    }
+    const proposedPayeeAmount = parseFloat(payeeAmount.toString());
+    if (proposedPayeeAmount < 0) {
+      throw new ControllerError(400, "payeeAmount cannot be negative");
+    }
+
+    const escrow = await Escrow.findByPk(id);
+    if (!escrow) throw new ControllerError(404, "Escrow not found");
+    if (escrow.payerUserId !== authenticatedUserId && escrow.payeeUserId !== authenticatedUserId) {
+      throw new ControllerError(403, "Only the payer or payee can propose a settlement");
+    }
+    if (escrow.status !== "held") {
+      throw new ControllerError(400, `Escrow cannot be settled from status '${escrow.status}'`);
+    }
+
+    const totalAmount = parseFloat(escrow.amount.toString());
+    if (proposedPayeeAmount > totalAmount) {
+      throw new ControllerError(400, `payeeAmount cannot exceed the escrow amount (${totalAmount})`);
+    }
+
+    await escrow.update({
+      proposedByUserId: authenticatedUserId,
+      proposedPayeeAmount,
+      proposedPayerAmount: totalAmount - proposedPayeeAmount,
+      proposedNote: note || null,
+      proposedAt: new Date(),
+    });
+
+    res.status(200).json({ success: true, message: "Settlement proposed", data: escrow });
+  } catch (error) {
+    handleControllerError(res, error, "Propose escrow settlement");
+  }
+};
+
+/** Only the party who did NOT make the proposal can accept it - executes the split immediately. */
+const acceptSettlement = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const authenticatedUserId = req.user.id;
@@ -392,24 +437,67 @@ const refundEscrow = async (req: AuthenticatedRequest, res: Response): Promise<v
     await sequelize.transaction(async (t: DbTransaction) => {
       const escrow = await Escrow.findByPk(id, { lock: t.LOCK.UPDATE, transaction: t });
       if (!escrow) throw new ControllerError(404, "Escrow not found");
-      if (escrow.payerUserId !== authenticatedUserId) {
-        throw new ControllerError(403, "Only the payer can cancel this escrow");
+      if (escrow.payerUserId !== authenticatedUserId && escrow.payeeUserId !== authenticatedUserId) {
+        throw new ControllerError(403, "Only the payer or payee can accept a settlement");
+      }
+      if (!escrow.proposedByUserId) {
+        throw new ControllerError(400, "There is no pending settlement proposal");
+      }
+      if (escrow.proposedByUserId === authenticatedUserId) {
+        throw new ControllerError(400, "You made this proposal - waiting for the other party to accept it");
       }
       if (escrow.status !== "held") {
-        throw new ControllerError(400, `Escrow cannot be refunded from status '${escrow.status}'`);
-      }
-      if (escrow.fulfilledAt) {
-        throw new ControllerError(400, "The payee has marked this escrow fulfilled - release the funds or raise a dispute instead");
+        throw new ControllerError(400, `Escrow cannot be settled from status '${escrow.status}'`);
       }
 
-      await refundEscrowFunds(escrow, t);
-      await escrow.update({ status: "refunded", refundedAt: new Date() }, { transaction: t });
+      const payeeAmount = parseFloat(escrow.proposedPayeeAmount.toString());
+      const result = await settleEscrowFunds(escrow, payeeAmount, t);
+      await escrow.update(
+        {
+          status: "settled",
+          settledAt: new Date(),
+          settlementTransactionId: result.transactionId,
+        },
+        { transaction: t }
+      );
       updated = escrow;
     });
 
-    res.status(200).json({ success: true, message: "Escrow refunded", data: updated });
+    res.status(200).json({ success: true, message: "Settlement accepted", data: updated });
   } catch (error) {
-    handleControllerError(res, error, "Refund escrow");
+    handleControllerError(res, error, "Accept escrow settlement");
+  }
+};
+
+/** Only the party who did NOT make the proposal can decline it - clears it, escrow stays held. */
+const declineSettlement = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const authenticatedUserId = req.user.id;
+
+    const escrow = await Escrow.findByPk(id);
+    if (!escrow) throw new ControllerError(404, "Escrow not found");
+    if (escrow.payerUserId !== authenticatedUserId && escrow.payeeUserId !== authenticatedUserId) {
+      throw new ControllerError(403, "Only the payer or payee can decline a settlement");
+    }
+    if (!escrow.proposedByUserId) {
+      throw new ControllerError(400, "There is no pending settlement proposal");
+    }
+    if (escrow.proposedByUserId === authenticatedUserId) {
+      throw new ControllerError(400, "You made this proposal - the other party is the one who can decline it");
+    }
+
+    await escrow.update({
+      proposedByUserId: null,
+      proposedPayeeAmount: null,
+      proposedPayerAmount: null,
+      proposedNote: null,
+      proposedAt: null,
+    });
+
+    res.status(200).json({ success: true, message: "Settlement declined", data: escrow });
+  } catch (error) {
+    handleControllerError(res, error, "Decline escrow settlement");
   }
 };
 
@@ -546,7 +634,9 @@ export default {
   getEscrowById,
   releaseEscrow,
   fulfillEscrow,
-  refundEscrow,
+  proposeSettlement,
+  acceptSettlement,
+  declineSettlement,
   raiseDispute,
   respondToDispute,
   resolveDispute,

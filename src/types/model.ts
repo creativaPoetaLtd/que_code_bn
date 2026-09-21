@@ -362,6 +362,7 @@ export interface GroupAttributes {
   hasFundraising: boolean;
   fundraisingTarget?: number;
   fundraisingCurrentAmount: number;
+  sharedWalletId?: string;
   expirationDate?: Date;
   expirationType:
     | "custom_date"
@@ -667,6 +668,7 @@ export interface TransactionAttributes {
   scheduledTransferId?: string | null;
   batchId?: string | null;
   escrowId?: string | null;
+  sharedWalletWithdrawalId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -719,6 +721,7 @@ export interface ScheduledTransferAttributes {
   lastFailureReason?: string | null;
   pinVerifiedAt?: Date | null;
   scheduledBatchId?: string | null;
+  chatMessageId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -741,6 +744,7 @@ export type ScheduledTransferCreationAttributes = Optional<
   | "lastFailureReason"
   | "pinVerifiedAt"
   | "scheduledBatchId"
+  | "chatMessageId"
   | "createdAt"
   | "updatedAt"
 >;
@@ -755,7 +759,7 @@ export interface EscrowAttributes {
   amount: number;
   currency: string;
   description?: string | null;
-  status: "held" | "released" | "refunded" | "disputed" | "cancelled" | "expired";
+  status: "held" | "released" | "refunded" | "disputed" | "cancelled" | "expired" | "settled";
   releaseMode: "manual" | "auto_timeout";
   autoReleaseAt?: Date | null;
   fundedAt: Date;
@@ -772,6 +776,13 @@ export interface EscrowAttributes {
   resolvedByAdminId?: string | null;
   resolutionNote?: string | null;
   resolvedAt?: Date | null;
+  proposedByUserId?: string | null;
+  proposedPayeeAmount?: number | null;
+  proposedPayerAmount?: number | null;
+  proposedNote?: string | null;
+  proposedAt?: Date | null;
+  settledAt?: Date | null;
+  settlementTransactionId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -798,8 +809,132 @@ export type EscrowCreationAttributes = Optional<
   | "resolvedByAdminId"
   | "resolutionNote"
   | "resolvedAt"
+  | "proposedByUserId"
+  | "proposedPayeeAmount"
+  | "proposedPayerAmount"
+  | "proposedNote"
+  | "proposedAt"
+  | "settledAt"
+  | "settlementTransactionId"
   | "createdAt"
   | "updatedAt"
+>;
+
+export interface SharedWalletAttributes {
+  id: string;
+  name: string;
+  withdrawalPolicy: "free" | "approval";
+  createdByUserId: string;
+  groupId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletCreationAttributes = Optional<
+  SharedWalletAttributes,
+  "id" | "groupId" | "createdAt" | "updatedAt"
+>;
+
+export interface SharedWalletMemberAttributes {
+  id: string;
+  sharedWalletId: string;
+  userId: string;
+  role: "owner" | "admin" | "member";
+  status: "pending" | "active" | "left" | "removed";
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletMemberCreationAttributes = Optional<
+  SharedWalletMemberAttributes,
+  "id" | "status" | "createdAt" | "updatedAt"
+>;
+
+export interface SharedWalletWithdrawalAttributes {
+  id: string;
+  sharedWalletId: string;
+  walletId: string;
+  requestedByUserId: string;
+  amount: number;
+  currency: string;
+  note?: string | null;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  requiredApprovals: number;
+  approveCount: number;
+  declineCount: number;
+  chatMessageId?: string | null;
+  transactionId?: string | null;
+  decidedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletWithdrawalCreationAttributes = Optional<
+  SharedWalletWithdrawalAttributes,
+  | "id"
+  | "currency"
+  | "note"
+  | "status"
+  | "approveCount"
+  | "declineCount"
+  | "chatMessageId"
+  | "transactionId"
+  | "decidedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface SharedWalletWithdrawalVoteAttributes {
+  id: string;
+  withdrawalId: string;
+  userId: string;
+  decision: "approve" | "decline";
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletWithdrawalVoteCreationAttributes = Optional<
+  SharedWalletWithdrawalVoteAttributes,
+  "id" | "createdAt" | "updatedAt"
+>;
+
+export interface SharedWalletPolicyChangeAttributes {
+  id: string;
+  sharedWalletId: string;
+  proposedByUserId: string;
+  targetPolicy: "free" | "approval";
+  status: "pending" | "approved" | "declined" | "cancelled";
+  requiredApprovals: number;
+  approveCount: number;
+  declineCount: number;
+  decidedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletPolicyChangeCreationAttributes = Optional<
+  SharedWalletPolicyChangeAttributes,
+  | "id"
+  | "status"
+  | "approveCount"
+  | "declineCount"
+  | "decidedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface SharedWalletPolicyChangeVoteAttributes {
+  id: string;
+  policyChangeId: string;
+  userId: string;
+  decision: "approve" | "decline";
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedWalletPolicyChangeVoteCreationAttributes = Optional<
+  SharedWalletPolicyChangeVoteAttributes,
+  "id" | "createdAt" | "updatedAt"
 >;
 
 export interface ScheduledTransferBatchFailureEntry {
@@ -953,6 +1088,7 @@ export interface WalletAttributes {
   groupId?: string;
   subActionId?: string;
   publicContributionId?: string;
+  sharedWalletId?: string;
   balance: number;
   heldBalance: number;
   currency: string;

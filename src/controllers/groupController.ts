@@ -28,6 +28,7 @@ import {
     notifyGroupMemberRemoved
 } from "../utils/notificationHelpers";
 import CloudinaryService from "../services/cloudinaryService";
+import { verifyTransactionPin, PinVerificationError } from "../utils/verifyPin";
 
 const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -42,6 +43,9 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
             adminId,
             hasFundraising = false,
             fundraisingTarget,
+            hasSharedWallet = false,
+            withdrawalPolicy,
+            pin,
             expirationDate,
             expirationType = GroupExpirationType.NEVER,
             hasAdditionalInfo = false,
@@ -59,6 +63,29 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
         if (hasFundraising && !fundraisingTarget) {
             res.status(400).json({ message: "Fundraising target is required when fundraising is enabled" });
             return;
+        }
+
+        // Validate shared wallet data
+        if (hasSharedWallet) {
+            if (withdrawalPolicy !== "free" && withdrawalPolicy !== "approval") {
+                res.status(400).json({ message: "withdrawalPolicy must be 'free' or 'approval' when a shared wallet is enabled" });
+                return;
+            }
+            if (!memberIds || memberIds.length < 1) {
+                res.status(400).json({ message: "A shared wallet needs at least one other member" });
+                return;
+            }
+            try {
+                await verifyTransactionPin(ownerId, pin as string);
+            } catch (pinError) {
+                if (pinError instanceof PinVerificationError) {
+                    const body: Record<string, unknown> = { success: false, message: pinError.message };
+                    if (pinError.requiresPinSetup) body.requiresPinSetup = true;
+                    res.status(pinError.status).json(body);
+                    return;
+                }
+                throw pinError;
+            }
         }
 
         // Validate expiration data
@@ -158,16 +185,33 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
 
         console.log('Group created with QR code:', !!group.qrCode, 'Length:', group.qrCode?.length);
 
-        // Create wallet for fundraising groups
+        // Create wallet eagerly for fundraising groups and shared wallets (both need a
+        // balance from the moment members can send money in); every other group creates
+        // its wallet lazily on first use.
         let walletId: string | undefined;
-        if (hasFundraising) {
+        if (hasFundraising || hasSharedWallet) {
             const wallet = await models.Wallet.create({
                 groupId: group.id,
                 balance: 0
             });
             walletId = wallet.id;
             await group.update({ walletId: wallet.id });
-            console.log('Created fundraising wallet for group:', wallet.id);
+            console.log('Created wallet for group:', wallet.id);
+        }
+
+        // Shared wallet is its own entity (SharedWallet), optionally attached to a group -
+        // this is the group-attached path. The pooled wallet stays the group's Wallet
+        // row created above (Wallet.groupId), unchanged from before this was split out.
+        let sharedWalletId: string | undefined;
+        if (hasSharedWallet) {
+            const sharedWallet = await models.SharedWallet.create({
+                name: group.name,
+                withdrawalPolicy,
+                createdByUserId: ownerId,
+                groupId: group.id,
+            } as any);
+            sharedWalletId = sharedWallet.id;
+            await group.update({ sharedWalletId: sharedWallet.id });
         }
 
         // Create owner membership
@@ -234,6 +278,8 @@ const createGroup = async (req: AuthenticatedRequest, res: Response, next: NextF
                 hasFundraising: group.hasFundraising,
                 fundraisingTarget: group.fundraisingTarget,
                 fundraisingCurrentAmount: group.fundraisingCurrentAmount,
+                sharedWalletId: sharedWalletId || null,
+                withdrawalPolicy: hasSharedWallet ? withdrawalPolicy : undefined,
                 expirationDate: group.expirationDate,
                 expirationType: group.expirationType,
                 hasAdditionalInfo: group.hasAdditionalInfo,
@@ -898,19 +944,23 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
         // Get owner's user record
         const owner = await models.User.findByPk(group.ownerId);
 
-        // Get wallet balance if fundraising group
+        // Get wallet balance if fundraising group or shared wallet
         let walletBalance: number | undefined;
         let fundraisingProgress: number | undefined;
-        if (group.hasFundraising && group.walletId) {
+        if ((group.hasFundraising || group.sharedWalletId) && group.walletId) {
             const wallet = await models.Wallet.findByPk(group.walletId);
             if (wallet) {
                 walletBalance = parseFloat(wallet.balance.toString());
-                if (group.fundraisingTarget) {
+                if (group.hasFundraising && group.fundraisingTarget) {
                     const target = parseFloat(group.fundraisingTarget.toString());
                     fundraisingProgress = target > 0 ? Math.min((walletBalance / target) * 100, 100) : 0;
                 }
             }
         }
+
+        const sharedWallet = group.sharedWalletId
+            ? await models.SharedWallet.findByPk(group.sharedWalletId)
+            : null;
 
         // Get user's membership status
         const userMembership = await models.GroupMember.findOne({
@@ -949,6 +999,9 @@ const getGroupDetails = async (req: AuthenticatedRequest, res: Response, next: N
                 fundraisingTarget: group.fundraisingTarget ? parseFloat(group.fundraisingTarget.toString()) : undefined,
                 fundraisingCurrentAmount: walletBalance !== undefined ? walletBalance : parseFloat(group.fundraisingCurrentAmount.toString()),
                 fundraisingProgress: fundraisingProgress,
+                sharedWalletId: group.sharedWalletId || null,
+                withdrawalPolicy: sharedWallet?.withdrawalPolicy,
+                walletBalance: walletBalance,
                 walletId: group.walletId,
                 expirationDate: group.expirationDate?.toISOString(),
                 expirationType: group.expirationType,

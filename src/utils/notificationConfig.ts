@@ -27,6 +27,23 @@ export enum NotificationType {
   GROUP_CONTRIBUTION_CLOSED = "GROUP_CONTRIBUTION_CLOSED",
   GROUP_CONTRIBUTION_UPDATED = "GROUP_CONTRIBUTION_UPDATED",
 
+  // Shared wallet notifications (group-attached or standalone)
+  SHARED_WALLET_MEMBER_ADDED = "SHARED_WALLET_MEMBER_ADDED",
+  SHARED_WALLET_DEPOSIT_RECEIVED = "SHARED_WALLET_DEPOSIT_RECEIVED",
+  SHARED_WALLET_WITHDRAWAL_REQUESTED = "SHARED_WALLET_WITHDRAWAL_REQUESTED",
+  SHARED_WALLET_WITHDRAWAL_APPROVED = "SHARED_WALLET_WITHDRAWAL_APPROVED",
+  SHARED_WALLET_WITHDRAWAL_DECLINED = "SHARED_WALLET_WITHDRAWAL_DECLINED",
+  SHARED_WALLET_WITHDRAWAL_EXECUTED = "SHARED_WALLET_WITHDRAWAL_EXECUTED",
+  SHARED_WALLET_OWNERSHIP_TRANSFERRED = "SHARED_WALLET_OWNERSHIP_TRANSFERRED",
+  SHARED_WALLET_DELETED = "SHARED_WALLET_DELETED",
+  SHARED_WALLET_INVITATION = "SHARED_WALLET_INVITATION",
+  SHARED_WALLET_INVITATION_ACCEPTED = "SHARED_WALLET_INVITATION_ACCEPTED",
+  SHARED_WALLET_INVITATION_REJECTED = "SHARED_WALLET_INVITATION_REJECTED",
+  SHARED_WALLET_POLICY_CHANGED = "SHARED_WALLET_POLICY_CHANGED",
+  SHARED_WALLET_POLICY_CHANGE_PROPOSED = "SHARED_WALLET_POLICY_CHANGE_PROPOSED",
+  SHARED_WALLET_POLICY_CHANGE_DECLINED = "SHARED_WALLET_POLICY_CHANGE_DECLINED",
+  SHARED_WALLET_POLICY_CHANGE_APPROVED = "SHARED_WALLET_POLICY_CHANGE_APPROVED",
+
   // Public (standalone) contribution notifications
   PUBLIC_CONTRIBUTION_RECEIVED = "PUBLIC_CONTRIBUTION_RECEIVED",
   PUBLIC_CONTRIBUTION_COMPLETED = "PUBLIC_CONTRIBUTION_COMPLETED",
@@ -226,6 +243,12 @@ export interface NotificationPayload {
     contributionId?: string;
     contributionTitle?: string;
 
+    // Shared wallet data
+    sharedWalletId?: string;
+    sharedWalletName?: string;
+    withdrawalId?: string;
+    membershipId?: string;
+
     // General data
     message?: string;
     title?: string;
@@ -335,6 +358,68 @@ const notificationConfig = {
   },
   [NotificationType.GROUP_CONTRIBUTION_UPDATED]: {
     description: "A group contribution request has been updated",
+    priority: "normal",
+  },
+
+  // Shared wallet notifications
+  [NotificationType.SHARED_WALLET_MEMBER_ADDED]: {
+    description: "You were added to a shared wallet",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_DEPOSIT_RECEIVED]: {
+    description: "A member deposited into a shared wallet you're in",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_WITHDRAWAL_REQUESTED]: {
+    description: "A withdrawal request needs your vote",
+    priority: "high",
+  },
+  [NotificationType.SHARED_WALLET_WITHDRAWAL_APPROVED]: {
+    description: "A shared wallet withdrawal was approved",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_WITHDRAWAL_DECLINED]: {
+    description: "A shared wallet withdrawal was declined",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_WITHDRAWAL_EXECUTED]: {
+    description: "A shared wallet withdrawal was completed",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_OWNERSHIP_TRANSFERRED]: {
+    description: "You are now the owner of a shared wallet",
+    priority: "high",
+  },
+  [NotificationType.SHARED_WALLET_DELETED]: {
+    description: "A shared wallet you were in has been deleted",
+    priority: "high",
+  },
+  [NotificationType.SHARED_WALLET_INVITATION]: {
+    description: "You have been invited to a shared wallet",
+    priority: "high",
+  },
+  [NotificationType.SHARED_WALLET_INVITATION_ACCEPTED]: {
+    description: "Your shared wallet invitation was accepted",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_INVITATION_REJECTED]: {
+    description: "Your shared wallet invitation was declined",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_POLICY_CHANGED]: {
+    description: "A shared wallet's withdrawal policy was tightened",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_POLICY_CHANGE_PROPOSED]: {
+    description: "A shared wallet policy change needs your vote",
+    priority: "high",
+  },
+  [NotificationType.SHARED_WALLET_POLICY_CHANGE_DECLINED]: {
+    description: "A shared wallet policy change was declined",
+    priority: "normal",
+  },
+  [NotificationType.SHARED_WALLET_POLICY_CHANGE_APPROVED]: {
+    description: "A shared wallet's withdrawal policy was changed",
     priority: "normal",
   },
 

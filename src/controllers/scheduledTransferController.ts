@@ -19,6 +19,8 @@ import {
   notifyScheduledTransferResumed,
   notifyScheduledBatchCreated,
 } from "../utils/notificationHelpers";
+import { findOrCreateDMChat } from "../services/chatService";
+import { postMoneyChatMessage, updateScheduledTransferMessage } from "../services/moneyChatMessageService";
 
 const {
   sequelize,
@@ -112,6 +114,42 @@ const validateScheduledFor = (value: unknown): Date => {
 };
 
 /**
+ * Best-effort: posts a "payment scheduled for [date]" card in the sender/receiver DM
+ * right when a scheduled transfer is created, and remembers the message id so
+ * execution can update it in place later instead of posting a second message.
+ * Never throws - a messaging failure shouldn't affect the scheduled transfer itself.
+ */
+const postScheduledPendingMessage = async (
+  req: AuthenticatedRequest,
+  scheduledTransfer: any,
+  senderUserId: string,
+  receiverUserId: string
+): Promise<void> => {
+  try {
+    const [senderUser, recipientUser] = await Promise.all([
+      User.findByPk(senderUserId),
+      User.findByPk(receiverUserId),
+    ]);
+    const chat = await findOrCreateDMChat(database_models, senderUserId, receiverUserId);
+    const io = req.app.get("io");
+    const message = await postMoneyChatMessage(io, database_models, chat.id, senderUserId, {
+      type: "scheduled_transfer",
+      scheduledTransferId: scheduledTransfer.id,
+      amount: parseFloat(scheduledTransfer.amount.toString()),
+      currency: scheduledTransfer.currency,
+      senderName: senderUser ? `${senderUser.firstName} ${senderUser.lastName}` : "A user",
+      recipientName: recipientUser ? `${recipientUser.firstName} ${recipientUser.lastName}` : "Recipient",
+      scheduledFor: scheduledTransfer.scheduledFor,
+      status: "scheduled",
+      timestamp: new Date().toISOString(),
+    });
+    await scheduledTransfer.update({ chatMessageId: message.id });
+  } catch (error) {
+    console.error(`Failed to post scheduled-transfer pending message (${scheduledTransfer.id}):`, error);
+  }
+};
+
+/**
  * Schedule a one-time or recurring transfer. Funds for the first occurrence are
  * reserved immediately - creation fails outright if they can't be, rather than
  * silently deferring an insufficient-funds failure to execution time.
@@ -134,6 +172,7 @@ const createScheduledTransfer = async (req: AuthenticatedRequest, res: Response)
       scheduledFor,
       timezone = "Africa/Kigali",
       recurrence,
+      notifyRecipientNow = false,
     } = req.body;
 
     const senderTargets = [senderUserId, senderOrganizationId, senderSubActionId].filter(Boolean).length;
@@ -269,6 +308,10 @@ const createScheduledTransfer = async (req: AuthenticatedRequest, res: Response)
       !!recurrence
     );
 
+    if (notifyRecipientNow && senderUserId && receiverUserId) {
+      await postScheduledPendingMessage(req, created, senderUserId, receiverUserId);
+    }
+
     res.status(201).json({ success: true, message: "Transfer scheduled successfully", data: created });
   } catch (error) {
     handleControllerError(res, error, "Create scheduled transfer");
@@ -298,6 +341,7 @@ const createScheduledBatchTransfer = async (req: AuthenticatedRequest, res: Resp
       scheduledFor,
       timezone = "Africa/Kigali",
       recurrence,
+      notifyRecipientNow = false,
     } = req.body as {
       senderUserId?: string;
       senderOrganizationId?: string;
@@ -317,6 +361,7 @@ const createScheduledBatchTransfer = async (req: AuthenticatedRequest, res: Resp
       scheduledFor: string;
       timezone?: string;
       recurrence?: any;
+      notifyRecipientNow?: boolean;
     };
 
     const senderTargets = [senderUserId, senderOrganizationId, senderSubActionId].filter(Boolean).length;
@@ -484,6 +529,10 @@ const createScheduledBatchTransfer = async (req: AuthenticatedRequest, res: Resp
           status: "success",
           scheduledTransferId: created.id,
         });
+
+        if (notifyRecipientNow && senderUserId && recipient.receiverUserId) {
+          await postScheduledPendingMessage(req, created, senderUserId, recipient.receiverUserId);
+        }
       } catch (err: any) {
         const reason = err?.message || "Failed to schedule this recipient";
         failures.push({ ...recipientIdentity, amount: transferAmount, reason });
@@ -763,6 +812,18 @@ const cancelScheduledTransfer = async (req: AuthenticatedRequest, res: Response)
     });
 
     await notifyScheduledTransferCancelled(req.app, userId, cancelled.id, cancelled.amount, cancelled.currency);
+
+    if (cancelled.chatMessageId) {
+      try {
+        await updateScheduledTransferMessage(req.app.get("io"), database_models, cancelled.chatMessageId, {
+          status: "cancelled",
+        });
+        await cancelled.update({ chatMessageId: null });
+      } catch (error) {
+        console.error(`Failed to update scheduled-transfer chat message on cancel (${cancelled.id}):`, error);
+      }
+    }
+
     res.status(200).json({ success: true, message: "Scheduled transfer cancelled", data: cancelled });
   } catch (error) {
     handleControllerError(res, error, "Cancel scheduled transfer");

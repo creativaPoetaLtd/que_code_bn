@@ -38,6 +38,12 @@ import auditLog_model from "./auditLog.model";
 import paymentRequest_model from "./paymentRequest.model";
 import scheduledTransfer_model from "./scheduledTransfer.model";
 import escrow_model from "./escrow.model";
+import sharedWallet_model from "./sharedWallet.model";
+import sharedWalletMember_model from "./sharedWalletMember.model";
+import sharedWalletWithdrawal_model from "./sharedWalletWithdrawal.model";
+import sharedWalletWithdrawalVote_model from "./sharedWalletWithdrawalVote.model";
+import sharedWalletPolicyChange_model from "./sharedWalletPolicyChange.model";
+import sharedWalletPolicyChangeVote_model from "./sharedWalletPolicyChangeVote.model";
 import transferBatch_model from "./transferBatch.model";
 import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
@@ -109,6 +115,14 @@ const Models = (sequelize: Sequelize) => {
 
   // Escrow model
   const Escrow = escrow_model(sequelize);
+
+  // Shared Wallet models (standalone-capable: can attach to a Group or not)
+  const SharedWallet = sharedWallet_model(sequelize);
+  const SharedWalletMember = sharedWalletMember_model(sequelize);
+  const SharedWalletWithdrawal = sharedWalletWithdrawal_model(sequelize);
+  const SharedWalletWithdrawalVote = sharedWalletWithdrawalVote_model(sequelize);
+  const SharedWalletPolicyChange = sharedWalletPolicyChange_model(sequelize);
+  const SharedWalletPolicyChangeVote = sharedWalletPolicyChangeVote_model(sequelize);
 
   // Transfer Batch model
   const TransferBatch = transferBatch_model(sequelize);
@@ -386,6 +400,56 @@ const Models = (sequelize: Sequelize) => {
 
   Escrow.hasMany(Transaction, { foreignKey: "escrowId", as: "transactions" });
   Transaction.belongsTo(Escrow, { foreignKey: "escrowId", as: "escrow" });
+
+  // Shared Wallets (standalone-capable: optionally attached to a Group)
+  SharedWallet.belongsTo(Group, { foreignKey: "groupId", as: "group" });
+  Group.hasOne(SharedWallet, { foreignKey: "groupId", as: "sharedWallet" });
+
+  User.hasMany(SharedWallet, { foreignKey: "createdByUserId", as: "createdSharedWallets" });
+  SharedWallet.belongsTo(User, { foreignKey: "createdByUserId", as: "createdBy" });
+
+  // The pooled Wallet for a STANDALONE shared wallet (group-attached ones keep using
+  // Group.wallet / Wallet.groupId, unchanged — see utils/sharedWalletContext.ts).
+  SharedWallet.hasOne(Wallet, { foreignKey: "sharedWalletId", as: "wallet" });
+  Wallet.belongsTo(SharedWallet, { foreignKey: "sharedWalletId", as: "sharedWallet" });
+
+  // Membership for standalone shared wallets (group-attached ones use GroupMember).
+  SharedWallet.hasMany(SharedWalletMember, { foreignKey: "sharedWalletId", as: "members" });
+  SharedWalletMember.belongsTo(SharedWallet, { foreignKey: "sharedWalletId", as: "sharedWallet" });
+
+  User.hasMany(SharedWalletMember, { foreignKey: "userId", as: "sharedWalletMemberships" });
+  SharedWalletMember.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  // Shared Wallet Withdrawals (withdraw/approve/decline, group-attached or standalone)
+  SharedWallet.hasMany(SharedWalletWithdrawal, { foreignKey: "sharedWalletId", as: "walletWithdrawals" });
+  SharedWalletWithdrawal.belongsTo(SharedWallet, { foreignKey: "sharedWalletId", as: "sharedWallet" });
+
+  Wallet.hasMany(SharedWalletWithdrawal, { foreignKey: "walletId", as: "withdrawals" });
+  SharedWalletWithdrawal.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
+
+  User.hasMany(SharedWalletWithdrawal, { foreignKey: "requestedByUserId", as: "sharedWalletWithdrawalRequests" });
+  SharedWalletWithdrawal.belongsTo(User, { foreignKey: "requestedByUserId", as: "requestedBy" });
+
+  SharedWalletWithdrawal.hasMany(SharedWalletWithdrawalVote, { foreignKey: "withdrawalId", as: "votes" });
+  SharedWalletWithdrawalVote.belongsTo(SharedWalletWithdrawal, { foreignKey: "withdrawalId", as: "withdrawal" });
+
+  User.hasMany(SharedWalletWithdrawalVote, { foreignKey: "userId", as: "sharedWalletWithdrawalVotes" });
+  SharedWalletWithdrawalVote.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  SharedWalletWithdrawal.hasOne(Transaction, { foreignKey: "sharedWalletWithdrawalId", as: "transaction" });
+  Transaction.belongsTo(SharedWalletWithdrawal, { foreignKey: "sharedWalletWithdrawalId", as: "sharedWalletWithdrawal" });
+
+  SharedWallet.hasMany(SharedWalletPolicyChange, { foreignKey: "sharedWalletId", as: "policyChanges" });
+  SharedWalletPolicyChange.belongsTo(SharedWallet, { foreignKey: "sharedWalletId", as: "sharedWallet" });
+
+  User.hasMany(SharedWalletPolicyChange, { foreignKey: "proposedByUserId", as: "sharedWalletPolicyChangeProposals" });
+  SharedWalletPolicyChange.belongsTo(User, { foreignKey: "proposedByUserId", as: "proposedBy" });
+
+  SharedWalletPolicyChange.hasMany(SharedWalletPolicyChangeVote, { foreignKey: "policyChangeId", as: "votes" });
+  SharedWalletPolicyChangeVote.belongsTo(SharedWalletPolicyChange, { foreignKey: "policyChangeId", as: "policyChange" });
+
+  User.hasMany(SharedWalletPolicyChangeVote, { foreignKey: "userId", as: "sharedWalletPolicyChangeVotes" });
+  SharedWalletPolicyChangeVote.belongsTo(User, { foreignKey: "userId", as: "user" });
 
   // Transfer Batches
   User.hasMany(TransferBatch, { foreignKey: "createdByUserId", as: "createdTransferBatches" });
@@ -758,6 +822,12 @@ const Models = (sequelize: Sequelize) => {
     PaymentRequest,
     ScheduledTransfer,
     Escrow,
+    SharedWallet,
+    SharedWalletMember,
+    SharedWalletWithdrawal,
+    SharedWalletWithdrawalVote,
+    SharedWalletPolicyChange,
+    SharedWalletPolicyChangeVote,
     TransferBatch,
     ScheduledTransferBatch,
     OutsideMessage,

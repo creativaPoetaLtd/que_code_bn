@@ -9,6 +9,7 @@ class Wallet extends Model<WalletAttributes, WalletCreationAttributes> {
   public groupId?: string;
   public subActionId?: string;
   public publicContributionId?: string;
+  public sharedWalletId?: string;
   public balance!: number;
   public heldBalance!: number;
   public currency!: string;
@@ -24,6 +25,7 @@ const Wallet_model = (sequelize: Sequelize) => {
       groupId: DataTypes.UUID,
       subActionId: DataTypes.UUID,
       publicContributionId: DataTypes.UUID,
+      sharedWalletId: DataTypes.UUID,
       balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
       // Sum of funds currently reserved by pending scheduled transfers.
       // Spendable balance is always balance - heldBalance (see utils/walletBalance.ts).

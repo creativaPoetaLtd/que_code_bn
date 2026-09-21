@@ -19,6 +19,7 @@ class Group extends Model<GroupAttributes, GroupCreationAttributes> {
   public hasFundraising!: boolean;
   public fundraisingTarget?: number;
   public fundraisingCurrentAmount!: number;
+  public sharedWalletId?: string;
   public expirationDate?: Date;
   public expirationType!: string;
   public hasAdditionalInfo!: boolean;
@@ -53,6 +54,7 @@ const Group_model = (sequelize: Sequelize) => {
       hasFundraising: { type: DataTypes.BOOLEAN, defaultValue: false },
       fundraisingTarget: DataTypes.DECIMAL(15, 2),
       fundraisingCurrentAmount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0.00 },
+      sharedWalletId: { type: DataTypes.UUID, allowNull: true },
       expirationDate: DataTypes.DATE,
       expirationType: { 
         type: DataTypes.ENUM("custom_date", "target_reached", "deadline_reached", "never"), 
