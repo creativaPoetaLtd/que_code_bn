@@ -20,6 +20,17 @@ router.get("/:chatId/messages", chatController.getChatMessages as RequestHandler
 // Send message (HTTP endpoint for non-realtime scenarios)
 router.post("/:chatId/messages", chatController.sendMessage as RequestHandler);
 
+// Pin anything in the conversation, and read the pinned set
+router.get("/:chatId/pins", chatController.getPinnedMessages as RequestHandler);
+router.post("/:chatId/messages/:messageId/pin", chatController.pinMessage as RequestHandler);
+router.delete("/:chatId/messages/:messageId/pin", chatController.unpinMessage as RequestHandler);
+
+// Edit the text of a message you sent (plain chats; secure chats use /e2ee)
+router.patch("/:chatId/messages/:messageId", chatController.editMessage as RequestHandler);
+
+// Delete a message you sent (tombstone, visible to everyone in the chat)
+router.delete("/:chatId/messages/:messageId", chatController.deleteMessage as RequestHandler);
+
 // Send media message (images, videos, audio, documents)
 router.post("/:chatId/media", chatController.upload.single('file'), chatController.sendMediaMessage as RequestHandler);
 

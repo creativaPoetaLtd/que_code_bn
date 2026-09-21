@@ -12,6 +12,7 @@ import {
   rotateMySecureDeviceSignedPreKey,
   revokeMySecureDevice,
   sendSecureChatMessage,
+  editSecureChatMessage,
   uploadSecureChatMedia,
 } from "../controllers/e2ee.controller";
 
@@ -38,6 +39,11 @@ router.post(
 );
 router.delete("/devices/:deviceId", revokeMySecureDevice as RequestHandler);
 router.post("/dms", createOrGetSecureDM as RequestHandler);
+// Editing re-encrypts the text for every device in the chat
+router.patch(
+  "/chats/:chatId/messages/:messageId",
+  editSecureChatMessage as RequestHandler,
+);
 router.get("/users/:userId/device-bundles", getPublicDeviceBundlesForUser as RequestHandler);
 router.get("/chats/:chatId/messages", getSecureChatMessages as RequestHandler);
 router.post("/chats/:chatId/messages", sendSecureChatMessage as RequestHandler);

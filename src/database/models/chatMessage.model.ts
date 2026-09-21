@@ -27,6 +27,14 @@ class ChatMessage extends Model<
   public mimeType?: string;
   public duration?: number;
   public mentions?: Array<{ userId: string; username: string }>;
+  /** Set when the sender deletes the message; the row survives as a tombstone */
+  public deletedAt?: Date | null;
+  public deletedBy?: string | null;
+  /** Set the first time the sender edits the text */
+  public editedAt?: Date | null;
+  /** Set while the message is pinned to the top of the conversation */
+  public pinnedAt?: Date | null;
+  public pinnedBy?: string | null;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -43,6 +51,11 @@ const ChatMessage_model = (sequelize: Sequelize) => {
         allowNull: false,
       },
       replyToMessageId: { type: DataTypes.UUID, allowNull: true },
+      deletedAt: { type: DataTypes.DATE, allowNull: true },
+      deletedBy: { type: DataTypes.UUID, allowNull: true },
+      editedAt: { type: DataTypes.DATE, allowNull: true },
+      pinnedAt: { type: DataTypes.DATE, allowNull: true },
+      pinnedBy: { type: DataTypes.UUID, allowNull: true },
       transactionId: DataTypes.UUID,
       isEncrypted: { type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false },
       encryptionIv: { type: DataTypes.STRING, allowNull: true },

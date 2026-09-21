@@ -252,12 +252,27 @@ export interface ChatMessageAttributes {
   duration?: number;
   // @mention data
   mentions?: Array<{ userId: string; username: string }>;
+  // Set when the sender deletes the message; the row survives as a tombstone
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
+  // Set the first time the sender edits the text
+  editedAt?: Date | null;
+  // Set while the message is pinned to the top of the conversation
+  pinnedAt?: Date | null;
+  pinnedBy?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 export type ChatMessageCreationAttributes = Omit<
   ChatMessageAttributes,
-  "id" | "createdAt" | "updatedAt"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "deletedAt"
+  | "deletedBy"
+  | "editedAt"
+  | "pinnedAt"
+  | "pinnedBy"
 >;
 
 export interface ChatParticipantAttributes {
@@ -1389,6 +1404,120 @@ export interface PublicContributionPaymentAttributes {
 export type PublicContributionPaymentCreationAttributes = Optional<
   PublicContributionPaymentAttributes,
   "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
+>;
+
+export interface SharedNoteAttributes {
+  id: string;
+  chatId: string;
+  groupId?: string | null;
+  createdBy: string;
+  title: string;
+  content: string;
+  version: number;
+  lastEditedBy?: string | null;
+  lastEditedAt?: Date | null;
+  messageId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type SharedNoteCreationAttributes = Optional<
+  SharedNoteAttributes,
+  | "id"
+  | "groupId"
+  | "content"
+  | "version"
+  | "lastEditedBy"
+  | "lastEditedAt"
+  | "messageId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+/** One freehand stroke on a whiteboard - drawn in a fixed 800x500 logical space
+ *  so it renders identically regardless of the drawer's screen size. */
+export interface WhiteboardStroke {
+  id: string;
+  authorId: string;
+  points: number[];
+  color: string;
+  width: number;
+  erase?: boolean;
+}
+
+export interface WhiteboardAttributes {
+  id: string;
+  chatId: string;
+  groupId?: string | null;
+  createdBy: string;
+  strokes: WhiteboardStroke[];
+  version: number;
+  lastEditedBy?: string | null;
+  lastEditedAt?: Date | null;
+  messageId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type WhiteboardCreationAttributes = Optional<
+  WhiteboardAttributes,
+  | "id"
+  | "groupId"
+  | "strokes"
+  | "version"
+  | "lastEditedBy"
+  | "lastEditedAt"
+  | "messageId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface PollOption {
+  id: string;
+  text: string;
+}
+
+export interface PollAttributes {
+  id: string;
+  chatId: string;
+  groupId?: string | null;
+  createdBy: string;
+  question: string;
+  options: PollOption[];
+  allowMultiple: boolean;
+  isAnonymous: boolean;
+  closesAt?: Date | null;
+  status: "open" | "closed";
+  messageId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PollCreationAttributes = Optional<
+  PollAttributes,
+  | "id"
+  | "groupId"
+  | "allowMultiple"
+  | "isAnonymous"
+  | "closesAt"
+  | "status"
+  | "messageId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface PollVoteAttributes {
+  id: string;
+  pollId: string;
+  userId: string;
+  optionId: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type PollVoteCreationAttributes = Optional<
+  PollVoteAttributes,
+  "id" | "createdAt" | "updatedAt"
 >;
 
 export interface GroupContributionAttributes {

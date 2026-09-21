@@ -11,6 +11,7 @@ import {
   SubActionModelAttributes,
 } from "../types/model";
 import { createAndSendNotification } from "../utils/notificationService";
+import { postActionCardMessage } from "../services/actionChatCard.service";
 import { NotificationType } from "../utils/notificationConfig";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
@@ -815,7 +816,9 @@ const transferActionPurchase = async (
 ): Promise<void> => {
   try {
     const { purchaseId } = req.params;
-    const { recipientId } = req.body;
+    // chatId is optional: when the transfer is started from a conversation, the
+    // resulting card is posted into that chat.
+    const { recipientId, chatId, note } = req.body;
     // Sender is the authenticated caller — never trust a client-supplied id here
     const senderId = (req as any).user?.id;
 
@@ -971,7 +974,39 @@ const transferActionPurchase = async (
       throw txError;
     }
 
-    // 6. Notify the recipient (best-effort — never fail the transfer over this)
+    // 6. Post the transfer card into the originating chat, if there was one
+    //    (best-effort — the ticket has already moved, so never fail over this)
+    if (chatId) {
+      try {
+        const qrMetadata = normalizeMetadata((qrObject as any).metadata);
+        await postActionCardMessage(req.app as Application, {
+          chatId,
+          senderId,
+          payload: {
+            type: "action_transfer",
+            purchaseId,
+            qrObjectId,
+            actionId: (purchase as any).actionId,
+            ownerId: (action as any)?.organizationId,
+            actionName: (action as any)?.name || qrMetadata.actionName || "Ticket",
+            subActionName: qrMetadata.subActionName,
+            coverImage: (qrObject as any).coverImage || qrMetadata.coverImage || (action as any)?.coverImage,
+            quantity: qrMetadata.quantity,
+            validUntil: (qrObject as any).validUntil || null,
+            fromId: senderId,
+            fromName: senderName,
+            toId: recipientId,
+            toName: recipientName,
+            note: typeof note === "string" && note.trim() ? note.trim() : undefined,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (cardError) {
+        console.error("Failed to post the ticket transfer card:", cardError);
+      }
+    }
+
+    // 7. Notify the recipient (best-effort — never fail the transfer over this)
     try {
       await createAndSendNotification(req.app as Application, {
         type: NotificationType.ACTION_PURCHASE_TRANSFERRED,
@@ -1012,6 +1047,74 @@ const transferActionPurchase = async (
   }
 };
 
+// Share an action into a chat as a card. Nothing changes hands - the card is a
+// pointer to the action's public page, built here so it reads the same for
+// everyone in the conversation.
+const shareActionToChat = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { actionId } = req.params;
+    const { chatId, note } = req.body;
+    const senderId = (req as any).user?.id;
+
+    if (!senderId) {
+      res.status(401).json({ success: false, message: "Authentication required" });
+      return;
+    }
+    if (!chatId) {
+      res.status(400).json({ success: false, message: "chatId is required" });
+      return;
+    }
+
+    const action = await read_function<ActionModelAttributes>("Action", "findOne", {
+      where: { id: actionId },
+    });
+    if (!action) {
+      res.status(404).json({ success: false, message: "Action not found" });
+      return;
+    }
+
+    const availability = ((action as any).availability || {}) as Record<string, any>;
+    const pricing = ((action as any).pricing || {}) as Record<string, any>;
+
+    const message = await postActionCardMessage(req.app as Application, {
+      chatId,
+      senderId,
+      payload: {
+        type: "action_share",
+        actionId: (action as any).id,
+        ownerId: (action as any).organizationId,
+        actionName: (action as any).name,
+        actionType: (action as any).type,
+        coverImage: (action as any).coverImage || undefined,
+        shortDescription: (action as any).shortDescription || undefined,
+        price: typeof pricing.amount === "number" ? pricing.amount : undefined,
+        currency: (action as any).currency,
+        startsAt: availability.startsAt || null,
+        endsAt: availability.endsAt || null,
+        note: typeof note === "string" && note.trim() ? note.trim() : undefined,
+        sharedById: senderId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Action shared to the chat",
+      data: message,
+    });
+  } catch (error: any) {
+    const statusCode = error?.statusCode || 500;
+    console.error("Error in shareActionToChat:", error);
+    res.status(statusCode).json({
+      success: false,
+      message:
+        statusCode === 500
+          ? "An error occurred while sharing the action"
+          : error.message,
+    });
+  }
+};
+
 export default {
   purchaseAction,
   getUserQRObjects,
@@ -1019,5 +1122,6 @@ export default {
   validateQRObject,
   useQRObject,
   transferActionPurchase,
+  shareActionToChat,
 };
 
