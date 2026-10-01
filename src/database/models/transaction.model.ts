@@ -26,6 +26,7 @@ class Transaction extends Model<
   public batchId?: string | null;
   public escrowId?: string | null;
   public sharedWalletWithdrawalId?: string | null;
+  public billShareId?: string | null;
 }
 
 const Transaction_model = (sequelize: Sequelize) => {
@@ -127,6 +128,14 @@ const Transaction_model = (sequelize: Sequelize) => {
         allowNull: true,
         references: {
           model: "SharedWalletWithdrawals",
+          key: "id",
+        },
+      },
+      billShareId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "BillShares",
           key: "id",
         },
       },

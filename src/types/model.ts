@@ -669,6 +669,7 @@ export interface TransactionAttributes {
   batchId?: string | null;
   escrowId?: string | null;
   sharedWalletWithdrawalId?: string | null;
+  billShareId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -935,6 +936,70 @@ export interface SharedWalletPolicyChangeVoteAttributes {
 export type SharedWalletPolicyChangeVoteCreationAttributes = Optional<
   SharedWalletPolicyChangeVoteAttributes,
   "id" | "createdAt" | "updatedAt"
+>;
+
+export interface BillAttributes {
+  id: string;
+  organizerId: string;
+  recipientUserId?: string | null;
+  recipientOrganizationId?: string | null;
+  totalAmount: number;
+  currency: string;
+  title: string;
+  note?: string | null;
+  status: "open" | "completed" | "cancelled";
+  completedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type BillCreationAttributes = Optional<
+  BillAttributes,
+  | "id"
+  | "recipientUserId"
+  | "recipientOrganizationId"
+  | "currency"
+  | "note"
+  | "status"
+  | "completedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export type BillShareStatus =
+  | "pending"
+  | "paid"
+  | "covered"
+  | "declined"
+  | "closed"
+  | "cancelled";
+
+export interface BillShareAttributes {
+  id: string;
+  billId: string;
+  payerId: string;
+  amount: number;
+  status: BillShareStatus;
+  paidByUserId?: string | null;
+  transactionId?: string | null;
+  declineNote?: string | null;
+  lastRemindedAt?: Date | null;
+  settledAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type BillShareCreationAttributes = Optional<
+  BillShareAttributes,
+  | "id"
+  | "status"
+  | "paidByUserId"
+  | "transactionId"
+  | "declineNote"
+  | "lastRemindedAt"
+  | "settledAt"
+  | "createdAt"
+  | "updatedAt"
 >;
 
 export interface ScheduledTransferBatchFailureEntry {

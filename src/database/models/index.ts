@@ -44,6 +44,8 @@ import sharedWalletWithdrawal_model from "./sharedWalletWithdrawal.model";
 import sharedWalletWithdrawalVote_model from "./sharedWalletWithdrawalVote.model";
 import sharedWalletPolicyChange_model from "./sharedWalletPolicyChange.model";
 import sharedWalletPolicyChangeVote_model from "./sharedWalletPolicyChangeVote.model";
+import bill_model from "./bill.model";
+import billShare_model from "./billShare.model";
 import transferBatch_model from "./transferBatch.model";
 import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
@@ -123,6 +125,10 @@ const Models = (sequelize: Sequelize) => {
   const SharedWalletWithdrawalVote = sharedWalletWithdrawalVote_model(sequelize);
   const SharedWalletPolicyChange = sharedWalletPolicyChange_model(sequelize);
   const SharedWalletPolicyChangeVote = sharedWalletPolicyChangeVote_model(sequelize);
+
+  // Bill (split payment) models
+  const Bill = bill_model(sequelize);
+  const BillShare = billShare_model(sequelize);
 
   // Transfer Batch model
   const TransferBatch = transferBatch_model(sequelize);
@@ -450,6 +456,22 @@ const Models = (sequelize: Sequelize) => {
 
   User.hasMany(SharedWalletPolicyChangeVote, { foreignKey: "userId", as: "sharedWalletPolicyChangeVotes" });
   SharedWalletPolicyChangeVote.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+  // Bills (split payments)
+  Bill.hasMany(BillShare, { foreignKey: "billId", as: "shares" });
+  BillShare.belongsTo(Bill, { foreignKey: "billId", as: "bill" });
+
+  User.hasMany(Bill, { foreignKey: "organizerId", as: "organizedBills" });
+  Bill.belongsTo(User, { foreignKey: "organizerId", as: "organizer" });
+  Bill.belongsTo(User, { foreignKey: "recipientUserId", as: "recipientUser" });
+  Bill.belongsTo(Organization, { foreignKey: "recipientOrganizationId", as: "recipientOrganization" });
+
+  User.hasMany(BillShare, { foreignKey: "payerId", as: "billShares" });
+  BillShare.belongsTo(User, { foreignKey: "payerId", as: "payer" });
+  BillShare.belongsTo(User, { foreignKey: "paidByUserId", as: "paidBy" });
+
+  BillShare.hasOne(Transaction, { foreignKey: "billShareId", as: "transaction" });
+  Transaction.belongsTo(BillShare, { foreignKey: "billShareId", as: "billShare" });
 
   // Transfer Batches
   User.hasMany(TransferBatch, { foreignKey: "createdByUserId", as: "createdTransferBatches" });
@@ -828,6 +850,8 @@ const Models = (sequelize: Sequelize) => {
     SharedWalletWithdrawalVote,
     SharedWalletPolicyChange,
     SharedWalletPolicyChangeVote,
+    Bill,
+    BillShare,
     TransferBatch,
     ScheduledTransferBatch,
     OutsideMessage,
