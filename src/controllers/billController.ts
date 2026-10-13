@@ -7,7 +7,7 @@ import { resolveWalletWhere, validateFundsAvailability } from "../utils/transfer
 import { getAvailableBalance } from "../utils/walletBalance";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
-import { notifyPaymentReceived, notifyPaymentRequestReceived } from "../utils/notificationHelpers";
+import { notifyPaymentRequestReceived } from "../utils/notificationHelpers";
 import { broadcastToBillParticipants } from "../utils/billBroadcast";
 
 const MAX_SHARES = 30;
@@ -78,6 +78,23 @@ const participantIdsOf = async (models: ReturnType<typeof Models>, bill: { id: s
   return [bill.organizerId, ...shares.map((s) => s.payerId)];
 };
 
+/** Every id must be an existing user with an active wallet, i.e. someone who can pay a share. */
+const assertPayableUsers = async (models: ReturnType<typeof Models>, userIds: string[], t?: DbTransaction) => {
+  if (userIds.length === 0) return;
+  const users = await models.User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id"], transaction: t });
+  const wallets = await models.Wallet.findAll({
+    where: { userId: { [Op.in]: userIds }, isActive: true },
+    attributes: ["userId"],
+    transaction: t,
+  });
+  const found = new Set(users.map((u) => u.id));
+  const withWallet = new Set(wallets.map((w) => w.userId));
+  if (userIds.some((id) => !found.has(id))) throw new BillError(404, "One of the people in this split was not found");
+  if (userIds.some((id) => !withWallet.has(id))) {
+    throw new BillError(400, "One of the people in this split doesn't have an active wallet");
+  }
+};
+
 const billUrl = (billId: string) => `/home/bills/${billId}`;
 
 const notifyBill = (
@@ -113,7 +130,7 @@ const safely = async (context: string, work: () => Promise<unknown>) => {
 const notifyCompleted = async (
   req: AuthenticatedRequest,
   models: ReturnType<typeof Models>,
-  bill: { id: string; title: string; organizerId: string }
+  bill: { id: string; title: string; organizerId: string; currency: string; recipientUserId?: string | null }
 ) => {
   const participants = Array.from(new Set(await participantIdsOf(models, bill)));
   await Promise.all(
@@ -121,6 +138,42 @@ const notifyCompleted = async (
       notifyBill(req, userId, NotificationType.BILL_COMPLETED, bill, `"${bill.title}" has been fully settled`)
     )
   );
+  await notifyRecipientOfSplit(req, models, bill);
+};
+
+/**
+ * The recipient hears about a split once, when it is settled, as a single "Payment for <title>"
+ * rather than one payment per share. A business recipient has no in-app notifications (they are
+ * user-only); it sees the grouped payment in its wallet history.
+ */
+const notifyRecipientOfSplit = async (
+  req: AuthenticatedRequest,
+  models: ReturnType<typeof Models>,
+  bill: { id: string; title: string; currency: string; recipientUserId?: string | null }
+) => {
+  if (!bill.recipientUserId) return;
+  const paidShares = await models.BillShare.findAll({
+    where: { billId: bill.id, status: { [Op.in]: SETTLED_IN_APP_STATUSES } },
+    order: [["settledAt", "DESC"]],
+  });
+  if (paidShares.length === 0) return;
+  const received = paidShares.reduce((sum, s) => sum + toNumber(s.amount), 0);
+  // History shows the split under its latest payment, so link to that one.
+  const latestTransactionId = paidShares[0].transactionId;
+  const people = paidShares.length === 1 ? "1 person" : `${paidShares.length} people`;
+  await createAndSendNotification(req.app, {
+    type: NotificationType.PAYMENT_RECEIVED,
+    recipientId: bill.recipientUserId,
+    data: {
+      billId: bill.id,
+      transactionId: latestTransactionId || undefined,
+      amount: received,
+      currency: bill.currency,
+      title: `Payment for ${bill.title}`,
+      message: `You received ${received} ${bill.currency} for "${bill.title}" from ${people}`,
+      url: latestTransactionId ? `/transactions?transactionId=${latestTransactionId}` : "/transactions",
+    },
+  });
 };
 
 /** If nothing is left to pay, mark the bill completed. Must run inside the bill-locked transaction. */
@@ -251,22 +304,10 @@ export const createBill = async (req: AuthenticatedRequest, res: Response): Prom
       throw new BillError(400, "The shares must add up exactly to the total");
     }
 
-    // Same trust model as shared wallets: you can only assign shares to your own contacts.
+    // Payers don't have to be contacts: the organizer can add anyone whose profile link or QR
+    // code they have, as long as that person can actually pay.
     const others: string[] = payerIds.filter((id: string) => id !== organizerId);
-    if (others.length > 0) {
-      const contacts = await models.Contact.findAll({
-        where: {
-          [Op.or]: [
-            { userAId: organizerId, status: "active" },
-            { userBId: organizerId, status: "active" },
-          ],
-        },
-      });
-      const contactUserIds = new Set(contacts.map((c) => (c.userAId === organizerId ? c.userBId : c.userAId)));
-      if (others.some((id) => !contactUserIds.has(id))) {
-        throw new BillError(400, "Everyone in the split must be one of your contacts");
-      }
-    }
+    await assertPayableUsers(models, others);
 
     const recipientWallet = await models.Wallet.findOne({
       where: resolveWalletWhere({ userId: recipientUserId, organizationId: recipientOrganizationId }) as any,
@@ -586,12 +627,7 @@ const executeSharePayment = async (
       }
     }
 
-    // A business recipient has no in-app notifications (they are user-only); it simply
-    // sees the payment land in its wallet.
-    if (bill.recipientUserId) {
-      await notifyPaymentReceived(req.app, bill.recipientUserId, transaction.id, amount, currency, fullName(payingUser));
-    }
-
+    // The recipient isn't told per share: notifyCompleted sends them one "Payment for <title>".
     if (completed) await notifyCompleted(req, models, bill);
   });
 
@@ -717,19 +753,7 @@ export const reassignShare = async (req: AuthenticatedRequest, res: Response): P
       });
       if (alreadyOnBill > 0) throw new BillError(400, "That person already has a share in this split");
 
-      if (newPayerId !== userId) {
-        const contact = await models.Contact.findOne({
-          where: {
-            [Op.or]: [
-              { userAId: userId, userBId: newPayerId },
-              { userAId: newPayerId, userBId: userId },
-            ],
-            status: "active",
-          },
-          transaction: t,
-        });
-        if (!contact) throw new BillError(400, "That person must be one of your contacts");
-      }
+      if (newPayerId !== userId) await assertPayableUsers(models, [newPayerId], t);
 
       const previousPayerId = share.payerId;
       await share.update(
