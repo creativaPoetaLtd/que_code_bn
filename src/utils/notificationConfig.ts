@@ -44,6 +44,15 @@ export enum NotificationType {
   SHARED_WALLET_POLICY_CHANGE_DECLINED = "SHARED_WALLET_POLICY_CHANGE_DECLINED",
   SHARED_WALLET_POLICY_CHANGE_APPROVED = "SHARED_WALLET_POLICY_CHANGE_APPROVED",
 
+  // Split payment (bill) notifications
+  BILL_SHARE_ASSIGNED = "BILL_SHARE_ASSIGNED",
+  BILL_SHARE_PAID = "BILL_SHARE_PAID",
+  BILL_SHARE_DECLINED = "BILL_SHARE_DECLINED",
+  BILL_SHARE_COVERED = "BILL_SHARE_COVERED",
+  BILL_REMINDER = "BILL_REMINDER",
+  BILL_COMPLETED = "BILL_COMPLETED",
+  BILL_CANCELLED = "BILL_CANCELLED",
+
   // Public (standalone) contribution notifications
   PUBLIC_CONTRIBUTION_RECEIVED = "PUBLIC_CONTRIBUTION_RECEIVED",
   PUBLIC_CONTRIBUTION_COMPLETED = "PUBLIC_CONTRIBUTION_COMPLETED",
@@ -249,6 +258,10 @@ export interface NotificationPayload {
     withdrawalId?: string;
     membershipId?: string;
 
+    // Bill (split payment) data
+    billId?: string;
+    billTitle?: string;
+
     // General data
     message?: string;
     title?: string;
@@ -420,6 +433,36 @@ const notificationConfig = {
   },
   [NotificationType.SHARED_WALLET_POLICY_CHANGE_APPROVED]: {
     description: "A shared wallet's withdrawal policy was changed",
+    priority: "normal",
+  },
+
+  // Split payment (bill) notifications
+  [NotificationType.BILL_SHARE_ASSIGNED]: {
+    description: "You were assigned a share of a split payment",
+    priority: "high",
+  },
+  [NotificationType.BILL_SHARE_PAID]: {
+    description: "A share of a split payment you organized was paid",
+    priority: "normal",
+  },
+  [NotificationType.BILL_SHARE_DECLINED]: {
+    description: "Someone declined their share of a split payment you organized",
+    priority: "high",
+  },
+  [NotificationType.BILL_SHARE_COVERED]: {
+    description: "Someone covered your share of a split payment",
+    priority: "high",
+  },
+  [NotificationType.BILL_REMINDER]: {
+    description: "Reminder to pay your share of a split payment",
+    priority: "high",
+  },
+  [NotificationType.BILL_COMPLETED]: {
+    description: "A split payment has been fully settled",
+    priority: "normal",
+  },
+  [NotificationType.BILL_CANCELLED]: {
+    description: "A split payment was cancelled",
     priority: "normal",
   },
 

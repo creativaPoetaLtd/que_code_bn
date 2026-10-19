@@ -15,6 +15,7 @@ import {
 } from '../utils/notificationHelpers';
 import { AuthRequest } from '../middleware/auth.unified.middleware';
 import { getAvailableBalance } from '../utils/walletBalance';
+import { buildBillHistoryPlan, shapeBillHistoryRow } from '../utils/billHistory';
 
 const {
   Wallet,
@@ -915,10 +916,24 @@ const getTransactionHistory = async (
 
     const contactIdStr = contactId ? String(contactId) : undefined;
 
+    // Split bills: fold incoming split payments into one row per split, and pull in payments
+    // others made to cover this wallet owner's share. A contact filter shows the raw rows.
+    const historyWallet = await Wallet.findByPk(walletId as string, { attributes: ["id", "userId"] });
+    const billPlan = historyWallet
+      ? await buildBillHistoryPlan(database_models, historyWallet, { groupIncoming: !contactIdStr })
+      : null;
+
     // Build where clause
     const whereClause: any = {
-      [Op.or]: [{ senderWalletId: walletId }, { receiverWalletId: walletId }],
+      [Op.or]: [
+        { senderWalletId: walletId },
+        { receiverWalletId: walletId },
+        ...(billPlan && billPlan.coveredIds.length > 0 ? [{ id: { [Op.in]: billPlan.coveredIds } }] : []),
+      ],
     };
+    if (billPlan && billPlan.hiddenIds.length > 0) {
+      whereClause.id = { [Op.notIn]: billPlan.hiddenIds };
+    }
 
     // Filter by contact if provided
     if (contactIdStr) {
@@ -1062,10 +1077,14 @@ const getTransactionHistory = async (
         ],
       });
 
+    const shapedTransactions = billPlan
+      ? transactions.map((tx: any) => shapeBillHistoryRow(tx.toJSON(), billPlan))
+      : transactions;
+
     res.status(200).json({
       success: true,
       data: {
-        transactions,
+        transactions: shapedTransactions,
         pagination: {
           page: parseInt(page as string),
           limit: parseInt(limit as string),
