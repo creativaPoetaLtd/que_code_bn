@@ -1724,6 +1724,23 @@ const respondToJoinRequest = async (req: AuthenticatedRequest, res: Response, ne
 
         await joinRequest.update(updateData);
 
+        // The admin's own GROUP_JOIN_REQUEST notification (what brought them here) is
+        // otherwise never marked read, so it inflates their unread count forever even
+        // after they've acted on it.
+        try {
+            const ownPendingRequestNotifications = await models.Notification.findAll({
+                where: { userId, type: NotificationType.GROUP_JOIN_REQUEST, isRead: false },
+            });
+            const matchingIds = ownPendingRequestNotifications
+                .filter((n: any) => n.data?.requestId === requestId)
+                .map((n: any) => n.id);
+            if (matchingIds.length > 0) {
+                await models.Notification.update({ isRead: true }, { where: { id: matchingIds } });
+            }
+        } catch (notifError) {
+            console.error("Failed to mark join-request notification as read:", notifError);
+        }
+
         // Send notification to requester
         const requesterId = joinRequest.userId;
         const notificationType = action === 'approve'

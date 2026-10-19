@@ -414,6 +414,23 @@ export const respondToInvitationByToken = async (req: Request, res: Response): P
       respondedAt: new Date(),
     });
 
+    // The invitee's own CONTACT_REQUEST_RECEIVED notification (what brought them here)
+    // is otherwise never marked read, so it inflates their unread count forever even
+    // after they've acted on it.
+    try {
+      const ownPendingRequestNotifications = await models.Notification.findAll({
+        where: { userId: invitationData.inviteeId, type: NotificationType.CONTACT_REQUEST_RECEIVED, isRead: false },
+      });
+      const matchingIds = ownPendingRequestNotifications
+        .filter((n: any) => n.data?.userId === invitationData.inviterId)
+        .map((n: any) => n.id);
+      if (matchingIds.length > 0) {
+        await models.Notification.update({ isRead: true }, { where: { id: matchingIds } });
+      }
+    } catch (notifError) {
+      console.error("Failed to mark contact-request notification as read:", notifError);
+    }
+
     // If accepted, create the contact relationship
     let contactCreated = false;
     if (action === "accept") {
@@ -530,6 +547,23 @@ export const respondToInvitation = async (req: Request, res: Response): Promise<
       status: newStatus,
       respondedAt: new Date(),
     });
+
+    // The invitee's own CONTACT_REQUEST_RECEIVED notification (what brought them here)
+    // is otherwise never marked read, so it inflates their unread count forever even
+    // after they've acted on it.
+    try {
+      const ownPendingRequestNotifications = await models.Notification.findAll({
+        where: { userId, type: NotificationType.CONTACT_REQUEST_RECEIVED, isRead: false },
+      });
+      const matchingIds = ownPendingRequestNotifications
+        .filter((n: any) => n.data?.userId === invitationData.inviterId)
+        .map((n: any) => n.id);
+      if (matchingIds.length > 0) {
+        await models.Notification.update({ isRead: true }, { where: { id: matchingIds } });
+      }
+    } catch (notifError) {
+      console.error("Failed to mark contact-request notification as read:", notifError);
+    }
 
     // If accepted, create the contact relationship
     let contactCreated = false;
