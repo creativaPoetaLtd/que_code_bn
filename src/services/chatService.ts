@@ -274,7 +274,8 @@ export class ChatService {
     models: any,
     io?: any,
     app?: Application,
-    replyToMessageId?: string
+    replyToMessageId?: string,
+    mentions?: Array<{ userId: string; username: string }>
   ) {
     try {
       const chatRecord = await models.Chat.findByPk(chatId, {
@@ -310,14 +311,36 @@ export class ChatService {
       const encryptedContent = content; // Store as plain text temporarily
       const iv = ''; // Empty IV for unencrypted content
 
+      let replyToPreview: {
+        id: string;
+        content: string;
+        messageType: string;
+        senderName: string;
+      } | null = null;
+
       if (replyToMessageId) {
         const repliedMessage = await models.ChatMessage.findOne({
-          where: { id: replyToMessageId, chatId }
+          where: { id: replyToMessageId, chatId },
+          include: [{
+            model: models.User,
+            as: 'sender',
+            attributes: ['firstName', 'lastName']
+          }]
         });
 
         if (!repliedMessage) {
           console.warn(`replyToMessageId ${replyToMessageId} not found in chat ${chatId} – sending without reply reference`);
           replyToMessageId = undefined;
+        } else {
+          const repliedSender = repliedMessage.get('sender') as any;
+          replyToPreview = {
+            id: repliedMessage.id,
+            content: repliedMessage.content,
+            messageType: repliedMessage.messageType,
+            senderName: repliedSender
+              ? `${repliedSender.firstName || ''} ${repliedSender.lastName || ''}`.trim() || 'Unknown'
+              : 'Unknown',
+          };
         }
       }
 
@@ -328,6 +351,7 @@ export class ChatService {
         content: encryptedContent, // This is actually unencrypted content
         messageType,
         replyToMessageId: replyToMessageId || null,
+        mentions: mentions && mentions.length > 0 ? mentions : null,
         isEncrypted: false, // Temporarily disabled
         encryptionIv: iv,
         status: 'sent',
@@ -382,7 +406,9 @@ export class ChatService {
         for (const participant of participants) {
           io.to(`user_${participant.userId}`).emit('new_message', {
             ...messageWithSender.toJSON(),
-            content: encryptedContent // This is actually unencrypted content now
+            content: encryptedContent, // This is actually unencrypted content now
+            replyTo: replyToPreview,
+            reactions: [],
           });
 
           // Send notification to other participants (not the sender)

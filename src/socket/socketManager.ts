@@ -248,7 +248,11 @@ class SocketManager {
         safeMentions.unshift({ userId: ALL_MENTION_USER_ID, username: ALL_MENTION_USERNAME });
       }
 
-      // Send encrypted message using ChatService
+      // Send encrypted message using ChatService. This persists the message (including
+      // mentions and the reply reference) and broadcasts the single "new_message" event
+      // to every participant's personal room - there used to be a second broadcast here
+      // to the chat room, which meant every chat message was delivered to a listening
+      // client twice (duplicate toast/sound, duplicate real-time handling downstream).
       const message = await chatService.sendMessage(
         socket.userId,
         data.chatId,
@@ -257,71 +261,9 @@ class SocketManager {
         models,
         this.io,
         this.app,
-        data.replyToMessageId
+        data.replyToMessageId,
+        safeMentions
       );
-
-      const repliedMessage = data.replyToMessageId
-        ? await models.ChatMessage.findByPk(data.replyToMessageId, {
-            include: [{
-              model: models.User,
-              as: "sender",
-              attributes: ["id", "firstName", "lastName"]
-            }]
-          })
-        : null;
-
-      const repliedMessageData = repliedMessage ? (repliedMessage as any).get({ plain: true }) : null;
-
-      // Persist mentions on the saved message
-      if (safeMentions.length > 0) {
-        await models.ChatMessage.update(
-          { mentions: safeMentions },
-          { where: { id: message.id } }
-        );
-      }
-
-      // Get message with sender info
-      const messageWithSender = await models.ChatMessage.findByPk(message.id, {
-        include: [
-          {
-            model: models.User,
-            as: "sender",
-            attributes: ["id", "firstName", "lastName", "email"],
-            include: [
-              {
-                model: models.Profile,
-                as: "profile",
-                attributes: ["profileImage"]
-              }
-            ]
-          }
-        ]
-      });
-
-      // Broadcast message (including mentions) to all chat participants
-      this.io.to(`chat_${data.chatId}`).emit("new_message", {
-        id:            message.id,
-        chatId:        data.chatId,
-        senderId:      socket.userId,
-        content:       data.content,
-        messageType:   data.messageType,
-        transactionId: data.transactionId,
-        replyToMessageId: data.replyToMessageId || null,
-        reactions:     [],
-        replyTo: repliedMessage
-          ? {
-              id: repliedMessageData.id,
-              content: repliedMessageData.content,
-              messageType: repliedMessageData.messageType,
-              senderName: repliedMessageData.sender
-                ? `${repliedMessageData.sender.firstName || ""} ${repliedMessageData.sender.lastName || ""}`.trim() || "Unknown"
-                : "Unknown",
-            }
-          : null,
-        mentions:      safeMentions,
-        createdAt:     message.createdAt,
-        sender:        messageWithSender?.get("sender"),
-      });
 
       // Notify all group members for @all, otherwise notify only explicitly mentioned users.
       if (hasAllMention) {
