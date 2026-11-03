@@ -226,12 +226,12 @@ export const sendMoneyInChat = async (
 
             if (newAttempts >= maxAttempts) {
                 const lockedUntil = new Date(Date.now() + lockoutMinutes * 60000);
+                // Roll back first, then record the attempt on its own so the lockout actually sticks.
+                await dbTransaction.rollback();
                 await authenticatedUser.update({
                     pinAttempts: newAttempts,
                     pinLockedUntil: lockedUntil
-                }, { transaction: dbTransaction });
-
-                await dbTransaction.rollback();
+                });
                 res.status(429).json({
                     success: false,
                     message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
@@ -241,11 +241,10 @@ export const sendMoneyInChat = async (
                 });
                 return;
             } else {
+                await dbTransaction.rollback();
                 await authenticatedUser.update({
                     pinAttempts: newAttempts
-                }, { transaction: dbTransaction });
-
-                await dbTransaction.rollback();
+                });
                 const attemptsRemaining = maxAttempts - newAttempts;
                 res.status(400).json({
                     success: false,

@@ -1398,16 +1398,17 @@ export interface PaymentRequestAttributes {
   amount: number;
   currency: string;
   note: string | null;
-  status: "pending" | "paid" | "cancelled" | "expired";
+  status: "pending" | "paid" | "declined" | "cancelled" | "expired";
   allowEditAmount: boolean;
   transactionId?: string | null;
+  lastRemindedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export type PaymentRequestCreationAttributes = Optional<
   PaymentRequestAttributes,
-  "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "createdAt" | "updatedAt"
+  "id" | "status" | "currency" | "allowEditAmount" | "note" | "transactionId" | "lastRemindedAt" | "createdAt" | "updatedAt"
 >;
 
 export interface PublicContributionAttributes {

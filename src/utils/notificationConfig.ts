@@ -95,6 +95,8 @@ export enum NotificationType {
   PAYMENT_REQUEST_RECEIVED = "PAYMENT_REQUEST_RECEIVED",
   PAYMENT_REQUEST_DECLINED = "PAYMENT_REQUEST_DECLINED",
   PAYMENT_REQUEST_ACCEPTED = "PAYMENT_REQUEST_ACCEPTED",
+  PAYMENT_REQUEST_CANCELLED = "PAYMENT_REQUEST_CANCELLED",
+  PAYMENT_REQUEST_REMINDER = "PAYMENT_REQUEST_REMINDER",
   BATCH_TRANSFER_COMPLETED = "BATCH_TRANSFER_COMPLETED",
   SCHEDULED_BATCH_CREATED = "SCHEDULED_BATCH_CREATED",
 
@@ -611,6 +613,14 @@ const notificationConfig = {
   },
   [NotificationType.PAYMENT_REQUEST_ACCEPTED]: {
     description: "Your payment request was accepted",
+    priority: "high",
+  },
+  [NotificationType.PAYMENT_REQUEST_CANCELLED]: {
+    description: "A payment request sent to you was cancelled",
+    priority: "normal",
+  },
+  [NotificationType.PAYMENT_REQUEST_REMINDER]: {
+    description: "A reminder about a payment request waiting for you",
     priority: "high",
   },
   [NotificationType.BATCH_TRANSFER_COMPLETED]: {

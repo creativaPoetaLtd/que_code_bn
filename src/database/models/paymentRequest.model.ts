@@ -11,9 +11,11 @@ class PaymentRequest extends Model<
   public amount!: number;
   public currency!: string;
   public note!: string | null;
-  public status!: "pending" | "paid" | "cancelled" | "expired";
+  /** declined: the payer said no. cancelled: the requester withdrew it. */
+  public status!: "pending" | "paid" | "declined" | "cancelled" | "expired";
   public allowEditAmount!: boolean;
   public transactionId!: string | null;
+  public lastRemindedAt!: Date | null;
   public createdAt?: Date;
   public updatedAt?: Date;
 }
@@ -28,11 +30,12 @@ const paymentRequest_model = (sequelize: Sequelize) => {
       currency: { type: DataTypes.STRING, defaultValue: "RWF" },
       note: { type: DataTypes.TEXT, allowNull: true },
       status: {
-        type: DataTypes.ENUM("pending", "paid", "cancelled", "expired"),
+        type: DataTypes.ENUM("pending", "paid", "declined", "cancelled", "expired"),
         defaultValue: "pending",
       },
       allowEditAmount: { type: DataTypes.BOOLEAN, defaultValue: false },
       transactionId: { type: DataTypes.UUID, allowNull: true },
+      lastRemindedAt: { type: DataTypes.DATE, allowNull: true },
     },
     { sequelize, tableName: "PaymentRequests" }
   );

@@ -360,6 +360,56 @@ export const notifyPaymentRequestAccepted = async (
   });
 };
 
+/** Tells the payer that the person who asked for money withdrew the request. */
+export const notifyPaymentRequestCancelled = async (
+  app: Application,
+  recipientId: string,
+  requestId: string,
+  amount: number,
+  currency: string,
+  cancelledByName: string,
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PAYMENT_REQUEST_CANCELLED,
+    recipientId,
+    data: {
+      requestId,
+      amount,
+      currency,
+      userName: cancelledByName,
+      title: "Payment Request Cancelled",
+      message: `${cancelledByName} cancelled their request of ${amount} ${currency}`,
+      url: `/home/requests`,
+    },
+  });
+};
+
+/** Nudges the payer about a request that is still waiting. */
+export const notifyPaymentRequestReminder = async (
+  app: Application,
+  recipientId: string,
+  requestId: string,
+  amount: number,
+  currency: string,
+  requesterName: string,
+  note?: string | null,
+) => {
+  return createAndSendNotification(app, {
+    type: NotificationType.PAYMENT_REQUEST_REMINDER,
+    recipientId,
+    data: {
+      requestId,
+      amount,
+      currency,
+      userName: requesterName,
+      title: "Payment Request Reminder",
+      message: `${requesterName} is reminding you about their request of ${amount} ${currency}${note ? `: ${note}` : ""}`,
+      url: `/home/requests`,
+      actions: [{ type: "pay", label: "Pay Now", url: `/home/transfer/amount?requestId=${requestId}` }],
+    },
+  });
+};
+
 // System notification helpers
 export const notifyAccountVerified = async (
   app: Application,
