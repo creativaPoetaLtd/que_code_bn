@@ -1,6 +1,6 @@
 import { Request, Response, RequestHandler } from 'express';
 import { AuthenticatedRequest } from '../types/requests';
-import { Op, fn, col } from 'sequelize';
+import { Op, fn, col, literal, where as sqlWhere } from 'sequelize';
 import * as bcrypt from 'bcrypt';
 import database_models from '../database/config/db.config';
 import {
@@ -12,10 +12,17 @@ import {
   notifyPaymentRequestReceived,
   notifyPaymentRequestDeclined,
   notifyPaymentRequestAccepted,
+  notifyPaymentRequestCancelled,
+  notifyPaymentRequestReminder,
 } from '../utils/notificationHelpers';
 import { AuthRequest } from '../middleware/auth.unified.middleware';
 import { getAvailableBalance } from '../utils/walletBalance';
 import { buildBillHistoryPlan, shapeBillHistoryRow } from '../utils/billHistory';
+import {
+  PAYMENT_REQUEST_REMIND_COOLDOWN_MS,
+  isPaymentRequestExpired,
+  updateRequestChatCard,
+} from '../utils/paymentRequests';
 
 const {
   Wallet,
@@ -357,6 +364,35 @@ const transferMoney = async (
     const fee = 0;
     const totalAmount = transferAmount + fee;
 
+    // Paying a money request: check it before any money moves and lock it, so it can only be
+    // paid once and only as asked. It is marked paid in this same transaction below.
+    let fulfilledRequest: any = null;
+    if (paymentRequestId) {
+      fulfilledRequest = await PaymentRequest.findByPk(String(paymentRequestId), {
+        transaction,
+        lock: transaction?.LOCK.UPDATE,
+      });
+      const requestProblem = !fulfilledRequest
+        ? "Payment request not found"
+        : fulfilledRequest.recipientId !== authenticatedUserId
+          ? "This request wasn't sent to you"
+          : fulfilledRequest.status !== "pending"
+            ? `This request is already ${fulfilledRequest.status}`
+            : isPaymentRequestExpired(fulfilledRequest)
+              ? "This request has expired"
+              : receiverUserId !== fulfilledRequest.senderId
+              ? "A request can only be paid to the person who sent it"
+              : !fulfilledRequest.allowEditAmount &&
+                  Math.abs(transferAmount - Number(fulfilledRequest.amount)) > 0.005
+                ? `This request is for exactly ${Number(fulfilledRequest.amount).toLocaleString()} ${fulfilledRequest.currency || "RWF"}`
+                : null;
+      if (requestProblem) {
+        await transaction?.rollback();
+        res.status(400).json({ success: false, message: requestProblem });
+        return;
+      }
+    }
+
     // Find wallets for both sender and receiver (users or organizations)
     const [senderWallet, receiverWallet] = await Promise.all([
       Wallet.findOne({
@@ -692,25 +728,34 @@ const transferMoney = async (
       // No category specified - spending from unrestricted funds - no restriction updates needed
     }
 
+    // A fulfilled request turns paid together with the money moving, never separately.
+    if (fulfilledRequest) {
+      await fulfilledRequest.update({ status: "paid", transactionId: newTransaction.id }, { transaction });
+    }
+
     // Commit the transaction
     await transaction?.commit();
-    
-    // Update payment request if fulfilling one
-    if (paymentRequestId) {
+
+    if (fulfilledRequest) {
       try {
-        const paymentRequest = await PaymentRequest.findByPk(paymentRequestId as string);
-        if (paymentRequest && paymentRequest.recipientId === authenticatedUserId) {
-          await paymentRequest.update({
-            status: 'paid',
-            transactionId: newTransaction.id
-          });
-          console.log(`Payment request ${paymentRequestId} marked as paid`);
+        await updateRequestChatCard(null, fulfilledRequest.id, { status: "paid", amount: transferAmount });
+        const io = req.app.get("io");
+        if (io) {
+          const eventData = {
+            requestId: fulfilledRequest.id,
+            status: "paid",
+            transactionId: newTransaction.id,
+            amount: transferAmount,
+            currency: fulfilledRequest.currency || "RWF",
+          };
+          io.to(`user_${fulfilledRequest.recipientId}`).emit("payment_request_updated", eventData);
+          io.to(`user_${fulfilledRequest.senderId}`).emit("payment_request_updated", eventData);
         }
-      } catch (err) {
-        console.error("Error updating payment request status:", err);
+      } catch (followUpError) {
+        console.error("Transfer: request paid, but updating its chat card failed:", followUpError);
       }
     }
-    
+
     // Send notifications to both sender and receiver
     try {
       // Get sender and receiver names for notification
@@ -828,8 +873,9 @@ const transferMoney = async (
       },
     });
   } catch (error) {
-    // Rollback transaction on error
-    if (transaction) {
+    // Roll back only if it is still open; after commit a second rollback would throw and
+    // the client would never get a response.
+    if (transaction && !(transaction as any).finished) {
       await transaction.rollback();
     }
 
@@ -885,6 +931,109 @@ const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HISTORY_KINDS = ["sent", "received", "contribution", "topup", "withdrawal", "split"];
+const HISTORY_STATUSES = ["pending", "completed", "failed", "cancelled"];
+const HISTORY_DB_TYPES = ["transfer", "payment", "donation", "vote", "topup", "withdrawal"];
+const MAX_HISTORY_LIMIT = 500;
+
+/**
+ * Loads a wallet for history-style reads. Only its owner (the user, or a member of the
+ * owning organization) or an admin may read it. Anyone else gets null, which callers answer
+ * with 404 so wallet ids can't be probed.
+ */
+const findReadableWallet = async (req: Request, walletId: string) => {
+  const user = (req as AuthRequest).user;
+  if (!user || !UUID_PATTERN.test(walletId)) return null;
+  const wallet = await Wallet.findByPk(walletId, { attributes: ["id", "userId", "organizationId"] });
+  if (!wallet) return null;
+  const canRead =
+    user.isAdmin ||
+    (!!wallet.userId && wallet.userId === user.id) ||
+    (!!wallet.organizationId &&
+      !!user.organizationId &&
+      wallet.organizationId === user.organizationId);
+  return canRead ? wallet : null;
+};
+
+/**
+ * Parses a history date bound. A bare YYYY-MM-DD end date means "through the end of that
+ * day", so it becomes an exclusive bound at the next midnight.
+ */
+const parseHistoryDate = (
+  value: unknown,
+  isEnd: boolean,
+): { date: Date; exclusive: boolean } | null | "invalid" => {
+  if (value === undefined || value === null || value === "") return null;
+  const raw = String(value);
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) return "invalid";
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  if (isEnd && dateOnly) {
+    date.setUTCDate(date.getUTCDate() + 1);
+    return { date, exclusive: true };
+  }
+  return { date, exclusive: false };
+};
+
+const counterpartyIncludes = (withAttributes: boolean) =>
+  ["senderWallet", "receiverWallet"].map((as) => ({
+    model: Wallet,
+    as,
+    attributes: withAttributes ? ["id", "userId", "organizationId", "currency"] : [],
+    required: false,
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: withAttributes ? ["id", "firstName", "lastName", "email"] : [],
+        include: withAttributes
+          ? [{ model: Profile, as: "profile", attributes: ["profileImage"] }]
+          : [],
+        required: false,
+      },
+      {
+        model: Organization,
+        as: "organization",
+        attributes: withAttributes ? ["id", "name", "email"] : [],
+        required: false,
+      },
+      {
+        model: Group,
+        as: "group",
+        attributes: withAttributes ? ["id", "name", "profilePictureUrl"] : [],
+        required: false,
+      },
+      {
+        model: PublicContribution,
+        as: "publicContribution",
+        attributes: withAttributes ? ["id", "title"] : [],
+        required: false,
+      },
+    ],
+  }));
+
+/** Matches the search term against references, notes and either side's display name. */
+const historySearchWhere = (term: string) => {
+  const like = { [Op.iLike]: `%${term.replace(/[\\%_]/g, "\\$&")}%` };
+  const sides = ["senderWallet", "receiverWallet"];
+  return {
+    [Op.or]: [
+      { referenceId: like },
+      { description: like },
+      { externalSenderName: like },
+      ...sides.map((side) =>
+        sqlWhere(fn("concat", col(`${side}->user.firstName`), " ", col(`${side}->user.lastName`)), like),
+      ),
+      ...sides.flatMap((side) => [
+        { [`$${side}.organization.name$`]: like },
+        { [`$${side}.group.name$`]: like },
+        { [`$${side}.publicContribution.title$`]: like },
+      ]),
+    ],
+  };
+};
+
 // Get transaction history for a wallet
 const getTransactionHistory = async (
   req: Request,
@@ -893,203 +1042,188 @@ const getTransactionHistory = async (
   try {
     const { walletId } = req.params;
 
-    // Validate walletId
-    if (!walletId || walletId === "undefined" || walletId === "null") {
-      res.status(400).json({
-        success: false,
-        message: "Valid walletId is required",
-      });
+    const wallet = walletId ? await findReadableWallet(req, walletId) : null;
+    if (!wallet) {
+      res.status(404).json({ success: false, message: "Wallet not found" });
       return;
     }
 
-    const {
-      page = 1,
-      limit = 10,
-      type,
-      status,
-      startDate,
-      endDate,
-      contactId,
-    } = req.query;
+    const { type, kind, status, startDate, endDate, contactId, search } = req.query;
 
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const page = Math.max(1, parseInt(String(req.query.page ?? 1), 10) || 1);
+    const limit = Math.min(
+      MAX_HISTORY_LIMIT,
+      Math.max(1, parseInt(String(req.query.limit ?? 10), 10) || 10),
+    );
+    const offset = (page - 1) * limit;
+
+    const start = parseHistoryDate(startDate, false);
+    const end = parseHistoryDate(endDate, true);
+    if (start === "invalid" || end === "invalid") {
+      res.status(400).json({ success: false, message: "Invalid date filter" });
+      return;
+    }
+    if (start && end && start.date > end.date) {
+      res.status(400).json({ success: false, message: "Start date must be before end date" });
+      return;
+    }
+    if (kind && !HISTORY_KINDS.includes(String(kind))) {
+      res.status(400).json({ success: false, message: `Unknown kind "${kind}"` });
+      return;
+    }
+    if (status && !HISTORY_STATUSES.includes(String(status))) {
+      res.status(400).json({ success: false, message: `Unknown status "${status}"` });
+      return;
+    }
 
     const contactIdStr = contactId ? String(contactId) : undefined;
+    const searchTerm = typeof search === "string" ? search.trim() : "";
+
+    const emptyResponse = () =>
+      res.status(200).json({
+        success: true,
+        data: {
+          transactions: [],
+          pagination: { page, limit, total: 0, totalPages: 1 },
+          summary: { count: 0, totalIn: 0, totalOut: 0 },
+        },
+      });
 
     // Split bills: fold incoming split payments into one row per split, and pull in payments
     // others made to cover this wallet owner's share. A contact filter shows the raw rows.
-    const historyWallet = await Wallet.findByPk(walletId as string, { attributes: ["id", "userId"] });
-    const billPlan = historyWallet
-      ? await buildBillHistoryPlan(database_models, historyWallet, { groupIncoming: !contactIdStr })
-      : null;
+    const billPlan = await buildBillHistoryPlan(database_models, wallet, { groupIncoming: !contactIdStr });
 
-    // Build where clause
-    const whereClause: any = {
-      [Op.or]: [
-        { senderWalletId: walletId },
-        { receiverWalletId: walletId },
-        ...(billPlan && billPlan.coveredIds.length > 0 ? [{ id: { [Op.in]: billPlan.coveredIds } }] : []),
-      ],
-    };
-    if (billPlan && billPlan.hiddenIds.length > 0) {
-      whereClause.id = { [Op.notIn]: billPlan.hiddenIds };
-    }
+    const filters: any[] = [
+      {
+        [Op.or]: [
+          { senderWalletId: wallet.id },
+          { receiverWalletId: wallet.id },
+          ...(billPlan.coveredIds.length > 0 ? [{ id: { [Op.in]: billPlan.coveredIds } }] : []),
+        ],
+      },
+    ];
 
-    // Filter by contact if provided
     if (contactIdStr) {
-      // Find the contact's wallet first
-      const contactWallet = await Wallet.findOne({
-        where: { userId: contactIdStr }
-      });
-
-      if (contactWallet) {
-        whereClause[Op.and] = [
-          {
-            [Op.or]: [
-              { senderWalletId: contactWallet.id },
-              { receiverWalletId: contactWallet.id }
-            ]
-          }
-        ];
-      } else {
-        // If contact has no wallet, they can't have transactions. Return empty.
-        res.status(200).json({
-          success: true,
-          data: {
-            transactions: [],
-            pagination: {
-              page: parseInt(page as string),
-              limit: parseInt(limit as string),
-              total: 0,
-              totalPages: 0
-            }
-          }
-        });
+      // A contact can hold more than one wallet; any of them counts.
+      const contactWallets = await Wallet.findAll({ where: { userId: contactIdStr }, attributes: ["id"] });
+      if (contactWallets.length === 0) {
+        emptyResponse();
         return;
       }
-    }
-
-    if (type) {
-      whereClause.type = type;
-    }
-
-    if (status) {
-      whereClause.status = status;
-    }
-
-    if (startDate && endDate) {
-      whereClause.createdAt = {
-        [Op.between]: [
-          new Date(startDate as string),
-          new Date(endDate as string),
-        ],
-      };
-    }
-
-    const { count, rows: transactions } =
-      await TransactionModel.findAndCountAll({
-        where: whereClause,
-        order: [["createdAt", "DESC"]],
-        limit: parseInt(limit as string),
-        offset,
-        include: [
-          {
-            model: Category,
-            as: "category",
-            required: false,
-          },
-          {
-            model: Wallet,
-            as: "senderWallet",
-            attributes: ["id", "userId", "organizationId", "currency"],
-            include: [
-              {
-                model: User,
-                as: "user",
-                attributes: ["id", "firstName", "lastName", "email"],
-                include: [
-                  {
-                    model: Profile,
-                    as: "profile",
-                    attributes: ["profileImage"],
-                  },
-                ],
-                required: false,
-              },
-              {
-                model: Organization,
-                as: "organization",
-                attributes: ["id", "name", "email"],
-                required: false,
-              },
-              {
-                model: Group,
-                as: "group",
-                attributes: ["id", "name", "profilePictureUrl"],
-                required: false,
-              },
-              {
-                model: PublicContribution,
-                as: "publicContribution",
-                attributes: ["id", "title"],
-                required: false,
-              },
-            ],
-          },
-          {
-            model: Wallet,
-            as: "receiverWallet",
-            attributes: ["id", "userId", "organizationId", "currency"],
-            include: [
-              {
-                model: User,
-                as: "user",
-                attributes: ["id", "firstName", "lastName", "email"],
-                include: [
-                  {
-                    model: Profile,
-                    as: "profile",
-                    attributes: ["profileImage"],
-                  },
-                ],
-                required: false,
-              },
-              {
-                model: Organization,
-                as: "organization",
-                attributes: ["id", "name", "email"],
-                required: false,
-              },
-              {
-                model: Group,
-                as: "group",
-                attributes: ["id", "name", "profilePictureUrl"],
-                required: false,
-              },
-              {
-                model: PublicContribution,
-                as: "publicContribution",
-                attributes: ["id", "title"],
-                required: false,
-              },
-            ],
-          },
+      const contactWalletIds = contactWallets.map((w: any) => w.id);
+      filters.push({
+        [Op.or]: [
+          { senderWalletId: { [Op.in]: contactWalletIds } },
+          { receiverWalletId: { [Op.in]: contactWalletIds } },
         ],
       });
+    }
 
-    const shapedTransactions = billPlan
-      ? transactions.map((tx: any) => shapeBillHistoryRow(tx.toJSON(), billPlan))
-      : transactions;
+    // Kinds don't overlap: every row lands in exactly one of them.
+    const notSplit = {
+      billShareId: null,
+      ...(billPlan.coveredIds.length > 0 ? { id: { [Op.notIn]: billPlan.coveredIds } } : {}),
+    };
+    const toPersonalWallet = literal(
+      `"Transaction"."receiverWalletId" IN (SELECT "id" FROM "Wallets" WHERE "userId" IS NOT NULL OR "organizationId" IS NOT NULL)`,
+    );
+    const toSharedWallet = literal(
+      `"Transaction"."receiverWalletId" NOT IN (SELECT "id" FROM "Wallets" WHERE "userId" IS NOT NULL OR "organizationId" IS NOT NULL)`,
+    );
+    if (kind === "sent") {
+      // Money to a person or an organization.
+      filters.push({ senderWalletId: wallet.id, type: { [Op.in]: ["transfer", "payment"] }, ...notSplit }, toPersonalWallet);
+    }
+    if (kind === "contribution") {
+      // Money into a group, campaign or other shared wallet, plus donations and votes.
+      filters.push({
+        senderWalletId: wallet.id,
+        ...notSplit,
+        [Op.or]: [
+          { type: { [Op.in]: ["donation", "vote"] } },
+          { [Op.and]: [{ type: { [Op.in]: ["transfer", "payment"] } }, toSharedWallet] },
+        ],
+      });
+    }
+    if (kind === "received") {
+      filters.push({ receiverWalletId: wallet.id, type: { [Op.in]: ["transfer", "payment", "donation", "vote"] }, ...notSplit });
+    }
+    // Withdrawals are payouts from a shared or group wallet to a member.
+    if (kind === "topup" || kind === "withdrawal") filters.push({ type: kind });
+    if (kind === "split") {
+      filters.push({
+        [Op.or]: [
+          { billShareId: { [Op.ne]: null } },
+          ...(billPlan.coveredIds.length > 0 ? [{ id: { [Op.in]: billPlan.coveredIds } }] : []),
+        ],
+      });
+    }
+    // Raw database type, kept for older callers.
+    if (type && HISTORY_DB_TYPES.includes(String(type))) filters.push({ type: String(type) });
+    if (status) filters.push({ status: String(status) });
+    if (start) filters.push({ createdAt: { [Op.gte]: start.date } });
+    if (end) filters.push({ createdAt: { [end.exclusive ? Op.lt : Op.lte]: end.date } });
+    if (searchTerm) filters.push(historySearchWhere(searchTerm));
+
+    const listWhere = {
+      [Op.and]: [
+        ...filters,
+        ...(billPlan.hiddenIds.length > 0 ? [{ id: { [Op.notIn]: billPlan.hiddenIds } }] : []),
+      ],
+    };
+
+    const { count, rows: transactions } = await TransactionModel.findAndCountAll({
+      where: listWhere,
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+      subQuery: false,
+      distinct: true,
+      include: [
+        { model: Category, as: "category", required: false },
+        ...counterpartyIncludes(true),
+      ],
+    });
+
+    // Totals cover every matching row, not just this page. Folded split payments still count
+    // as money in; covered shares never touched this wallet, so neither CASE picks them up.
+    const walletLiteral = TransactionModel.sequelize!.escape(wallet.id);
+    const [totals]: any = await TransactionModel.findAll({
+      where: { [Op.and]: filters },
+      attributes: [
+        [
+          literal(
+            `COALESCE(SUM(CASE WHEN "Transaction"."receiverWalletId" = ${walletLiteral} AND "Transaction"."status" = 'completed' THEN "Transaction"."amount" ELSE 0 END), 0)`,
+          ),
+          "totalIn",
+        ],
+        [
+          literal(
+            `COALESCE(SUM(CASE WHEN "Transaction"."senderWalletId" = ${walletLiteral} AND "Transaction"."status" = 'completed' THEN "Transaction"."totalAmount" ELSE 0 END), 0)`,
+          ),
+          "totalOut",
+        ],
+      ],
+      include: searchTerm ? counterpartyIncludes(false) : [],
+      raw: true,
+    });
+
+    const shapedTransactions = transactions.map((tx: any) => shapeBillHistoryRow(tx.toJSON(), billPlan));
 
     res.status(200).json({
       success: true,
       data: {
         transactions: shapedTransactions,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page,
+          limit,
           total: count,
-          totalPages: Math.ceil(count / parseInt(limit as string)),
+          totalPages: Math.max(1, Math.ceil(count / limit)),
+        },
+        summary: {
+          count,
+          totalIn: Number(totals?.totalIn || 0),
+          totalOut: Number(totals?.totalOut || 0),
         },
       },
     });
@@ -2161,8 +2295,9 @@ const getContactStats = async (req: Request, res: Response): Promise<void> => {
     const { walletId } = req.params;
     const { contactId } = req.query;
 
-    if (!walletId) {
-      res.status(400).json({ success: false, message: 'Wallet ID is required' });
+    const wallet = walletId ? await findReadableWallet(req, walletId) : null;
+    if (!wallet) {
+      res.status(404).json({ success: false, message: 'Wallet not found' });
       return;
     }
 
@@ -2171,10 +2306,11 @@ const getContactStats = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Find contact's wallet
-    const contactWallet = await Wallet.findOne({ where: { userId: String(contactId) } });
+    // A contact can hold more than one wallet; any of them counts.
+    const contactWallets = await Wallet.findAll({ where: { userId: String(contactId) }, attributes: ['id'] });
+    const contactWalletIds = contactWallets.map((w: any) => w.id);
 
-    if (!contactWallet) {
+    if (contactWalletIds.length === 0) {
       res.status(200).json({
         success: true,
         data: {
@@ -2188,8 +2324,8 @@ const getContactStats = async (req: Request, res: Response): Promise<void> => {
     // Calculate total sent to contact
     const totalSent = await TransactionModel.sum('amount', {
       where: {
-        senderWalletId: walletId,
-        receiverWalletId: contactWallet.id,
+        senderWalletId: wallet.id,
+        receiverWalletId: { [Op.in]: contactWalletIds },
         status: 'completed'
       }
     });
@@ -2197,8 +2333,8 @@ const getContactStats = async (req: Request, res: Response): Promise<void> => {
     // Calculate total received from contact
     const totalReceived = await TransactionModel.sum('amount', {
       where: {
-        senderWalletId: contactWallet.id,
-        receiverWalletId: walletId,
+        senderWalletId: { [Op.in]: contactWalletIds },
+        receiverWalletId: wallet.id,
         status: 'completed'
       }
     });
@@ -3319,24 +3455,65 @@ const getUserPaymentRequests = async (
 ): Promise<void> => {
   try {
     const userId = req.user.id;
-    const { type = "received" } = req.query; // 'sent' or 'received'
+    const { type = "received", tab } = req.query; // legacy: type=sent|received; new: tab
+    const people = ["sender", "recipient"].map((as) => ({
+      model: User,
+      as,
+      attributes: ["id", "firstName", "lastName", "email"],
+      include: [{ model: Profile, as: "profile", attributes: ["profileImage"] }],
+    }));
 
-    const where: any = type === "sent" 
-      ? { senderId: userId } 
-      : { recipientId: userId };
+    if (!tab) {
+      const requests = await PaymentRequest.findAll({
+        where: type === "sent" ? { senderId: userId } : { recipientId: userId },
+        include: people,
+        order: [["createdAt", "DESC"]],
+      });
+      res.status(200).json({ success: true, data: requests });
+      return;
+    }
 
-    const requests = await PaymentRequest.findAll({
-      where,
-      include: [
-        { model: User, as: "sender", attributes: ["id", "firstName", "lastName", "email"] },
-        { model: User, as: "recipient", attributes: ["id", "firstName", "lastName", "email"] }
-      ],
-      order: [["createdAt", "DESC"]]
-    });
+    // to_pay: waiting on me. requested: I'm waiting on someone. history: everything settled.
+    const tabWhere: Record<string, any> = {
+      to_pay: { recipientId: userId, status: "pending" },
+      requested: { senderId: userId, status: "pending" },
+      history: {
+        [Op.or]: [{ senderId: userId }, { recipientId: userId }],
+        status: { [Op.ne]: "pending" },
+      },
+    };
+    const where = tabWhere[String(tab)];
+    if (!where) {
+      res.status(400).json({ success: false, message: `Unknown tab "${tab}"` });
+      return;
+    }
+
+    const page = Math.max(1, parseInt(String(req.query.page ?? 1), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? 10), 10) || 10));
+
+    const [{ count, rows }, toPay, requested, toPayAmount, requestedAmount] = await Promise.all([
+      PaymentRequest.findAndCountAll({
+        where,
+        include: people,
+        // Settled requests sort by when they were settled.
+        order: [[tab === "history" ? "updatedAt" : "createdAt", "DESC"]],
+        limit,
+        offset: (page - 1) * limit,
+        distinct: true,
+      }),
+      PaymentRequest.count({ where: tabWhere.to_pay }),
+      PaymentRequest.count({ where: tabWhere.requested }),
+      PaymentRequest.sum("amount", { where: tabWhere.to_pay }),
+      PaymentRequest.sum("amount", { where: tabWhere.requested }),
+    ]);
 
     res.status(200).json({
       success: true,
-      data: requests
+      data: rows,
+      pagination: { page, limit, total: count, totalPages: Math.max(1, Math.ceil(count / limit)) },
+      counts: { toPay, requested },
+      // Sums of everything waiting, across all pages (amounts in the requests' currency).
+      totals: { toPay: Number(toPayAmount) || 0, requested: Number(requestedAmount) || 0 },
     });
   } catch (error) {
     console.error("Get payment requests error:", error);
@@ -3427,7 +3604,12 @@ const acceptPaymentRequest = async (
       return;
     }
 
-    const request = await PaymentRequest.findByPk(id as string);
+    // Lock the request for the whole payment so two accepts (double tap, two devices)
+    // can't both see "pending" and pay it twice.
+    const request = await PaymentRequest.findByPk(id as string, {
+      transaction: dbTransaction,
+      lock: dbTransaction.LOCK.UPDATE,
+    });
     if (!request) {
       await dbTransaction.rollback();
       res.status(404).json({ success: false, message: "Payment request not found" });
@@ -3443,6 +3625,12 @@ const acceptPaymentRequest = async (
     if (request.status !== "pending") {
       await dbTransaction.rollback();
       res.status(400).json({ success: false, message: "Only pending requests can be accepted" });
+      return;
+    }
+
+    if (isPaymentRequestExpired(request)) {
+      await dbTransaction.rollback();
+      res.status(400).json({ success: false, message: "This request has expired" });
       return;
     }
 
@@ -3484,8 +3672,9 @@ const acceptPaymentRequest = async (
 
       if (newAttempts >= maxAttempts) {
         const lockedUntil = new Date(Date.now() + lockoutMinutes * 60000);
-        await payer.update({ pinAttempts: newAttempts, pinLockedUntil: lockedUntil }, { transaction: dbTransaction });
+        // Roll back first, then record the attempt on its own so the lockout actually sticks.
         await dbTransaction.rollback();
+        await payer.update({ pinAttempts: newAttempts, pinLockedUntil: lockedUntil });
         res.status(429).json({
           success: false,
           message: `PIN verification failed. Account locked for ${lockoutMinutes} minutes due to too many failed attempts.`,
@@ -3496,8 +3685,8 @@ const acceptPaymentRequest = async (
         return;
       }
 
-      await payer.update({ pinAttempts: newAttempts }, { transaction: dbTransaction });
       await dbTransaction.rollback();
+      await payer.update({ pinAttempts: newAttempts });
       res.status(400).json({
         success: false,
         message: `Invalid PIN. ${maxAttempts - newAttempts} attempts remaining.`,
@@ -3581,44 +3770,24 @@ const acceptPaymentRequest = async (
 
     await dbTransaction.commit();
 
-    // Update the ChatMessage content in DB so fresh loads reflect the paid status
-    if (chatId) {
-      try {
-        const chatMessages = await (database_models.ChatMessage as any).findAll({
-          where: { chatId, messageType: "money" },
-        });
-        for (const chatMsg of chatMessages) {
-          try {
-            const parsed = JSON.parse(chatMsg.content);
-            if (parsed?.type === "money_request" && parsed?.requestId === (id as string)) {
-              await chatMsg.update({
-                content: JSON.stringify({ ...parsed, status: "paid", amount }),
-              });
-              break;
-            }
-          } catch {
-            // skip non-JSON messages
-          }
-        }
-      } catch {
-        // Non-critical: don't fail the whole request if DB update fails
-      }
-    }
-
-    // Fetch names for notifications/events
-    const requester = await User.findByPk(request.senderId);
+    // The money has moved. Nothing below may fail the response, or the payer would see an
+    // error for a payment that went through.
     const payerName = `${payer.firstName} ${payer.lastName}`;
-    const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : "Requester";
+    try {
+      await updateRequestChatCard(chatId, request.id, { status: "paid", amount });
 
-    // Send in-app notification to the requester
-    await notifyPaymentRequestAccepted(
-      req.app,
-      request.senderId,
-      request.id,
-      amount,
-      request.currency || "RWF",
-      payerName,
-    );
+      const requester = await User.findByPk(request.senderId);
+      const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : "Requester";
+
+      // Send in-app notification to the requester
+      await notifyPaymentRequestAccepted(
+        req.app,
+        request.senderId,
+        request.id,
+        amount,
+        request.currency || "RWF",
+        payerName,
+      );
 
     // Emit real-time socket events so both parties' message cards update instantly
     const io = req.app.get("io");
@@ -3648,6 +3817,9 @@ const acceptPaymentRequest = async (
         chatId: chatId || null,
       });
     }
+    } catch (followUpError) {
+      console.error("Accept payment request: paid, but follow-up notifications failed:", followUpError);
+    }
 
     res.status(200).json({
       success: true,
@@ -3661,7 +3833,7 @@ const acceptPaymentRequest = async (
       },
     });
   } catch (error) {
-    await dbTransaction.rollback();
+    if (!(dbTransaction as any).finished) await dbTransaction.rollback();
     console.error("Accept payment request error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
@@ -3694,7 +3866,13 @@ const declinePaymentRequest = async (
       return;
     }
 
-    if (request.status !== "pending") {
+    // Only flips a request that is still pending, so it can't overwrite a payment that
+    // landed a moment earlier.
+    const [declined] = await PaymentRequest.update(
+      { status: "declined" },
+      { where: { id: request.id, status: "pending" } },
+    );
+    if (declined === 0) {
       res.status(400).json({
         success: false,
         message: "Only pending requests can be declined",
@@ -3702,31 +3880,7 @@ const declinePaymentRequest = async (
       return;
     }
 
-    await request.update({ status: "cancelled" });
-
-    // Update the ChatMessage content in DB so fresh loads reflect the cancelled status
-    if (chatId) {
-      try {
-        const chatMessages = await (database_models.ChatMessage as any).findAll({
-          where: { chatId, messageType: "money" },
-        });
-        for (const chatMsg of chatMessages) {
-          try {
-            const parsed = JSON.parse(chatMsg.content);
-            if (parsed?.type === "money_request" && parsed?.requestId === (id as string)) {
-              await chatMsg.update({
-                content: JSON.stringify({ ...parsed, status: "cancelled" }),
-              });
-              break;
-            }
-          } catch {
-            // skip
-          }
-        }
-      } catch {
-        // Non-critical
-      }
-    }
+    await updateRequestChatCard(chatId, request.id, { status: "declined" });
 
     // Notify sender that recipient declined
     const recipient = await User.findByPk(userId);
@@ -3748,7 +3902,7 @@ const declinePaymentRequest = async (
     if (io) {
       const eventData = {
         requestId: request.id,
-        status: "cancelled",
+        status: "declined",
         chatId: chatId || null,
         recipientName,
       };
@@ -3759,7 +3913,7 @@ const declinePaymentRequest = async (
     res.status(200).json({
       success: true,
       message: "Payment request declined successfully",
-      data: request,
+      data: { ...request.toJSON(), status: "declined" },
     });
   } catch (error) {
     console.error("Decline payment request error:", error);
@@ -3767,6 +3921,139 @@ const declinePaymentRequest = async (
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// Cancel a payment request you sent (the requester withdraws it)
+const cancelPaymentRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { chatId } = req.body || {};
+    const userId = req.user.id;
+
+    const request = await PaymentRequest.findByPk(id as string);
+    if (!request) {
+      res.status(404).json({ success: false, message: "Payment request not found" });
+      return;
+    }
+    if (request.senderId !== userId) {
+      res.status(403).json({ success: false, message: "Only the person who sent this request can cancel it" });
+      return;
+    }
+
+    // Same guard as decline: never overwrite a payment that just landed.
+    const [cancelled] = await PaymentRequest.update(
+      { status: "cancelled" },
+      { where: { id: request.id, status: "pending" } },
+    );
+    if (cancelled === 0) {
+      res.status(400).json({ success: false, message: "Only pending requests can be cancelled" });
+      return;
+    }
+
+    await updateRequestChatCard(chatId, request.id, { status: "cancelled" });
+
+    const requester = await User.findByPk(userId);
+    const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : "Someone";
+    await notifyPaymentRequestCancelled(
+      req.app,
+      request.recipientId,
+      request.id,
+      Number(request.amount),
+      request.currency,
+      requesterName,
+    );
+
+    const io = req.app.get("io");
+    if (io) {
+      const eventData = { requestId: request.id, status: "cancelled", chatId: chatId || null };
+      io.to(`user_${userId}`).emit("payment_request_updated", eventData);
+      io.to(`user_${request.recipientId}`).emit("payment_request_updated", eventData);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Payment request cancelled",
+      data: { ...request.toJSON(), status: "cancelled" },
+    });
+  } catch (error) {
+    console.error("Cancel payment request error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// Remind the payer about a request you sent, at most once a day
+const remindPaymentRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const request = await PaymentRequest.findByPk(id as string);
+    if (!request) {
+      res.status(404).json({ success: false, message: "Payment request not found" });
+      return;
+    }
+    if (request.senderId !== userId) {
+      res.status(403).json({ success: false, message: "Only the person who sent this request can send a reminder" });
+      return;
+    }
+    if (request.status !== "pending" || isPaymentRequestExpired(request)) {
+      res.status(400).json({ success: false, message: "Only pending requests can be reminded" });
+      return;
+    }
+
+    // Claim the reminder slot in one statement, so two quick taps send one reminder.
+    const now = new Date();
+    const cooldownStart = new Date(now.getTime() - PAYMENT_REQUEST_REMIND_COOLDOWN_MS);
+    const [claimed] = await PaymentRequest.update(
+      { lastRemindedAt: now },
+      {
+        where: {
+          id: request.id,
+          status: "pending",
+          [Op.or]: [{ lastRemindedAt: null }, { lastRemindedAt: { [Op.lt]: cooldownStart } }],
+        },
+      },
+    );
+    if (claimed === 0) {
+      const nextAt = new Date(
+        new Date(request.lastRemindedAt || now).getTime() + PAYMENT_REQUEST_REMIND_COOLDOWN_MS,
+      );
+      const hours = Math.max(1, Math.ceil((nextAt.getTime() - now.getTime()) / 3_600_000));
+      res.status(429).json({
+        success: false,
+        message: `You already sent a reminder. You can remind them again in ${hours} hour${hours === 1 ? "" : "s"}.`,
+        nextReminderAt: nextAt,
+      });
+      return;
+    }
+
+    const requester = await User.findByPk(userId);
+    const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : "Someone";
+    await notifyPaymentRequestReminder(
+      req.app,
+      request.recipientId,
+      request.id,
+      Number(request.amount),
+      request.currency,
+      requesterName,
+      request.note,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Reminder sent",
+      data: { requestId: request.id, lastRemindedAt: now },
+    });
+  } catch (error) {
+    console.error("Remind payment request error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -3845,6 +4132,8 @@ export default {
   getPaymentRequestQR,
   acceptPaymentRequest,
   declinePaymentRequest,
+  cancelPaymentRequest,
+  remindPaymentRequest,
   getAllWallets,
   getAllRestrictions,
   createRestriction,

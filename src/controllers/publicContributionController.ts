@@ -281,11 +281,9 @@ export const contribute = async (
 
         if (newAttempts >= maxAttempts) {
           const lockedUntil = new Date(Date.now() + 15 * 60000);
-          await payer.update(
-            { pinAttempts: newAttempts, pinLockedUntil: lockedUntil },
-            { transaction: dbTransaction }
-          );
+          // Roll back first, then record the attempt on its own so the lockout actually sticks.
           await dbTransaction.rollback();
+          await payer.update({ pinAttempts: newAttempts, pinLockedUntil: lockedUntil });
           res.status(429).json({
             success: false,
             message: "Too many incorrect PIN attempts. Your PIN has been locked for 15 minutes.",
@@ -293,8 +291,8 @@ export const contribute = async (
             remainingMinutes: 15,
           });
         } else {
-          await payer.update({ pinAttempts: newAttempts }, { transaction: dbTransaction });
           await dbTransaction.rollback();
+          await payer.update({ pinAttempts: newAttempts });
           res.status(400).json({
             success: false,
             message: `Incorrect PIN. ${maxAttempts - newAttempts} attempt(s) remaining.`,
