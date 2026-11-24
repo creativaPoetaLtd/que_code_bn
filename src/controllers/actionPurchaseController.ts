@@ -15,8 +15,23 @@ import { postActionCardMessage } from "../services/actionChatCard.service";
 import { NotificationType } from "../utils/notificationConfig";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
+import { getAvailableBalance } from "../utils/walletBalance";
+import { quoteOutgoing, sendTierError } from "../services/accountTier.service";
 
 const { Wallet, WalletItem, Transaction: TransactionModel } = database_models;
+
+// Pricing modes in which the buyer chooses what to pay. Everywhere else the price comes
+// from the action / sub-action and any client-sent amount is ignored.
+const BUYER_PRICED_MODES = ["pay_what_you_want", "range"];
+
+/** The buyer-chosen unit price, or an error message. Respects pricing.min / pricing.max. */
+const validateBuyerAmount = (pricing: any, amount: unknown): { value?: number; error?: string } => {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) return { error: "amount must be greater than 0" };
+  if (pricing?.min != null && value < Number(pricing.min)) return { error: `amount must be at least ${pricing.min}` };
+  if (pricing?.max != null && value > Number(pricing.max)) return { error: `amount must be at most ${pricing.max}` };
+  return { value };
+};
 
 // Purchase an action (integrated with transaction system)
 const purchaseAction = async (req: Request, res: Response): Promise<void> => {
@@ -24,17 +39,26 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
 
   try {
     const { actionId } = req.params;
-    const { subActionId, quantity = 1, buyerData, amount } = req.body;
+    const { subActionId, quantity: rawQuantity = 1, buyerData, amount } = req.body;
+    const quantity = Number(rawQuantity);
 
-    // Get buyer ID from authenticated user (assuming middleware sets req.user)
-    const buyerId = (req as any).user?.id || req.body.buyerId;
-
+    // The buyer is always the authenticated caller - a client-sent buyerId is only
+    // accepted when it matches, so nobody can spend someone else's wallet.
+    const buyerId = (req as any).user?.id;
     if (!buyerId) {
       await dbTransaction?.rollback();
-      res.status(401).json({
-        success: false,
-        message: "Buyer ID is required",
-      });
+      res.status(401).json({ success: false, message: "Authentication required" });
+      return;
+    }
+    if (req.body.buyerId && req.body.buyerId !== buyerId) {
+      await dbTransaction?.rollback();
+      res.status(403).json({ success: false, message: "You can only purchase for your own account" });
+      return;
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      await dbTransaction?.rollback();
+      res.status(400).json({ success: false, message: "quantity must be a whole number of at least 1" });
       return;
     }
 
@@ -54,6 +78,19 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         message: "Action not found or not published",
       });
       return;
+    }
+
+    const buyerPriced =
+      BUYER_PRICED_MODES.includes(action.pricing?.mode) && amount !== undefined && amount !== null;
+    let buyerAmount = 0;
+    if (buyerPriced) {
+      const check = validateBuyerAmount(action.pricing, amount);
+      if (check.error) {
+        await dbTransaction?.rollback();
+        res.status(400).json({ success: false, message: check.error });
+        return;
+      }
+      buyerAmount = check.value!;
     }
 
     // 2. Get sub-action if provided
@@ -78,9 +115,9 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      // Check if custom amount is provided (pay-what-you-want), otherwise use default price
-      if (amount !== undefined && amount !== null) {
-        unitPrice = parseFloat(amount.toString());
+      // Buyer-chosen price only for pay-what-you-want / range actions, otherwise the listed price
+      if (buyerPriced) {
+        unitPrice = buyerAmount;
       } else {
         unitPrice = parseFloat(subAction.price.toString());
       }
@@ -101,10 +138,9 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         }
       }
     } else {
-      // No sub-action, use action pricing or custom amount if provided
-      if (amount !== undefined && amount !== null) {
-        // Pay-what-you-want pricing with custom amount
-        unitPrice = parseFloat(amount.toString());
+      // No sub-action, use action pricing or the buyer-chosen amount
+      if (buyerPriced) {
+        unitPrice = buyerAmount;
       } else if (action.pricing.mode === "fixed") {
         unitPrice = action.pricing.amount || 0;
       } else if (action.pricing.mode === "free") {
@@ -250,8 +286,8 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // 6. Check balance (if not free)
-    if (totalAmount > 0 && parseFloat(buyerWallet.balance.toString()) < totalAmount) {
+    // 6. Check balance (if not free) - funds held for scheduled transfers / escrow can't be spent
+    if (totalAmount > 0 && getAvailableBalance(buyerWallet) < totalAmount) {
       await dbTransaction?.rollback();
       res.status(400).json({
         success: false,
@@ -260,6 +296,11 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
         required: totalAmount,
       });
       return;
+    }
+
+    // Account type rules: paying for an action counts toward the daily transfer limit
+    if (totalAmount > 0) {
+      await quoteOutgoing({ senderWallet: buyerWallet, amount: totalAmount, transaction: dbTransaction });
     }
 
     // 7. Reserve stock (if sub-action has limited stock)
@@ -530,6 +571,7 @@ const purchaseAction = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     await dbTransaction?.rollback();
+    if (sendTierError(res, error)) return;
     console.error("Error in purchaseAction:", error);
     res.status(500).json({
       success: false,

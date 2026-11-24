@@ -1,5 +1,6 @@
 import { DataTypes, Model, Sequelize, UUIDV4 } from "sequelize";
 import { UserCreationAttributes, UserModelAttributes } from "../../types/model";
+import { DEFAULT_USER_TIER, USER_TIERS, UserTier } from "../../utils/accountTiers";
 
 class User extends Model<UserModelAttributes, UserCreationAttributes> {
   public id!: string;
@@ -21,6 +22,7 @@ class User extends Model<UserModelAttributes, UserCreationAttributes> {
   public pinResetOtp!: string | null; // OTP for PIN reset
   public pinResetOtpExpires!: Date | null; // PIN reset OTP expiration
   public fcmToken!: string | null; // Firebase Cloud Messaging token
+  public accountTier!: UserTier; // QC account type (see utils/accountTiers.ts)
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -52,6 +54,11 @@ const User_model = (sequelize: Sequelize) => {
       pinResetOtp: { type: DataTypes.STRING, allowNull: true }, // PIN reset OTP
       pinResetOtpExpires: { type: DataTypes.DATE, allowNull: true }, // PIN reset OTP expiration
       fcmToken: { type: DataTypes.TEXT, allowNull: true }, // FCM token
+      accountTier: {
+        type: DataTypes.ENUM(...USER_TIERS),
+        allowNull: false,
+        defaultValue: DEFAULT_USER_TIER,
+      },
     },
     {
       sequelize,

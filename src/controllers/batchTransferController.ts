@@ -8,6 +8,8 @@ import { resolveWalletWhere, validateFundsAvailability } from "../utils/transfer
 import { notifyPaymentReceived, notifyBatchTransferCompleted } from "../utils/notificationHelpers";
 import { findOrCreateDMChat } from "../services/chatService";
 import { postMoneyChatMessage } from "../services/moneyChatMessageService";
+import { payPlatform, quoteOutgoing, sendTierError } from "../services/accountTier.service";
+import { FeatureKey } from "../utils/accountTiers";
 
 const {
   Wallet,
@@ -328,11 +330,24 @@ export const createBatchTransfer = async (
     // Fast fail: reject the whole batch up front if it's unaffordable in aggregate,
     // rather than letting every recipient fail one-by-one.
     const totalRequestedAmount = recipients.reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0);
-    if (getAvailableBalance(senderWallet) < totalRequestedAmount) {
+
+    // Account type rules: bulk payment is one paid use per batch; the whole batch
+    // counts against the daily transfer limit.
+    const batchFeatures: FeatureKey[] = ["bulkPayment"];
+    if (applyConstraints && categoryId) batchFeatures.push("personalizedTransfer");
+    if (description.trim() || recipients.some((r) => r.description?.trim())) batchFeatures.push("comment");
+    const { fee: batchFee } = await quoteOutgoing({
+      senderWallet,
+      amount: totalRequestedAmount,
+      features: batchFeatures,
+      transaction: dbTransaction,
+    });
+
+    if (getAvailableBalance(senderWallet) < totalRequestedAmount + batchFee) {
       await dbTransaction?.rollback();
       res.status(400).json({
         success: false,
-        message: `Insufficient balance for this batch. Available: ${getAvailableBalance(senderWallet)}, Required: ${totalRequestedAmount}`,
+        message: `Insufficient balance for this batch. Available: ${getAvailableBalance(senderWallet)}, Required: ${totalRequestedAmount + batchFee}`,
       });
       return;
     }
@@ -494,6 +509,17 @@ export const createBatchTransfer = async (
     const totalFailedAmount = failures.reduce((sum, f) => sum + f.amount, 0);
     const status = successCount === 0 ? "failed" : failureCount > 0 ? "partial" : "completed";
 
+    // Charge the bulk payment fee only when at least one transfer went through.
+    if (batchFee > 0 && successCount > 0) {
+      await payPlatform({
+        wallet: senderWallet,
+        amount: batchFee,
+        description: "QC service fee: Bulk payment",
+        referencePrefix: "FEE",
+        transaction: dbTransaction,
+      });
+    }
+
     await batch.update(
       {
         totalSentAmount: totalSent,
@@ -593,6 +619,7 @@ export const createBatchTransfer = async (
     if (dbTransaction) {
       await dbTransaction.rollback();
     }
+    if (sendTierError(res, error)) return;
     console.error("Batch transfer error:", error);
     res.status(500).json({ success: false, message: "Internal server error during batch transfer" });
   }

@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import database_models from "../database/config/db.config";
+import { AccountTier, FeatureKey } from "../utils/accountTiers";
+import { assertFeature, sendTierError } from "../services/accountTier.service";
 
 const { User, Organization, UserRole, Role, RolePermission, Permission } =
   database_models;
@@ -15,6 +17,7 @@ export interface AuthenticatedUser {
   accountType: "user" | "organization";
   organizationId?: string;
   isAdmin: boolean;
+  accountTier: AccountTier;
 }
 
 // Extended Request interface - omit user and redefine it
@@ -146,6 +149,7 @@ export const authenticate = async (
         accountType,
         organizationId,
         isAdmin,
+        accountTier: (entity as any).accountTier,
       };
 
       next();
@@ -394,4 +398,26 @@ export const optionalAuth = async (
   } catch (error) {
     next();
   }
+};
+
+/**
+ * Account type gate: rejects with 403 UPGRADE_REQUIRED unless the caller's tier (or an
+ * admin feature grant) includes the feature. Per-use fees are charged in the controller.
+ * Usage: router.post("/x", authenticate, requireFeature("bulkPayment"), handler)
+ */
+export const requireFeature = (feature: FeatureKey) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required" });
+      return;
+    }
+    try {
+      await assertFeature({ kind: req.user.accountType, id: req.user.id }, feature);
+      next();
+    } catch (error) {
+      if (sendTierError(res, error)) return;
+      console.error("Feature check error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  };
 };

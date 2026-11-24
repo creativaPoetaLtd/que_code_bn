@@ -16,6 +16,8 @@ import {
 import { AuthRequest } from '../middleware/auth.unified.middleware';
 import { getAvailableBalance } from '../utils/walletBalance';
 import { buildBillHistoryPlan, shapeBillHistoryRow } from '../utils/billHistory';
+import { creditPlatformFee, quoteOutgoing, sendTierError } from '../services/accountTier.service';
+import { FeatureKey } from '../utils/accountTiers';
 
 const {
   Wallet,
@@ -32,16 +34,6 @@ const {
   Group,
   PublicContribution,
 } = database_models;
-
-// Helper function to calculate fee
-const calculateFee = (amount: number): number => {
-  const feePercentage = 0.02;
-  const fee = amount * feePercentage;
-  const minFee = 5;
-  const maxFee = 1000;
-
-  return Math.min(Math.max(fee, minFee), maxFee);
-};
 
 // Transfer money between users and/or organizations
 const transferMoney = async (
@@ -350,12 +342,7 @@ const transferMoney = async (
       }
     }
 
-    // Calculate fee and total amount
     const transferAmount = parseFloat(amount);
-    //const fee = calculateFee(transferAmount);
-    //fee not needed for now
-    const fee = 0;
-    const totalAmount = transferAmount + fee;
 
     // Find wallets for both sender and receiver (users or organizations)
     const [senderWallet, receiverWallet] = await Promise.all([
@@ -398,6 +385,18 @@ const transferMoney = async (
       });
       return;
     }
+
+    // Account type rules: feature gates, per-use fees and the daily transfer limit
+    const tierFeatures: FeatureKey[] = [];
+    if (applyConstraints && categoryId) tierFeatures.push("personalizedTransfer");
+    if (typeof description === "string" && description.trim()) tierFeatures.push("comment");
+    const { fee } = await quoteOutgoing({
+      senderWallet,
+      amount: transferAmount,
+      features: tierFeatures,
+      transaction,
+    });
+    const totalAmount = transferAmount + fee;
 
     const receiverIsUser = !!receiverWallet.userId;
 
@@ -555,6 +554,8 @@ const transferMoney = async (
       },
       { transaction },
     );
+
+    await creditPlatformFee(fee, transaction);
 
     // Refresh the wallet instances to get updated values
     await senderWallet.reload({ transaction });
@@ -832,6 +833,8 @@ const transferMoney = async (
     if (transaction) {
       await transaction.rollback();
     }
+
+    if (sendTierError(res, error)) return;
 
     console.error("Transfer error:", error);
     res.status(500).json({
@@ -3514,8 +3517,6 @@ const acceptPaymentRequest = async (
     if (request.allowEditAmount && customAmount && Number(customAmount) > 0) {
       amount = Number(customAmount);
     }
-    const fee = 0;
-    const totalAmount = amount + fee;
 
     // Lock and fetch payer wallet (debit)
     const payerWallet = await Wallet.findOne({
@@ -3529,6 +3530,10 @@ const acceptPaymentRequest = async (
       res.status(404).json({ success: false, message: "Your wallet not found or inactive" });
       return;
     }
+
+    // Account type rules: daily transfer limit (paying a request uses no paid feature)
+    const { fee } = await quoteOutgoing({ senderWallet: payerWallet, amount, transaction: dbTransaction });
+    const totalAmount = amount + fee;
 
     if (getAvailableBalance(payerWallet) < totalAmount) {
       await dbTransaction.rollback();
@@ -3662,6 +3667,7 @@ const acceptPaymentRequest = async (
     });
   } catch (error) {
     await dbTransaction.rollback();
+    if (sendTierError(res, error)) return;
     console.error("Accept payment request error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }

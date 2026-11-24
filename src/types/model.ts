@@ -1,5 +1,6 @@
 import { UUID } from "crypto";
 import { Optional } from "sequelize";
+import type { AccountTier, OrganizationTier, UserTier } from "../utils/accountTiers";
 
 export type OrganizationStatus =
   | "pending"
@@ -20,6 +21,9 @@ export interface OrganizationModelAttributes {
   password: string;
   status: OrganizationStatus;
   categoryId?: string;
+  accountTier?: OrganizationTier;
+  npoRequestedAt?: Date | null;
+  npoRequestNote?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -49,6 +53,7 @@ export interface UserModelAttributes {
   pinResetOtp: string | null; // OTP for PIN reset
   pinResetOtpExpires: Date | null; // PIN reset OTP expiration
   fcmToken?: string | null; // Firebase Cloud Messaging token
+  accountTier?: UserTier; // QC account type (see utils/accountTiers.ts)
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -1641,4 +1646,107 @@ export interface GroupContributionPaymentAttributes {
 export type GroupContributionPaymentCreationAttributes = Optional<
   GroupContributionPaymentAttributes,
   "id" | "transactionId" | "currency" | "isAnonymous" | "createdAt" | "updatedAt"
+>;
+
+export type AccountSubscriptionStatus = "active" | "past_due" | "cancelled" | "expired";
+
+export interface AccountSubscriptionAttributes {
+  id: string;
+  userId?: string | null;
+  organizationId?: string | null;
+  tier: AccountTier;
+  pendingTier?: AccountTier | null;
+  priceRwf: number;
+  status: AccountSubscriptionStatus;
+  autoRenew: boolean;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  pastDueSince?: Date | null;
+  lastChargeTransactionId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type AccountSubscriptionCreationAttributes = Optional<
+  AccountSubscriptionAttributes,
+  | "id"
+  | "userId"
+  | "organizationId"
+  | "pendingTier"
+  | "status"
+  | "autoRenew"
+  | "pastDueSince"
+  | "lastChargeTransactionId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export interface FeatureGrantAttributes {
+  id: string;
+  userId?: string | null;
+  organizationId?: string | null;
+  feature: string;
+  fee?: number | null;
+  limitAmount?: number | null;
+  isActive: boolean;
+  expiresAt?: Date | null;
+  note?: string | null;
+  grantedByUserId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type FeatureGrantCreationAttributes = Optional<
+  FeatureGrantAttributes,
+  | "id"
+  | "userId"
+  | "organizationId"
+  | "fee"
+  | "limitAmount"
+  | "isActive"
+  | "expiresAt"
+  | "note"
+  | "grantedByUserId"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export type TopUpProviderKey = "mtn_momo" | "airtel_money";
+export type TopUpStatus = "pending" | "successful" | "failed" | "expired";
+
+export interface TopUpAttributes {
+  id: string;
+  walletId: string;
+  userId?: string | null;
+  organizationId?: string | null;
+  amount: number;
+  currency: string;
+  provider: TopUpProviderKey;
+  phoneNumber: string;
+  note?: string | null;
+  status: TopUpStatus;
+  simulated: boolean;
+  providerReference?: string | null;
+  failureReason?: string | null;
+  transactionId?: string | null;
+  completedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export type TopUpCreationAttributes = Optional<
+  TopUpAttributes,
+  | "id"
+  | "userId"
+  | "organizationId"
+  | "currency"
+  | "note"
+  | "status"
+  | "simulated"
+  | "providerReference"
+  | "failureReason"
+  | "transactionId"
+  | "completedAt"
+  | "createdAt"
+  | "updatedAt"
 >;

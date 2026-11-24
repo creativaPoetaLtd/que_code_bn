@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from "../types/requests";
 import { getAvailableBalance } from "../utils/walletBalance";
 import { holdEscrowFunds, releaseEscrowFunds, refundEscrowFunds, settleEscrowFunds } from "../services/escrowService";
 import { notifyPaymentReceived, notifyPaymentSent } from "../utils/notificationHelpers";
+import { chargeFeatureUse, sendTierError } from "../services/accountTier.service";
 
 const { sequelize, Wallet, Escrow, User, ChatParticipant, ChatMessage } = database_models as any;
 
@@ -34,6 +35,7 @@ const handleControllerError = (res: Response, error: unknown, context: string): 
     res.status(error.status).json({ success: false, message: error.message });
     return;
   }
+  if (sendTierError(res, error)) return;
   console.error(`${context} error:`, error);
   res.status(500).json({ success: false, message: "Internal server error" });
 };
@@ -142,6 +144,9 @@ const createEscrow = async (req: AuthenticatedRequest, res: Response): Promise<v
         transaction: t,
       });
       if (!payerWallet) throw new ControllerError(404, "Your wallet not found or inactive");
+
+      // Account type rules: blocked transfer gate + fee, and the daily transfer limit.
+      await chargeFeatureUse({ wallet: payerWallet, feature: "blockedTransfer", amount: escrowAmount, transaction: t });
 
       if (getAvailableBalance(payerWallet) < escrowAmount) {
         throw new ControllerError(

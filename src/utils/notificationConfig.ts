@@ -162,6 +162,16 @@ export enum NotificationType {
   REMINDER = "REMINDER",
   SYSTEM_MAINTENANCE = "SYSTEM_MAINTENANCE",
   FEATURE_ANNOUNCEMENT = "FEATURE_ANNOUNCEMENT",
+
+  // Account type (plan) notifications
+  PLAN_CHANGED = "PLAN_CHANGED",
+  PLAN_RENEWED = "PLAN_RENEWED",
+  PLAN_PAYMENT_FAILED = "PLAN_PAYMENT_FAILED",
+  PLAN_EXPIRED = "PLAN_EXPIRED",
+
+  // Wallet top-up notifications
+  TOPUP_SUCCESSFUL = "TOPUP_SUCCESSFUL",
+  TOPUP_FAILED = "TOPUP_FAILED",
 }
 
 export interface NotificationPayload {
@@ -832,6 +842,34 @@ const notificationConfig = {
   [NotificationType.FEATURE_ANNOUNCEMENT]: {
     description: "New feature announcement",
     priority: "low",
+  },
+
+  // Account type (plan) notifications
+  [NotificationType.PLAN_CHANGED]: {
+    description: "Your QC account type has changed",
+    priority: "high",
+  },
+  [NotificationType.PLAN_RENEWED]: {
+    description: "Your QC plan has been renewed",
+    priority: "normal",
+  },
+  [NotificationType.PLAN_PAYMENT_FAILED]: {
+    description: "Your QC plan renewal payment failed",
+    priority: "critical",
+  },
+  [NotificationType.PLAN_EXPIRED]: {
+    description: "Your QC plan has expired",
+    priority: "high",
+  },
+
+  // Wallet top-up notifications
+  [NotificationType.TOPUP_SUCCESSFUL]: {
+    description: "Your wallet top-up was successful",
+    priority: "high",
+  },
+  [NotificationType.TOPUP_FAILED]: {
+    description: "Your wallet top-up failed",
+    priority: "high",
   },
 };
 

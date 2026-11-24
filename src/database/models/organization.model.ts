@@ -3,6 +3,11 @@ import {
   OrganizationCreationAttributes,
   OrganizationModelAttributes,
 } from "../../types/model";
+import {
+  DEFAULT_ORGANIZATION_TIER,
+  ORGANIZATION_TIERS,
+  OrganizationTier,
+} from "../../utils/accountTiers";
 
 class Organization extends Model<
   OrganizationModelAttributes,
@@ -19,6 +24,9 @@ class Organization extends Model<
   public password!: string;
   public status!: "pending" | "active" | "inactive" | "suspended";
   public categoryId?: string;
+  public accountTier!: OrganizationTier;
+  public npoRequestedAt?: Date | null; // pending request to become an NPO
+  public npoRequestNote?: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -42,6 +50,13 @@ const Organization_model = (sequelize: Sequelize) => {
         allowNull: false,
         defaultValue: "pending",
       },
+      accountTier: {
+        type: DataTypes.ENUM(...ORGANIZATION_TIERS),
+        allowNull: false,
+        defaultValue: DEFAULT_ORGANIZATION_TIER,
+      },
+      npoRequestedAt: { type: DataTypes.DATE, allowNull: true },
+      npoRequestNote: { type: DataTypes.TEXT, allowNull: true },
       categoryId: {
         type: DataTypes.UUID,
         allowNull: true,

@@ -9,6 +9,7 @@ import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
 import { notifyPaymentRequestReceived } from "../utils/notificationHelpers";
 import { broadcastToBillParticipants } from "../utils/billBroadcast";
+import { quoteOutgoing, sendTierError } from "../services/accountTier.service";
 
 const MAX_SHARES = 30;
 const REMIND_COOLDOWN_MS = 60 * 60 * 1000;
@@ -36,6 +37,7 @@ const handleControllerError = (res: Response, error: unknown, context: string): 
     res.status(error.status).json(body);
     return;
   }
+  if (sendTierError(res, error)) return;
   console.error(`${context} error:`, error);
   res.status(500).json({ success: false, message: "Internal server error" });
 };
@@ -513,6 +515,9 @@ const executeSharePayment = async (
       categoryId: undefined,
     });
     if (!validation.ok) throw new BillError(400, validation.message || "Insufficient balance");
+
+    // Account type rules: the payer's daily transfer limit
+    await quoteOutgoing({ senderWallet: payerWallet, amount, transaction: t });
 
     const payer = await models.User.findByPk(share.payerId, { transaction: t });
     const payingUser = mode === "pay" ? payer : await models.User.findByPk(payingUserId, { transaction: t });

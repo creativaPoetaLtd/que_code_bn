@@ -323,6 +323,16 @@ const update_profile = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // A profile can't be handed to another account (only admins may re-link one).
+    const isAdmin = !!(req as any).user?.isAdmin;
+    const reassigning =
+      (userId !== undefined && userId !== existingProfile.userId) ||
+      (organizationId !== undefined && organizationId !== existingProfile.organizationId);
+    if (reassigning && !isAdmin) {
+      res.status(403).json({ message: "A profile cannot be moved to another account" });
+      return;
+    }
+
     if (userId !== undefined) updateData.userId = userId;
     if (organizationId !== undefined) updateData.organizationId = organizationId;
 

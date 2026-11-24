@@ -46,6 +46,9 @@ import sharedWalletPolicyChange_model from "./sharedWalletPolicyChange.model";
 import sharedWalletPolicyChangeVote_model from "./sharedWalletPolicyChangeVote.model";
 import bill_model from "./bill.model";
 import billShare_model from "./billShare.model";
+import accountSubscription_model from "./accountSubscription.model";
+import featureGrant_model from "./featureGrant.model";
+import topUp_model from "./topUp.model";
 import transferBatch_model from "./transferBatch.model";
 import scheduledTransferBatch_model from "./scheduledTransferBatch.model";
 import galleryItem_model from "./galleryItem.model";
@@ -129,6 +132,13 @@ const Models = (sequelize: Sequelize) => {
   // Bill (split payment) models
   const Bill = bill_model(sequelize);
   const BillShare = billShare_model(sequelize);
+
+  // Account types (plans) models
+  const AccountSubscription = accountSubscription_model(sequelize);
+  const FeatureGrant = featureGrant_model(sequelize);
+
+  // Mobile money top-ups
+  const TopUp = topUp_model(sequelize);
 
   // Transfer Batch model
   const TransferBatch = transferBatch_model(sequelize);
@@ -472,6 +482,27 @@ const Models = (sequelize: Sequelize) => {
 
   BillShare.hasOne(Transaction, { foreignKey: "billShareId", as: "transaction" });
   Transaction.belongsTo(BillShare, { foreignKey: "billShareId", as: "billShare" });
+
+  // Account types (plans)
+  User.hasMany(AccountSubscription, { foreignKey: "userId", as: "accountSubscriptions" });
+  AccountSubscription.belongsTo(User, { foreignKey: "userId", as: "user" });
+  Organization.hasMany(AccountSubscription, { foreignKey: "organizationId", as: "accountSubscriptions" });
+  AccountSubscription.belongsTo(Organization, { foreignKey: "organizationId", as: "organization" });
+
+  User.hasMany(FeatureGrant, { foreignKey: "userId", as: "featureGrants" });
+  FeatureGrant.belongsTo(User, { foreignKey: "userId", as: "user" });
+  Organization.hasMany(FeatureGrant, { foreignKey: "organizationId", as: "featureGrants" });
+  FeatureGrant.belongsTo(Organization, { foreignKey: "organizationId", as: "organization" });
+  FeatureGrant.belongsTo(User, { foreignKey: "grantedByUserId", as: "grantedBy" });
+
+  // Top-ups
+  Wallet.hasMany(TopUp, { foreignKey: "walletId", as: "topUps" });
+  TopUp.belongsTo(Wallet, { foreignKey: "walletId", as: "wallet" });
+  User.hasMany(TopUp, { foreignKey: "userId", as: "topUps" });
+  TopUp.belongsTo(User, { foreignKey: "userId", as: "user" });
+  Organization.hasMany(TopUp, { foreignKey: "organizationId", as: "topUps" });
+  TopUp.belongsTo(Organization, { foreignKey: "organizationId", as: "organization" });
+  TopUp.belongsTo(Transaction, { foreignKey: "transactionId", as: "transaction" });
 
   // Transfer Batches
   User.hasMany(TransferBatch, { foreignKey: "createdByUserId", as: "createdTransferBatches" });
@@ -852,6 +883,9 @@ const Models = (sequelize: Sequelize) => {
     SharedWalletPolicyChangeVote,
     Bill,
     BillShare,
+    AccountSubscription,
+    FeatureGrant,
+    TopUp,
     TransferBatch,
     ScheduledTransferBatch,
     OutsideMessage,

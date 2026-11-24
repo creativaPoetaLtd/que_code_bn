@@ -10,6 +10,7 @@ import adminNotificationsRouter from "./admin.notifications.routes";
 import adminAnalyticsRouter from "./admin.analytics.routes";
 import adminSupportRouter from "./admin.support.routes";
 import adminEscrowDisputesRouter from "./admin.escrowDisputes.routes";
+import adminPlansRouter from "./admin.plans.routes";
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/notifications", adminNotificationsRouter);
 router.use("/analytics", adminAnalyticsRouter);
 router.use("/support", adminSupportRouter);
 router.use("/escrow-disputes", adminEscrowDisputesRouter);
+router.use("/plans", adminPlansRouter);
 
 export default router;

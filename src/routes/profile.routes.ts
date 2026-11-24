@@ -2,6 +2,7 @@ import express from "express";
 import profileController from "../controllers/profileController";
 import fileUpload, { galleryImageUpload } from "../middleware/multer";
 import { authenticate } from "../middleware/auth.unified.middleware";
+import { requireProfileOwner } from "../middleware/ownership.middleware";
 import { RequestHandler } from "express";
 
 const profileRouter = express.Router();
@@ -49,6 +50,8 @@ profileRouter.delete(
 profileRouter.get("/:id", profileController.get_profile_by_id);
 profileRouter.put(
   "/:id",
+  authenticate as RequestHandler,
+  requireProfileOwner as unknown as RequestHandler,
   fileUpload.fields([
     { name: "profileImage", maxCount: 1 },
     { name: "logo", maxCount: 1 },

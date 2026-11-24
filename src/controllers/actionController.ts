@@ -13,6 +13,7 @@ import QRCode from "qrcode";
 
 import { SUB_ACTION_MAX_GALLERY_IMAGES } from "../middleware/multer";
 import { normalizeMetadata, withNormalizedMetadata } from "../utils/metadata";
+import { assertFeature, sendTierError } from "../services/accountTier.service";
 
 // Upload a multer file (buffer or disk path) to Cloudinary and return its URL
 const uploadImageToCloudinary = async (
@@ -194,6 +195,9 @@ const createActionStepA = async (
       return;
     }
 
+    // Account type rules: action creation is a Business / NPO feature
+    await assertFeature({ kind: "organization", id: organizationId as string }, "actionCreation");
+
     const actionSlug = slug || generateSlug(name);
 
     // Check if slug already exists
@@ -334,6 +338,7 @@ const createActionStepA = async (
       });
     }
   } catch (error: any) {
+    if (sendTierError(res, error)) return;
     console.error("Error in createActionStepA:", error);
     res.status(500).json({
       message: "An error occurred while creating the action",

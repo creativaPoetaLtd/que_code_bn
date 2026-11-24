@@ -1,4 +1,5 @@
 import { Request, Response, RequestHandler } from "express";
+import { initialWalletBalance } from "../utils/walletBalance";
 import Models from "../database/models";
 import { Op, fn, col } from "sequelize";
 
@@ -389,7 +390,7 @@ export const createUser: RequestHandler = async (
     try {
       await models.Wallet.create({
         userId: user.id,
-        balance: 67000,
+        balance: initialWalletBalance(),
       });
     } catch (walletError) {
       console.error("Error creating wallet for user:", walletError);

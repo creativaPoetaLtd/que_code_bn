@@ -1,6 +1,7 @@
 import { Transaction as DbTransaction } from "sequelize";
 import database_models from "../database/config/db.config";
 import { getAvailableBalance } from "../utils/walletBalance";
+import { quoteOutgoing } from "./accountTier.service";
 
 const { Wallet, Transaction: TransactionModel } = database_models as any;
 
@@ -87,6 +88,9 @@ export const depositIntoSharedWallet = async (
       `Insufficient balance. Available: ${getAvailableBalance(memberWallet)} ${memberWallet.currency}, requested: ${amount}`
     );
   }
+
+  // Account type rules: the depositing member's daily transfer limit
+  await quoteOutgoing({ senderWallet: memberWallet, amount, transaction: dbTransaction });
 
   await memberWallet.update(
     { balance: parseFloat(memberWallet.balance.toString()) - amount },

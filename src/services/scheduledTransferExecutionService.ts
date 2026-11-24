@@ -14,6 +14,7 @@ import {
 } from "../utils/notificationHelpers";
 import { findOrCreateDMChat } from "./chatService";
 import { postMoneyChatMessage, updateScheduledTransferMessage } from "./moneyChatMessageService";
+import { creditPlatformFee, quoteOutgoing, TierError } from "./accountTier.service";
 
 const {
   sequelize,
@@ -384,6 +385,15 @@ export const executeOccurrence = async (app: Application, scheduledTransferId: s
         return;
       }
 
+      // The sender's daily transfer limit applies on the day the money actually moves.
+      try {
+        await quoteOutgoing({ senderWallet, amount: transferAmount, transaction: t });
+      } catch (error) {
+        if (!(error instanceof TierError)) throw error;
+        failureReason = error.message;
+        return;
+      }
+
       const receiverIsUser = !!receiverWallet.userId;
 
       await senderWallet.update(
@@ -397,6 +407,7 @@ export const executeOccurrence = async (app: Application, scheduledTransferId: s
         { balance: parseFloat(receiverWallet.balance.toString()) + transferAmount },
         { transaction: t }
       );
+      await creditPlatformFee(fee, t);
 
       const spendConstraintType = st.applyConstraints && st.categoryId ? "category" : "none";
       const constraintCategoryId = st.applyConstraints && st.categoryId ? st.categoryId : null;

@@ -15,6 +15,8 @@ import groupRouter from "./group.routes";
 import groupContributionRouter from "./groupContribution.routes";
 import sharedWalletRouter from "./sharedWallet.routes";
 import billRouter from "./bill.routes";
+import planRouter from "./plan.routes";
+import topUpRouter from "./topUp.routes";
 import userContributionsRouter from "./userContributions.routes";
 import publicContributionRouter from "./publicContribution.routes";
 import notificationRouter from "./notification.routes";
@@ -70,6 +72,8 @@ router.use("/groups", groupRouter);
 router.use("/groups/:groupId/contributions", groupContributionRouter);
 router.use("/shared-wallets", sharedWalletRouter);
 router.use("/bills", billRouter);
+router.use("/plans", planRouter); // QC account types
+router.use("/topups", topUpRouter); // Mobile money wallet top-ups
 router.use("/contributions", userContributionsRouter);
 router.use("/public-contributions", publicContributionRouter);
 router.use("/notifications", notificationRouter);

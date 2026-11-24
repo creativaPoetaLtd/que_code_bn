@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { initialWalletBalance } from "../utils/walletBalance";
 import { insert_function, read_function } from "../utils/db_methods";
 import database_models from "../database/config/db.config";
 import {
@@ -127,7 +128,7 @@ const create_user = async (req: Request, res: Response): Promise<void> => {
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
-        balance: 67000,
+        balance: initialWalletBalance(),
       };
       const newWallet = await insert_function("Wallet", "create", walletData);
       walletCreated = true;
@@ -1037,7 +1038,7 @@ const admin_create_user = async (
     try {
       const walletData: WalletCreationAttributes = {
         userId: newUser.id,
-        balance: 67000,
+        balance: initialWalletBalance(),
       };
       await insert_function("Wallet", "create", walletData);
     } catch (walletError) {

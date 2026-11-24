@@ -9,8 +9,21 @@ import {
   SUB_ACTION_MAX_GALLERY_IMAGES,
 } from "../middleware/multer";
 import { authenticate } from "../middleware/auth.unified.middleware";
+import {
+  requireActionOwner,
+  requireQRObjectOwner,
+  requireSelfOrganization,
+  requireSubActionOwner,
+} from "../middleware/ownership.middleware";
 
 const actionRouter = express.Router();
+
+// Managing actions is limited to the owning organization (or an admin).
+const auth = authenticate as unknown as RequestHandler;
+const ownsOrganization = requireSelfOrganization("organizationId") as unknown as RequestHandler;
+const ownsAction = requireActionOwner as unknown as RequestHandler;
+const ownsSubAction = requireSubActionOwner as unknown as RequestHandler;
+const ownsQRObject = requireQRObjectOwner as unknown as RequestHandler;
 
 // Error handling middleware for multer
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
@@ -40,42 +53,60 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 // Wizard Steps (Organization-specific)
 actionRouter.post(
   "/organizations/:organizationId/actions/wizard/step-a",
+  auth,
+  ownsOrganization,
   actionCoverImageUpload.single("coverImage"),
   handleMulterError,
   actionController.createActionStepA
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-b",
+  auth,
+  ownsAction,
   actionController.updateActionStepB
 );
 actionRouter.post(
   "/actions/:actionId/sub-actions",
+  auth,
+  ownsAction,
   subActionMediaFields,
   handleMulterError,
   actionController.createSubAction
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-d",
+  auth,
+  ownsAction,
   actionController.updateActionStepD
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-e",
+  auth,
+  ownsAction,
   actionController.updateActionStepE
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-f",
+  auth,
+  ownsAction,
   actionController.updateActionStepF
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-g",
+  auth,
+  ownsAction,
   actionController.updateActionStepG
 );
 actionRouter.put(
   "/actions/:actionId/wizard/step-h",
+  auth,
+  ownsAction,
   actionController.updateActionStepH
 );
 actionRouter.put(
   "/actions/:actionId/publish",
+  auth,
+  ownsAction,
   actionController.publishAction
 );
 
@@ -95,11 +126,13 @@ actionRouter.get(
 actionRouter.get("/actions/:actionId", actionController.getActionById);
 actionRouter.put(
   "/actions/:actionId",
+  auth,
+  ownsAction,
   actionCoverImageUpload.single("coverImage"),
   handleMulterError,
   actionController.updateAction
 );
-actionRouter.delete("/actions/:actionId", actionController.deleteAction);
+actionRouter.delete("/actions/:actionId", auth, ownsAction, actionController.deleteAction);
 
 // Sub-Actions
 actionRouter.get(
@@ -112,12 +145,16 @@ actionRouter.get(
 );
 actionRouter.put(
   "/sub-actions/:subActionId",
+  auth,
+  ownsSubAction,
   subActionMediaFields,
   handleMulterError,
   actionController.updateSubAction
 );
 actionRouter.delete(
   "/sub-actions/:subActionId",
+  auth,
+  ownsSubAction,
   actionController.deleteSubAction
 );
 
@@ -125,6 +162,7 @@ actionRouter.delete(
 // Purchase Routes
 actionRouter.post(
   "/actions/:actionId/purchase",
+  auth,
   actionPurchaseController.purchaseAction
 );
 
@@ -160,6 +198,8 @@ actionRouter.get(
 );
 actionRouter.post(
   "/qr-objects/:qrObjectId/use",
+  auth,
+  ownsQRObject,
   actionPurchaseController.useQRObject
 );
 

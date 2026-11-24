@@ -9,6 +9,7 @@ import { createAndSendNotification } from "../utils/notificationService";
 import { GroupMemberRole, GroupMemberStatus, GroupPrivacyType, GroupExpirationType } from "../types/group";
 import { redactAnonymousPayments } from "../utils/paymentPrivacy";
 import { getAvailableBalance } from "../utils/walletBalance";
+import { quoteOutgoing, sendTierError } from "../services/accountTier.service";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -325,12 +326,14 @@ export const contribute = async (
         return;
       }
 
-      const payerBalance = getAvailableBalance(payerWallet);
-      if (payerBalance < contributionAmount) {
+      if (getAvailableBalance(payerWallet) < contributionAmount) {
         await dbTransaction.rollback();
         res.status(400).json({ success: false, message: "Insufficient balance" });
         return;
       }
+
+      // Account type rules: the payer's daily transfer limit
+      await quoteOutgoing({ senderWallet: payerWallet, amount: contributionAmount, transaction: dbTransaction });
 
       // Ensure campaign wallet exists (may be first contribution)
       const campaignWallet = await ensureCampaignWallet(models, contribution, dbTransaction);
@@ -353,9 +356,9 @@ export const contribute = async (
         return;
       }
 
-      // Debit payer
+      // Debit payer (from the full balance - held funds stay reserved)
       await payerWallet.update(
-        { balance: payerBalance - contributionAmount },
+        { balance: parseFloat(payerWallet.balance.toString()) - contributionAmount },
         { transaction: dbTransaction }
       );
 
@@ -514,6 +517,7 @@ export const contribute = async (
       throw innerError;
     }
   } catch (error) {
+    if (sendTierError(res, error)) return;
     console.error("contribute error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }

@@ -7,6 +7,7 @@ import { sequelizeConnection } from "../database/config/db.config";
 import ChatService from "../services/chatService";
 import { PDFGenerator } from "../utils/pdfGenerator";
 import { getAvailableBalance } from "../utils/walletBalance";
+import { creditPlatformFee, quoteOutgoing, sendTierError } from "../services/accountTier.service";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -330,7 +331,13 @@ export const sendMoneyInChat = async (
 
         // Check sufficient balance
         const transferAmount = parseFloat(amount);
-        const fee = 0; // No fee for now
+        // Account type rules: comment fee + daily transfer limit
+        const { fee } = await quoteOutgoing({
+            senderWallet,
+            amount: transferAmount,
+            features: typeof note === "string" && note.trim() ? ["comment"] : [],
+            transaction: dbTransaction
+        });
         const totalAmount = transferAmount + fee;
 
         console.log('Transfer details:', { transferAmount, fee, totalAmount, amount, isGroupFundraising });
@@ -357,8 +364,8 @@ export const sendMoneyInChat = async (
             senderWalletId: senderWallet.id,
             receiverWalletId: recipientWallet.id,
             amount: parseFloat(amount),
-            fee: 0,
-            totalAmount: parseFloat(amount) + 0,
+            fee,
+            totalAmount,
             currency: 'RWF',
             referenceId: `CHAT-${chatId.substring(0, 8)}-${Date.now()}`,
             type: transactionType,
@@ -374,6 +381,8 @@ export const sendMoneyInChat = async (
         await recipientWallet.update({
             balance: parseFloat(recipientWallet.balance.toString()) + transferAmount
         }, { transaction: dbTransaction });
+
+        await creditPlatformFee(fee, dbTransaction);
 
         // If it's a group donation, update the group's fundraising progress
         if (isGroupFundraising && groupDetails) {
@@ -418,8 +427,8 @@ export const sendMoneyInChat = async (
                 senderName: `${authenticatedUser.firstName} ${authenticatedUser.lastName}`,
                 recipientName: recipientName,
                 amount: transferAmount,
-                fee: 0,
-                totalAmount: parseFloat(amount) + 0,
+                fee,
+                totalAmount,
                 currency: 'RWF',
                 date: new Date(),
                 status: 'completed',
@@ -609,8 +618,8 @@ export const sendMoneyInChat = async (
                     referenceId: transactionRecord.referenceId,
                     amount: transferAmount,
                     currency: 'RWF',
-                    fee: 0,
-                    totalAmount: parseFloat(amount) + 0,
+                    fee,
+                    totalAmount,
                     type: transactionType,
                     recipientName: recipientDisplayName,
                     isGroupDonation: isGroupFundraising,
@@ -640,6 +649,7 @@ export const sendMoneyInChat = async (
 
     } catch (error) {
         await dbTransaction.rollback();
+        if (sendTierError(res, error)) return;
         console.error("Error sending money in chat:", error);
         res.status(500).json({
             success: false,

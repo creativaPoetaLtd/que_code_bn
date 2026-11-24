@@ -19,6 +19,7 @@ import {
 import { broadcastToSharedWalletMembers } from "../utils/sharedWalletBroadcast";
 import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
+import { sendTierError } from "../services/accountTier.service";
 
 const getModels = (req: AuthenticatedRequest) => req.app.get("models") as ReturnType<typeof Models>;
 const getIo = (req: AuthenticatedRequest) => req.app.get("io");
@@ -32,6 +33,7 @@ const handleControllerError = (res: Response, error: unknown, context: string): 
     res.status(error.status).json(body);
     return;
   }
+  if (sendTierError(res, error)) return;
   console.error(`${context} error:`, error);
   res.status(500).json({ success: false, message: "Internal server error" });
 };

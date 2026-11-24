@@ -6,6 +6,7 @@ import {
   requirePermission,
 } from "../middleware/auth.unified.middleware";
 import { RequestHandler } from "express";
+import { requireSelfOrganization } from "../middleware/ownership.middleware";
 
 const orgRouter = express.Router();
 
@@ -80,10 +81,37 @@ orgRouter.get("/:orgId/stats", orgController.get_organization_stats);
 // Parameterized routes (should come last)
 orgRouter.get("/:id", orgController.get_organization_by_id);
 orgRouter.get("/:id/category", orgController.get_organization_category);
-orgRouter.put("/:id", orgController.update_organization);
-orgRouter.delete("/:id", orgController.delete_organization);
-orgRouter.put("/:id/activate", orgController.activate_organization);
-orgRouter.put("/:id/deactivate", orgController.deactivate_organization);
-orgRouter.put("/:id/suspend", orgController.suspend_organization);
+// The organization itself (or an admin) edits its details; deleting and changing
+// status are admin actions.
+orgRouter.put(
+  "/:id",
+  authenticate as RequestHandler,
+  requireSelfOrganization("id") as unknown as RequestHandler,
+  orgController.update_organization,
+);
+orgRouter.delete(
+  "/:id",
+  authenticate as RequestHandler,
+  requirePermission("delete_organizations") as unknown as RequestHandler,
+  orgController.delete_organization,
+);
+orgRouter.put(
+  "/:id/activate",
+  authenticate as RequestHandler,
+  requirePermission("approve_organizations") as unknown as RequestHandler,
+  orgController.activate_organization,
+);
+orgRouter.put(
+  "/:id/deactivate",
+  authenticate as RequestHandler,
+  requirePermission("approve_organizations") as unknown as RequestHandler,
+  orgController.deactivate_organization,
+);
+orgRouter.put(
+  "/:id/suspend",
+  authenticate as RequestHandler,
+  requirePermission("approve_organizations") as unknown as RequestHandler,
+  orgController.suspend_organization,
+);
 
 export default orgRouter;

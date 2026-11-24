@@ -9,6 +9,7 @@ import { NotificationType } from "../utils/notificationConfig";
 import { createAndSendNotification } from "../utils/notificationService";
 import { redactAnonymousPayments } from "../utils/paymentPrivacy";
 import { getAvailableBalance } from "../utils/walletBalance";
+import { quoteOutgoing, sendTierError } from "../services/accountTier.service";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -481,14 +482,16 @@ export const contribute = async (
         return;
       }
 
-      const memberBalance = getAvailableBalance(memberWallet);
-      if (memberBalance < contributionAmount) {
+      if (getAvailableBalance(memberWallet) < contributionAmount) {
         await dbTransaction.rollback();
         res
           .status(400)
           .json({ success: false, message: "Insufficient balance" });
         return;
       }
+
+      // Account type rules: the member's daily transfer limit
+      await quoteOutgoing({ senderWallet: memberWallet, amount: contributionAmount, transaction: dbTransaction });
 
       // Lock and fetch group wallet
       const group = await models.Group.findByPk(groupId, {
@@ -525,9 +528,9 @@ export const contribute = async (
         return;
       }
 
-      // Debit member wallet
+      // Debit member wallet (from the full balance - held funds stay reserved)
       await memberWallet.update(
-        { balance: memberBalance - contributionAmount },
+        { balance: parseFloat(memberWallet.balance.toString()) - contributionAmount },
         { transaction: dbTransaction }
       );
 
@@ -711,6 +714,7 @@ export const contribute = async (
       throw innerError;
     }
   } catch (error) {
+    if (sendTierError(res, error)) return;
     console.error("contribute error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }

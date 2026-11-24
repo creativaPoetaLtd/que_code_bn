@@ -531,9 +531,15 @@ const update_organization = async (
       return;
     }
 
-    const updateData: Partial<OrganizationModelAttributes> = {
-      ...req.body,
-    };
+    // Status and account type have their own admin endpoints; ids/timestamps never change.
+    const {
+      id: _id,
+      status: _status,
+      accountTier: _accountTier,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...updateData
+    }: Partial<OrganizationModelAttributes> = req.body;
 
     // Hash password if provided
     if (updateData.password) {

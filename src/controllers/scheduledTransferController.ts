@@ -21,6 +21,8 @@ import {
 } from "../utils/notificationHelpers";
 import { findOrCreateDMChat } from "../services/chatService";
 import { postMoneyChatMessage, updateScheduledTransferMessage } from "../services/moneyChatMessageService";
+import { quoteOutgoing, sendTierError } from "../services/accountTier.service";
+import { FeatureKey } from "../utils/accountTiers";
 
 const {
   sequelize,
@@ -63,8 +65,33 @@ const handleControllerError = (res: Response, error: unknown, context: string): 
     res.status(error.status).json({ success: false, message: error.message });
     return;
   }
+  if (sendTierError(res, error)) return;
   console.error(`${context} error:`, error);
   res.status(500).json({ success: false, message: "Internal server error" });
+};
+
+/**
+ * Account type rules for a scheduled transfer. Returns the per-occurrence fee, which is
+ * stored on the row and held/charged with every occurrence; the daily transfer limit is
+ * enforced when each occurrence executes. `gateOnly` features must be allowed but add no fee.
+ */
+const quoteScheduledFee = async (
+  sender: { userId?: string | null; organizationId?: string | null; subActionId?: string | null },
+  options: { applyConstraints: boolean; categoryId?: string | null; hasComment: boolean; gateOnly?: FeatureKey[] }
+): Promise<number> => {
+  const where = resolveWalletWhere(sender);
+  const senderWallet = where ? await Wallet.findOne({ where }) : null;
+  if (!senderWallet) throw new ControllerError(404, "Sender wallet not found or inactive");
+
+  if (options.gateOnly?.length) {
+    await quoteOutgoing({ senderWallet, amount: 0, features: options.gateOnly });
+  }
+
+  const features: FeatureKey[] = ["scheduledPayment"];
+  if (options.applyConstraints && options.categoryId) features.push("personalizedTransfer");
+  if (options.hasComment) features.push("comment");
+  const { fee } = await quoteOutgoing({ senderWallet, amount: 0, features });
+  return fee;
 };
 
 const verifyPin = async (userId: string, pin: string): Promise<void> => {
@@ -254,6 +281,11 @@ const createScheduledTransfer = async (req: AuthenticatedRequest, res: Response)
     const receiverWallet = receiverWhere ? await Wallet.findOne({ where: receiverWhere }) : null;
     if (!receiverWallet) throw new ControllerError(404, "Receiver wallet not found or inactive");
 
+    const scheduledFee = await quoteScheduledFee(
+      { userId: senderUserId, organizationId: senderOrganizationId, subActionId: senderSubActionId },
+      { applyConstraints, categoryId, hasComment: typeof description === "string" && !!description.trim() }
+    );
+
     const id = uuidv4();
     const transferAmount = parseFloat(amount);
     let created: any;
@@ -270,7 +302,7 @@ const createScheduledTransfer = async (req: AuthenticatedRequest, res: Response)
           receiverOrganizationId: receiverOrganizationId || null,
           receiverWalletId: receiverWalletId || null,
           amount: transferAmount,
-          fee: 0,
+          fee: scheduledFee,
           currency: receiverWallet.currency || "RWF",
           type,
           description,
@@ -441,6 +473,24 @@ const createScheduledBatchTransfer = async (req: AuthenticatedRequest, res: Resp
       if (!category) throw new ControllerError(400, "Invalid category ID");
     }
 
+    const senderIdentity = {
+      userId: senderUserId,
+      organizationId: senderOrganizationId,
+      subActionId: senderSubActionId,
+    };
+    // Gate bulk payment once up front so an unsupported tier fails the whole request.
+    const batchFeeWithoutComment = await quoteScheduledFee(senderIdentity, {
+      applyConstraints,
+      categoryId,
+      hasComment: false,
+      gateOnly: ["bulkPayment"],
+    });
+    const batchFeeWithComment = await quoteScheduledFee(senderIdentity, {
+      applyConstraints,
+      categoryId,
+      hasComment: true,
+    });
+
     const totalRequestedAmount = recipients.reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0);
     const batch = await ScheduledTransferBatch.create({
       createdByUserId: authenticatedUserId,
@@ -493,7 +543,9 @@ const createScheduledBatchTransfer = async (req: AuthenticatedRequest, res: Resp
               receiverOrganizationId: recipient.receiverOrganizationId || null,
               receiverWalletId: recipient.receiverWalletId || null,
               amount: transferAmount,
-              fee: 0,
+              fee: (recipient.description || description || "").trim()
+                ? batchFeeWithComment
+                : batchFeeWithoutComment,
               currency: receiverWallet.currency || "RWF",
               type,
               description: recipient.description || description,
