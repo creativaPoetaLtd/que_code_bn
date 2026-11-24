@@ -12,6 +12,7 @@ import { initScheduledTransferJobs } from "./jobs/scheduledTransferJobs";
 import { initEscrowJobs } from "./jobs/escrowJobs";
 import { initSubscriptionJobs } from "./jobs/subscriptionJobs";
 import { initTopUpJobs } from "./jobs/topUpJobs";
+import { initPaymentRequestJobs } from "./jobs/paymentRequestJobs";
 
 const startServer = async () => {
   try {
@@ -74,6 +75,9 @@ const startServer = async () => {
 
     // 7d. Start wallet top-up expiry job
     initTopUpJobs(app);
+
+    // 7e. Expire payment requests nobody paid within PAYMENT_REQUEST_TTL_DAYS
+    initPaymentRequestJobs();
 
     const SERVER_PORT = process.env.PORT || 5500;
     server.listen(SERVER_PORT, () => {

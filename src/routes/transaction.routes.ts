@@ -185,6 +185,16 @@ router.patch(
   transactionController.declinePaymentRequest as express.RequestHandler
 );
 
+router.patch(
+  "/request/:id/cancel",
+  transactionController.cancelPaymentRequest as express.RequestHandler
+);
+
+router.post(
+  "/request/:id/remind",
+  transactionController.remindPaymentRequest as express.RequestHandler
+);
+
 // Get single transaction by ID with role-based access control (must be last)
 router.get(
   "/:id",
